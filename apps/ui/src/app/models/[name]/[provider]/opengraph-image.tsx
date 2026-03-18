@@ -10,6 +10,7 @@ import {
 	type ProviderModelMapping,
 } from "@llmgateway/models";
 import {
+	AWSBedrockIconStatic,
 	getProviderIcon,
 	MinimaxIconStatic,
 } from "@llmgateway/shared/components";
@@ -92,7 +93,7 @@ export default async function ModelProviderOgImage({ params }: ImageProps) {
 		}
 
 		const selectedMapping =
-			model.providers.find((p) => p.providerId === decodedProvider) ||
+			model.providers.find((p) => p.providerId === decodedProvider) ??
 			model.providers[0];
 		const providerInfo = providerDefinitions.find(
 			(p) => p.id === selectedMapping?.providerId,
@@ -100,25 +101,32 @@ export default async function ModelProviderOgImage({ params }: ImageProps) {
 		const ProviderIcon = selectedMapping
 			? selectedMapping.providerId === "minimax"
 				? MinimaxIconStatic
-				: getProviderIcon(selectedMapping.providerId)
+				: selectedMapping.providerId === "aws-bedrock"
+					? AWSBedrockIconStatic
+					: getProviderIcon(selectedMapping.providerId)
 			: null;
 		const pricing = getEffectivePricePerMillion(selectedMapping);
 		const requestPrice = selectedMapping?.requestPrice;
 		const hasTokenPricing =
-			pricing?.input || pricing?.output || pricing?.cachedInput;
+			pricing?.input ?? pricing?.output ?? pricing?.cachedInput;
 
-		const contextSize = selectedMapping?.contextSize || 0;
+		const contextSize = selectedMapping?.contextSize ?? 0;
 
 		const uniqueProviderIds = Array.from(
 			new Set(model.providers.map((p) => p.providerId)),
 		);
 		const supportingProviders = uniqueProviderIds
 			.map((providerId) => {
-				const icon = getProviderIcon(providerId);
+				const icon =
+					providerId === "aws-bedrock"
+						? AWSBedrockIconStatic
+						: providerId === "minimax"
+							? MinimaxIconStatic
+							: getProviderIcon(providerId);
 				const info = providerDefinitions.find((p) => p.id === providerId);
 				return {
 					id: providerId,
-					name: info?.name || providerId,
+					name: info?.name ?? providerId,
 					Icon: icon,
 				};
 			})
@@ -236,9 +244,8 @@ export default async function ModelProviderOgImage({ params }: ImageProps) {
 										}}
 									>
 										{(
-											providerInfo?.name ||
-											selectedMapping?.providerId ||
-											"LLM"
+											providerInfo?.name ??
+											(selectedMapping?.providerId || "LLM")
 										)
 											.charAt(0)
 											.toUpperCase()}
@@ -259,7 +266,7 @@ export default async function ModelProviderOgImage({ params }: ImageProps) {
 										letterSpacing: "-0.02em",
 									}}
 								>
-									{model.name || model.id}
+									{model.name ?? model.id}
 								</span>
 								<div
 									style={{
@@ -272,7 +279,7 @@ export default async function ModelProviderOgImage({ params }: ImageProps) {
 									}}
 								>
 									<span>
-										{providerInfo?.name || selectedMapping?.providerId}
+										{providerInfo?.name ?? selectedMapping?.providerId}
 									</span>
 									<span style={{ opacity: 0.5 }}>•</span>
 									<span>{model.family} family</span>
@@ -319,7 +326,7 @@ export default async function ModelProviderOgImage({ params }: ImageProps) {
 							gap: 28,
 						}}
 					>
-						{(hasTokenPricing ||
+						{(hasTokenPricing ??
 							(requestPrice !== undefined && requestPrice !== 0)) && (
 							<span
 								style={{
@@ -425,7 +432,7 @@ export default async function ModelProviderOgImage({ params }: ImageProps) {
 										Input
 									</span>
 									{formatDollars(
-										pricing?.input || undefined,
+										pricing?.input ?? undefined,
 										selectedMapping?.discount,
 									)}
 								</div>
@@ -456,7 +463,7 @@ export default async function ModelProviderOgImage({ params }: ImageProps) {
 										Output
 									</span>
 									{formatDollars(
-										pricing?.output || undefined,
+										pricing?.output ?? undefined,
 										selectedMapping?.discount,
 									)}
 								</div>

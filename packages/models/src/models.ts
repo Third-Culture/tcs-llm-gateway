@@ -12,7 +12,6 @@ import { moonshotModels } from "./models/moonshot.js";
 import { nousresearchModels } from "./models/nousresearch.js";
 import { openaiModels } from "./models/openai.js";
 import { perplexityModels } from "./models/perplexity.js";
-import { routewayModels } from "./models/routeway.js";
 import { xaiModels } from "./models/xai.js";
 import { zaiModels } from "./models/zai.js";
 
@@ -77,6 +76,20 @@ export interface ProviderModelMapping {
 	 * Price per image input in USD
 	 */
 	imageInputPrice?: number;
+	/**
+	 * Resolution-based token counts for image output.
+	 * Maps resolution keys (e.g., "1K", "2K", "4K", "default") to tokens per image.
+	 * The per-token price comes from imageOutputPrice.
+	 * Use "default" key as a fallback when no imageSize is specified.
+	 */
+	imageOutputTokensByResolution?: Record<string, number>;
+	/**
+	 * Resolution-based token counts for image input.
+	 * Maps resolution keys (e.g., "1K", "2K", "4K", "default") to tokens per image.
+	 * The per-token price comes from imageInputPrice.
+	 * Use "default" key as a fallback when no imageSize is specified.
+	 */
+	imageInputTokensByResolution?: Record<string, number>;
 	/**
 	 * Price per request in USD
 	 */
@@ -221,6 +234,10 @@ export interface ModelDefinition {
 	 */
 	output?: ("text" | "image")[];
 	/**
+	 * Whether this model requires an image input to function (e.g. image editing models).
+	 */
+	imageInputRequired?: boolean;
+	/**
 	 * Stability level of the model (defaults to 'stable' if not specified)
 	 * - stable: Fully tested and production ready
 	 * - beta: Generally stable but may have minor issues
@@ -258,6 +275,5 @@ export const models = [
 	...alibabaModels,
 	...bytedanceModels,
 	...nousresearchModels,
-	...routewayModels,
 	...zaiModels,
 ] as const satisfies ModelDefinition[];
