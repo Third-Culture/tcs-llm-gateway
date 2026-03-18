@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -100,10 +103,29 @@ const generateImageInputSchema = z.object({
 
 const listImageModelsInputSchema = z.object({});
 
+const generateNanoBananaInputSchema = z.object({
+	prompt: z
+		.string()
+		.describe(
+			"Detailed text description of the image to create, e.g. 'a futuristic city skyline at sunset with flying cars'",
+		),
+	filename: z
+		.string()
+		.optional()
+		.describe(
+			"Filename for the saved image (no path separators allowed). Auto-generated if not provided (e.g., nano-banana-1234567890.png). Images are only saved to disk when the server has UPLOAD_DIR configured.",
+		),
+	aspect_ratio: z
+		.enum(["1:1", "16:9", "4:3", "5:4"])
+		.optional()
+		.describe("Aspect ratio for the generated image."),
+});
+
 type ChatInput = z.infer<typeof chatInputSchema>;
 type ListModelsInput = z.infer<typeof listModelsInputSchema>;
 type GenerateImageInput = z.infer<typeof generateImageInputSchema>;
 type ListImageModelsInput = z.infer<typeof listImageModelsInputSchema>;
+type GenerateNanoBananaInput = z.infer<typeof generateNanoBananaInputSchema>;
 
 /**
  * Creates an MCP server instance with tools for LLM Gateway
@@ -123,7 +145,7 @@ function createMcpServer(apiKey: string): McpServer {
 			try {
 				// Call the internal chat completions endpoint
 				const gatewayUrl =
-					process.env.MCP_GATEWAY_URL ||
+					process.env.MCP_GATEWAY_URL ??
 					(process.env.NODE_ENV === "production"
 						? "https://api.llmgateway.io"
 						: "http://localhost:4001");
@@ -148,7 +170,7 @@ function createMcpServer(apiKey: string): McpServer {
 					let errorMessage: string;
 					try {
 						const errorJson = JSON.parse(errorText);
-						errorMessage = errorJson.message || errorJson.error || errorText;
+						errorMessage = errorJson.message ?? errorJson.error ?? errorText;
 					} catch {
 						errorMessage = errorText;
 					}
@@ -167,7 +189,7 @@ function createMcpServer(apiKey: string): McpServer {
 
 				// Extract the assistant's response
 				const assistantMessage =
-					data.choices?.[0]?.message?.content || "No response";
+					data.choices?.[0]?.message?.content ?? "No response";
 				const usage = data.usage;
 
 				let responseText = assistantMessage;
@@ -260,9 +282,9 @@ function createMcpServer(apiKey: string): McpServer {
 					);
 
 					const inputPrice =
-						firstProviderWithPricing?.inputPrice?.toString() || "0";
+						firstProviderWithPricing?.inputPrice?.toString() ?? "0";
 					const outputPrice =
-						firstProviderWithPricing?.outputPrice?.toString() || "0";
+						firstProviderWithPricing?.outputPrice?.toString() ?? "0";
 
 					// Check capabilities
 					const hasVision = model.providers.some((p) => p.vision);
@@ -279,7 +301,7 @@ function createMcpServer(apiKey: string): McpServer {
 
 					return {
 						id: model.id,
-						name: model.name || model.id,
+						name: model.name ?? model.id,
 						family: model.family,
 						providers: providerIds,
 						capabilities: {
@@ -294,9 +316,9 @@ function createMcpServer(apiKey: string): McpServer {
 							output: `$${outputPrice}/1M tokens`,
 						},
 						context_length:
-							Math.max(...model.providers.map((p) => p.contextSize || 0)) ||
+							Math.max(...model.providers.map((p) => p.contextSize ?? 0)) ??
 							undefined,
-						free: model.free || false,
+						free: model.free ?? false,
 					};
 				});
 
@@ -395,7 +417,7 @@ function createMcpServer(apiKey: string): McpServer {
 		async (input: GenerateImageInput) => {
 			try {
 				const gatewayUrl =
-					process.env.MCP_GATEWAY_URL ||
+					process.env.MCP_GATEWAY_URL ??
 					(process.env.NODE_ENV === "production"
 						? "https://api.llmgateway.io"
 						: "http://localhost:4001");
@@ -428,7 +450,7 @@ function createMcpServer(apiKey: string): McpServer {
 					let errorMessage: string;
 					try {
 						const errorJson = JSON.parse(errorText);
-						errorMessage = errorJson.message || errorJson.error || errorText;
+						errorMessage = errorJson.message ?? errorJson.error ?? errorText;
 					} catch {
 						errorMessage = errorText;
 					}
@@ -447,7 +469,7 @@ function createMcpServer(apiKey: string): McpServer {
 
 				// Extract images from the response
 				const message = data.choices?.[0]?.message;
-				const images = message?.images || [];
+				const images = message?.images ?? [];
 
 				if (images.length === 0) {
 					return {
@@ -455,7 +477,7 @@ function createMcpServer(apiKey: string): McpServer {
 							{
 								type: "text" as const,
 								text:
-									message?.content ||
+									message?.content ??
 									"No images generated. The model may not support image generation.",
 							},
 						],
@@ -531,6 +553,236 @@ function createMcpServer(apiKey: string): McpServer {
 		},
 	);
 
+	// Register the generate-nano-banana tool
+	server.tool(
+		"generate-nano-banana",
+		`Generate an image using Gemini 3 Pro Image Preview (Nano Banana). Tailored for AI coding agents - always returns an inline image preview.${process.env.UPLOAD_DIR ? " Also saves images to disk and returns file paths." : " Set UPLOAD_DIR to enable saving images to disk."}`,
+		generateNanoBananaInputSchema.shape,
+		async (input: GenerateNanoBananaInput) => {
+			try {
+				const gatewayUrl =
+					process.env.MCP_GATEWAY_URL ??
+					(process.env.NODE_ENV === "production"
+						? "https://api.llmgateway.io"
+						: "http://localhost:4001");
+
+				const body: Record<string, unknown> = {
+					model: "gemini-3-pro-image-preview",
+					messages: [
+						{
+							role: "user",
+							content: input.prompt,
+						},
+					],
+					stream: false,
+				};
+
+				if (input.aspect_ratio) {
+					body.image_config = { aspect_ratio: input.aspect_ratio };
+				}
+
+				const response = await fetch(`${gatewayUrl}/v1/chat/completions`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${apiKey}`,
+					},
+					body: JSON.stringify(body),
+				});
+
+				if (!response.ok) {
+					const errorText = await response.text();
+					let errorMessage: string;
+					try {
+						const errorJson = JSON.parse(errorText);
+						errorMessage = errorJson.message ?? errorJson.error ?? errorText;
+					} catch {
+						errorMessage = errorText;
+					}
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Error: ${response.status} - ${errorMessage}`,
+							},
+						],
+						isError: true,
+					};
+				}
+
+				const data = await response.json();
+				const message = data.choices?.[0]?.message;
+				const images = message?.images ?? [];
+
+				if (images.length === 0) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text:
+									message?.content ??
+									"No images generated. The model may not have produced an image for this prompt.",
+							},
+						],
+					};
+				}
+
+				const uploadDir = process.env.UPLOAD_DIR;
+				const contentBlocks: Array<
+					| { type: "text"; text: string }
+					| { type: "image"; data: string; mimeType: string }
+				> = [];
+
+				if (message?.content) {
+					contentBlocks.push({
+						type: "text" as const,
+						text: message.content,
+					});
+				}
+
+				const savedPaths: string[] = [];
+
+				const extMap: Record<string, string> = {
+					"image/png": ".png",
+					"image/jpeg": ".jpeg",
+					"image/jpg": ".jpg",
+					"image/webp": ".webp",
+					"image/gif": ".gif",
+				};
+
+				const resolvedUploadDir = uploadDir
+					? path.resolve(uploadDir)
+					: undefined;
+
+				let parsedFilename:
+					| { baseName: string; fileExt: string | undefined }
+					| undefined;
+				if (resolvedUploadDir && input.filename) {
+					const rawName = input.filename;
+					if (
+						rawName.includes("/") ||
+						rawName.includes("\\") ||
+						/^[a-zA-Z]:/.test(rawName)
+					) {
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: "Invalid filename: must not contain path separators or drive letters.",
+								},
+							],
+							isError: true,
+						};
+					}
+					const parsed = path.parse(rawName);
+					parsedFilename = {
+						baseName: parsed.name,
+						fileExt: parsed.ext || undefined,
+					};
+				}
+
+				if (resolvedUploadDir) {
+					await fs.mkdir(resolvedUploadDir, { recursive: true });
+				}
+
+				for (let i = 0; i < images.length; i++) {
+					const image = images[i];
+					if (image.type !== "image_url" || !image.image_url?.url) {
+						continue;
+					}
+
+					const url = image.image_url.url;
+					if (!url.startsWith("data:")) {
+						contentBlocks.push({
+							type: "text" as const,
+							text: `Image URL: ${url}`,
+						});
+						continue;
+					}
+
+					const matches = url.match(/^data:([^;]+);base64,(.+)$/);
+					if (!matches) {
+						continue;
+					}
+
+					const mimeType = matches[1];
+					const base64Data = matches[2];
+
+					const ext = extMap[mimeType] || ".png";
+
+					if (resolvedUploadDir) {
+						let fileName: string;
+						if (parsedFilename) {
+							const fileExt = parsedFilename.fileExt ?? ext;
+							fileName =
+								images.length > 1
+									? `${parsedFilename.baseName}-${i + 1}${fileExt}`
+									: `${parsedFilename.baseName}${fileExt}`;
+						} else {
+							const timestamp = Date.now();
+							fileName =
+								images.length > 1
+									? `nano-banana-${timestamp}-${i + 1}${ext}`
+									: `nano-banana-${timestamp}${ext}`;
+						}
+
+						const filePath = path.join(resolvedUploadDir, fileName);
+
+						if (
+							!filePath.startsWith(resolvedUploadDir + path.sep) &&
+							filePath !== resolvedUploadDir
+						) {
+							return {
+								content: [
+									{
+										type: "text" as const,
+										text: "Invalid filename: resolved path escapes the upload directory.",
+									},
+								],
+								isError: true,
+							};
+						}
+
+						await fs.writeFile(filePath, Buffer.from(base64Data, "base64"));
+						savedPaths.push(filePath);
+					}
+
+					contentBlocks.push({
+						type: "image" as const,
+						data: base64Data,
+						mimeType,
+					});
+				}
+
+				if (savedPaths.length > 0) {
+					const pathList = savedPaths.map((p) => `- ${p}`).join("\n");
+					contentBlocks.unshift({
+						type: "text" as const,
+						text: `Image${savedPaths.length > 1 ? "s" : ""} saved to:\n${pathList}`,
+					});
+				}
+
+				return {
+					content: contentBlocks,
+				};
+			} catch (error) {
+				logger.error(
+					"MCP generate-nano-banana tool error",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+						},
+					],
+					isError: true,
+				};
+			}
+		},
+	);
+
 	// Register the list-image-models tool
 	server.tool(
 		"list-image-models",
@@ -564,7 +816,7 @@ function createMcpServer(apiKey: string): McpServer {
 
 					return {
 						id: model.id,
-						name: model.name || model.id,
+						name: model.name ?? model.id,
 						description: model.description,
 						family: model.family,
 						requestPrice: imageProvider?.requestPrice,
@@ -814,7 +1066,7 @@ async function processMcpRequest(
 				}
 				const result = await client.callTool({
 					name: params.name,
-					arguments: params.arguments || {},
+					arguments: params.arguments ?? {},
 				});
 				return {
 					jsonrpc: "2.0",
@@ -918,13 +1170,11 @@ export async function mcpHandler(c: Context): Promise<Response> {
 
 	// Get or create session ID
 	let sessionId = c.req.header("mcp-session-id");
-	if (!sessionId) {
-		sessionId = crypto.randomUUID();
-	}
+	sessionId ??= crypto.randomUUID();
 
 	if (method === "GET") {
 		// Check if client wants SSE or just server info
-		const acceptHeader = c.req.header("Accept") || "";
+		const acceptHeader = c.req.header("Accept") ?? "";
 		const wantsSSE = acceptHeader.includes("text/event-stream");
 
 		if (!wantsSSE) {
@@ -1240,6 +1490,7 @@ async function oauthAuthorizeHandler(c: Context): Promise<Response> {
 	});
 
 	// Clean up old codes (older than 10 minutes)
+	// eslint-disable-next-line no-mixed-operators
 	const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
 	for (const [code, data] of authCodes.entries()) {
 		if (data.createdAt < tenMinutesAgo) {
@@ -1374,7 +1625,7 @@ async function oauthTokenHandler(c: Context): Promise<Response> {
 	let clientSecret: string | null = null;
 
 	// Parse request body (can be form-urlencoded or JSON)
-	const contentType = c.req.header("Content-Type") || "";
+	const contentType = c.req.header("Content-Type") ?? "";
 
 	if (contentType.includes("application/x-www-form-urlencoded")) {
 		const formData = await c.req.parseBody();
@@ -1397,12 +1648,8 @@ async function oauthTokenHandler(c: Context): Promise<Response> {
 	if (authHeader?.startsWith("Basic ")) {
 		const decoded = Buffer.from(authHeader.slice(6), "base64").toString();
 		const [basicClientId, basicClientSecret] = decoded.split(":");
-		if (!clientId) {
-			clientId = basicClientId ?? null;
-		}
-		if (!clientSecret) {
-			clientSecret = basicClientSecret ?? null;
-		}
+		clientId ??= basicClientId ?? null;
+		clientSecret ??= basicClientSecret ?? null;
 	}
 
 	if (!grantType) {
@@ -1511,7 +1758,7 @@ async function oauthTokenHandler(c: Context): Promise<Response> {
 	// Handle client_credentials grant
 	if (grantType === "client_credentials") {
 		// For client_credentials, the client_secret IS the API key
-		const apiKey = clientSecret || clientId;
+		const apiKey = clientSecret ?? clientId;
 
 		if (!apiKey) {
 			return c.json(
@@ -1552,8 +1799,8 @@ async function oauthRegisterHandler(c: Context): Promise<Response> {
 
 		// For MCP, the client provides their API key during registration
 		// We use the API key as the client_id
-		const clientName = body.client_name || "mcp-client";
-		const redirectUris = body.redirect_uris || [];
+		const clientName = body.client_name ?? "mcp-client";
+		const redirectUris = body.redirect_uris ?? [];
 
 		// Check if an API key was provided (either in body or header)
 		let apiKey = body.api_key;
@@ -1613,6 +1860,7 @@ async function oauthRegisterHandler(c: Context): Promise<Response> {
 		});
 
 		// Clean up old client registrations (older than 30 days)
+		// eslint-disable-next-line no-mixed-operators
 		const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 		for (const [id, client] of registeredClients.entries()) {
 			if (client.createdAt < thirtyDaysAgo) {

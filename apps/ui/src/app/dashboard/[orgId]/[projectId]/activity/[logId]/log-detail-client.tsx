@@ -51,7 +51,7 @@ function CopyButton({ value }: { value: string }) {
 		<button
 			type="button"
 			onClick={() => {
-				navigator.clipboard.writeText(value);
+				void navigator.clipboard.writeText(value);
 				setCopied(true);
 				setTimeout(() => setCopied(false), 1500);
 			}}
@@ -131,7 +131,7 @@ function StatusIndicator({ log }: { log: Partial<Log> }) {
 		StatusIcon = AlertCircle;
 		color = "text-yellow-500";
 		bgColor = "bg-yellow-500/10";
-		label = log.unifiedFinishReason || "Unknown";
+		label = log.unifiedFinishReason ?? "Unknown";
 	} else if (log.unifiedFinishReason === "tool_calls") {
 		label = "Tool Calls";
 	}
@@ -276,7 +276,7 @@ export function LogDetailClient({
 							<span className="text-xs">Tokens</span>
 						</div>
 						<p className="text-lg font-semibold tabular-nums">
-							{Number(log.totalTokens || 0).toLocaleString()}
+							{Number(log.totalTokens ?? 0).toLocaleString()}
 						</p>
 					</div>
 					<div className="rounded-lg border bg-card p-3">
@@ -310,7 +310,7 @@ export function LogDetailClient({
 											<Info className="h-3 w-3 text-muted-foreground/40" />
 										</div>
 										<p className="text-lg font-semibold tabular-nums text-muted-foreground">
-											${log.cost?.toFixed(6) || "0"}
+											${log.cost?.toFixed(6) ?? "0"}
 										</p>
 									</div>
 								</TooltipTrigger>
@@ -625,18 +625,6 @@ export function LogDetailClient({
 												: "$0"
 										}
 									/>
-									{log.usedMode === "api-keys" && (
-										<Field
-											label="API Key Fee (1%)"
-											value={
-												log.serviceFee
-													? `$${Number(log.serviceFee).toFixed(8)}`
-													: log.cost
-														? `$${(Number(log.cost) * 0.01).toFixed(8)}`
-														: "$0"
-											}
-										/>
-									)}
 								</div>
 							</div>
 						</Section>
@@ -690,7 +678,7 @@ export function LogDetailClient({
 									/>
 									<Field
 										label="Reasoning Effort"
-										value={log.reasoningEffort || "-"}
+										value={log.reasoningEffort ?? "-"}
 									/>
 									{log.effort && <Field label="Effort" value={log.effort} />}
 									<Field
@@ -698,18 +686,18 @@ export function LogDetailClient({
 										value={
 											log.responseFormat
 												? typeof log.responseFormat === "object"
-													? (log.responseFormat as any).type || "-"
+													? ((log.responseFormat as any).type ?? "-")
 													: "-"
 												: "-"
 										}
 									/>
 									<Field
 										label="Finish Reason"
-										value={log.finishReason || "-"}
+										value={log.finishReason ?? "-"}
 									/>
 									<Field
 										label="Unified Finish Reason"
-										value={log.unifiedFinishReason || "-"}
+										value={log.unifiedFinishReason ?? "-"}
 									/>
 								</TooltipProvider>
 							</div>
@@ -823,7 +811,7 @@ export function LogDetailClient({
 					</Section>
 				)}
 
-				{(log.tools || log.toolChoice || log.toolResults) && (
+				{(log.tools ?? log.toolChoice ?? log.toolResults) && (
 					<Section title="Tools">
 						<div className="space-y-3">
 							{log.tools && (
@@ -831,7 +819,7 @@ export function LogDetailClient({
 									<p className="text-xs text-muted-foreground mb-2">
 										Available Tools
 									</p>
-									<pre className="max-h-48 text-xs overflow-auto whitespace-pre-wrap break-words font-mono bg-muted/30 rounded-md p-3">
+									<pre className="max-h-48 text-xs overflow-auto whitespace-pre-wrap break-all font-mono bg-muted/30 rounded-md p-3">
 										{JSON.stringify(log.tools, null, 2)}
 									</pre>
 								</div>
@@ -841,7 +829,7 @@ export function LogDetailClient({
 									<p className="text-xs text-muted-foreground mb-2">
 										Tool Choice
 									</p>
-									<pre className="max-h-48 text-xs overflow-auto whitespace-pre-wrap break-words font-mono bg-muted/30 rounded-md p-3">
+									<pre className="max-h-48 text-xs overflow-auto whitespace-pre-wrap break-all font-mono bg-muted/30 rounded-md p-3">
 										{JSON.stringify(log.toolChoice, null, 2)}
 									</pre>
 								</div>
@@ -872,7 +860,7 @@ export function LogDetailClient({
 															</span>
 														</div>
 														{toolCall.function?.arguments && (
-															<pre className="text-xs overflow-auto whitespace-pre-wrap break-words font-mono bg-background rounded border p-2 max-h-32">
+															<pre className="text-xs overflow-auto whitespace-pre-wrap break-all font-mono bg-background rounded border p-2 max-h-32">
 																{typeof toolCall.function.arguments === "string"
 																	? toolCall.function.arguments
 																	: JSON.stringify(
@@ -885,7 +873,7 @@ export function LogDetailClient({
 													</div>
 												))
 										) : (
-											<pre className="max-h-48 text-xs overflow-auto whitespace-pre-wrap break-words font-mono bg-muted/30 rounded-md p-3">
+											<pre className="max-h-48 text-xs overflow-auto whitespace-pre-wrap break-all font-mono bg-muted/30 rounded-md p-3">
 												{JSON.stringify(log.toolResults, null, 2)}
 											</pre>
 										)}
@@ -929,7 +917,7 @@ export function LogDetailClient({
 							</div>
 							<div>
 								<p className="text-xs text-red-400 mb-1">Error Message</p>
-								<pre className="text-xs overflow-auto whitespace-pre-wrap break-words font-mono bg-background rounded border p-3">
+								<pre className="text-xs overflow-auto whitespace-pre-wrap break-all font-mono bg-background rounded border p-3">
 									{log.errorDetails.responseText}
 								</pre>
 							</div>
@@ -954,7 +942,7 @@ export function LogDetailClient({
 				<Section title="Messages">
 					<div className="rounded-lg border bg-card p-4">
 						{log.messages ? (
-							<pre className="max-h-80 text-xs overflow-auto whitespace-pre-wrap break-words font-mono bg-muted/30 rounded-md p-3">
+							<pre className="max-h-80 text-xs overflow-auto whitespace-pre-wrap break-all font-mono bg-muted/30 rounded-md p-3">
 								{JSON.stringify(log.messages, null, 2)}
 							</pre>
 						) : !retentionEnabled ? (
@@ -972,7 +960,7 @@ export function LogDetailClient({
 								<p className="text-xs text-muted-foreground mb-2">
 									Response Format
 								</p>
-								<pre className="max-h-40 text-xs overflow-auto whitespace-pre-wrap break-words font-mono bg-muted/30 rounded-md p-3">
+								<pre className="max-h-40 text-xs overflow-auto whitespace-pre-wrap break-all font-mono bg-muted/30 rounded-md p-3">
 									{JSON.stringify(log.responseFormat, null, 2)}
 								</pre>
 							</div>
@@ -983,7 +971,7 @@ export function LogDetailClient({
 				{log.reasoningContent && (
 					<Section title="Reasoning Content">
 						<div className="rounded-lg border bg-card p-4">
-							<pre className="max-h-80 text-xs overflow-auto whitespace-pre-wrap break-words font-mono bg-muted/30 rounded-md p-3">
+							<pre className="max-h-80 text-xs overflow-auto whitespace-pre-wrap break-all font-mono bg-muted/30 rounded-md p-3">
 								{log.reasoningContent}
 							</pre>
 						</div>
@@ -993,7 +981,7 @@ export function LogDetailClient({
 				<Section title="Response">
 					<div className="rounded-lg border bg-card p-4">
 						{log.content ? (
-							<pre className="max-h-80 text-xs overflow-auto whitespace-pre-wrap break-words font-mono bg-muted/30 rounded-md p-3">
+							<pre className="max-h-80 text-xs overflow-auto whitespace-pre-wrap break-all font-mono bg-muted/30 rounded-md p-3">
 								{log.content}
 							</pre>
 						) : !retentionEnabled ? (
@@ -1012,7 +1000,7 @@ export function LogDetailClient({
 				{log.params && Object.keys(log.params).length > 0 && (
 					<Section title="Additional Parameters">
 						<div className="rounded-lg border bg-card p-4">
-							<pre className="max-h-48 text-xs overflow-auto whitespace-pre-wrap break-words font-mono bg-muted/30 rounded-md p-3">
+							<pre className="max-h-48 text-xs overflow-auto whitespace-pre-wrap break-all font-mono bg-muted/30 rounded-md p-3">
 								{JSON.stringify(log.params, null, 2)}
 							</pre>
 						</div>

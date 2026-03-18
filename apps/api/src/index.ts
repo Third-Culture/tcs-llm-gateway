@@ -21,6 +21,7 @@ import { tracingMiddleware } from "./middleware/tracing.js";
 import { beacon } from "./routes/beacon.js";
 import { routes } from "./routes/index.js";
 import { internalModels } from "./routes/internal-models.js";
+import { publicDiscounts } from "./routes/public-discounts.js";
 import { referral } from "./routes/referral.js";
 import { stripeRoutes } from "./stripe.js";
 
@@ -55,7 +56,7 @@ app.use("*", honoRequestLogger);
 app.use(
 	"*",
 	cors({
-		origin: process.env.ORIGIN_URLS?.split(",") || [
+		origin: process.env.ORIGIN_URLS?.split(",") ?? [
 			"http://localhost:3002",
 			"http://localhost:3003",
 			"http://localhost:3004",
@@ -86,6 +87,40 @@ app.onError((error, c) => {
 				...(error.res ? { details: error.res } : {}),
 			},
 			status,
+		);
+	}
+
+	// Handle timeout errors - expected operational errors, not application bugs
+	if (error instanceof Error && error.name === "TimeoutError") {
+		logger.warn("Request timeout", {
+			message: error.message,
+			path: c.req.path,
+			method: c.req.method,
+		});
+		return c.json(
+			{
+				error: true,
+				status: 504,
+				message: "Gateway Timeout",
+			},
+			504,
+		);
+	}
+
+	// Handle client disconnection
+	if (error instanceof Error && error.name === "AbortError") {
+		logger.info("Request aborted by client", {
+			message: error.message,
+			path: c.req.path,
+			method: c.req.method,
+		});
+		return c.json(
+			{
+				error: true,
+				status: 499,
+				message: "Client Closed Request",
+			},
+			499 as any,
 		);
 	}
 
@@ -185,6 +220,8 @@ app.route("/", beacon);
 app.route("/", referral);
 
 app.route("/internal", internalModels);
+
+app.route("/public/discounts", publicDiscounts);
 
 app.doc("/json", config);
 

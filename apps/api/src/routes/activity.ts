@@ -58,8 +58,6 @@ const dailyActivitySchema = z.object({
 	apiKeysRequestCount: z.number(),
 	creditsCost: z.number(),
 	apiKeysCost: z.number(),
-	creditsServiceFee: z.number(),
-	apiKeysServiceFee: z.number(),
 	creditsDataStorageCost: z.number(),
 	apiKeysDataStorageCost: z.number(),
 	modelBreakdown: z.array(modelUsageSchema),
@@ -74,7 +72,10 @@ const getActivity = createRoute({
 			days: z
 				.string()
 				.transform((val) => parseInt(val, 10))
-				.pipe(z.number().int().positive()),
+				.pipe(z.number().int().positive())
+				.optional(),
+			from: z.string().optional(),
+			to: z.string().optional(),
 			projectId: z.string().optional(),
 			apiKeyId: z.string().optional(),
 		}),
@@ -102,13 +103,22 @@ activity.openapi(getActivity, async (c) => {
 		});
 	}
 
-	// Get the days parameter from the query
-	const { days, projectId, apiKeyId } = c.req.valid("query");
+	// Get the query parameters
+	const { days, from, to, projectId, apiKeyId } = c.req.valid("query");
 
 	// Calculate the date range
-	const endDate = new Date();
-	const startDate = new Date();
-	startDate.setDate(startDate.getDate() - days);
+	let startDate: Date;
+	let endDate: Date;
+
+	if (from && to) {
+		startDate = new Date(from + "T00:00:00");
+		endDate = new Date(to + "T23:59:59.999");
+	} else {
+		const effectiveDays = days ?? 7;
+		endDate = new Date();
+		startDate = new Date();
+		startDate.setDate(startDate.getDate() - effectiveDays);
+	}
 
 	// Get all organizations the user is a member of
 	const organizationIds = await getUserOrganizationIds(user.id);
@@ -231,14 +241,6 @@ activity.openapi(getActivity, async (c) => {
 					sql<number>`COALESCE(SUM(${apiKeyHourlyStats.apiKeysCost}), 0)`.as(
 						"apiKeysCost",
 					),
-				creditsServiceFee:
-					sql<number>`COALESCE(SUM(${apiKeyHourlyStats.creditsServiceFee}), 0)`.as(
-						"creditsServiceFee",
-					),
-				apiKeysServiceFee:
-					sql<number>`COALESCE(SUM(${apiKeyHourlyStats.apiKeysServiceFee}), 0)`.as(
-						"apiKeysServiceFee",
-					),
 				creditsDataStorageCost:
 					sql<number>`COALESCE(SUM(${apiKeyHourlyStats.creditsDataStorageCost}), 0)`.as(
 						"creditsDataStorageCost",
@@ -346,8 +348,6 @@ activity.openapi(getActivity, async (c) => {
 			const apiKeysRequestCount = Number(day.apiKeysRequestCount);
 			const creditsCost = Number(day.creditsCost);
 			const apiKeysCost = Number(day.apiKeysCost);
-			const creditsServiceFee = Number(day.creditsServiceFee);
-			const apiKeysServiceFee = Number(day.apiKeysServiceFee);
 			const creditsDataStorageCost = Number(day.creditsDataStorageCost);
 			const apiKeysDataStorageCost = Number(day.apiKeysDataStorageCost);
 
@@ -380,11 +380,9 @@ activity.openapi(getActivity, async (c) => {
 				apiKeysRequestCount,
 				creditsCost,
 				apiKeysCost,
-				creditsServiceFee,
-				apiKeysServiceFee,
 				creditsDataStorageCost,
 				apiKeysDataStorageCost,
-				modelBreakdown: modelBreakdownByDate.get(day.date) || [],
+				modelBreakdown: modelBreakdownByDate.get(day.date) ?? [],
 			};
 		});
 
@@ -476,14 +474,6 @@ activity.openapi(getActivity, async (c) => {
 			apiKeysCost:
 				sql<number>`COALESCE(SUM(${projectHourlyStats.apiKeysCost}), 0)`.as(
 					"apiKeysCost",
-				),
-			creditsServiceFee:
-				sql<number>`COALESCE(SUM(${projectHourlyStats.creditsServiceFee}), 0)`.as(
-					"creditsServiceFee",
-				),
-			apiKeysServiceFee:
-				sql<number>`COALESCE(SUM(${projectHourlyStats.apiKeysServiceFee}), 0)`.as(
-					"apiKeysServiceFee",
 				),
 			creditsDataStorageCost:
 				sql<number>`COALESCE(SUM(${projectHourlyStats.creditsDataStorageCost}), 0)`.as(
@@ -592,8 +582,6 @@ activity.openapi(getActivity, async (c) => {
 		const apiKeysRequestCount = Number(day.apiKeysRequestCount);
 		const creditsCost = Number(day.creditsCost);
 		const apiKeysCost = Number(day.apiKeysCost);
-		const creditsServiceFee = Number(day.creditsServiceFee);
-		const apiKeysServiceFee = Number(day.apiKeysServiceFee);
 		const creditsDataStorageCost = Number(day.creditsDataStorageCost);
 		const apiKeysDataStorageCost = Number(day.apiKeysDataStorageCost);
 
@@ -624,11 +612,9 @@ activity.openapi(getActivity, async (c) => {
 			apiKeysRequestCount,
 			creditsCost,
 			apiKeysCost,
-			creditsServiceFee,
-			apiKeysServiceFee,
 			creditsDataStorageCost,
 			apiKeysDataStorageCost,
-			modelBreakdown: modelBreakdownByDate.get(day.date) || [],
+			modelBreakdown: modelBreakdownByDate.get(day.date) ?? [],
 		};
 	});
 

@@ -1,6 +1,9 @@
-import { Resend } from "resend";
-
 import { logger } from "@llmgateway/logger";
+import {
+	fromEmail,
+	getResendClient,
+	replyToEmail,
+} from "@llmgateway/shared/email";
 
 /**
  * Escapes HTML special characters to prevent XSS attacks
@@ -17,28 +20,11 @@ function escapeHtml(text: string): string {
 	return text.replace(/[&<>"'/]/g, (char) => htmlEscapeMap[char] || char);
 }
 
-const resendApiKey = process.env.RESEND_API_KEY;
-const fromEmail =
-	process.env.RESEND_FROM_EMAIL || "LLMGateway <contact@mail.llmgateway.io>";
-const replyToEmail =
-	process.env.RESEND_REPLY_TO_EMAIL || "contact@llmgateway.io";
-
-let resendClient: Resend | null = null;
-
-function getResendClient(): Resend | null {
-	if (!resendApiKey) {
-		return null;
-	}
-	if (!resendClient) {
-		resendClient = new Resend(resendApiKey);
-	}
-	return resendClient;
-}
-
 export interface TransactionalEmailOptions {
 	to: string;
 	subject: string;
-	html: string;
+	html?: string;
+	text?: string;
 	attachments?: Array<{
 		filename: string;
 		content: Buffer;
@@ -50,6 +36,7 @@ export async function sendTransactionalEmail({
 	to,
 	subject,
 	html,
+	text,
 	attachments,
 }: TransactionalEmailOptions): Promise<void> {
 	// In non-production environments, just log the email content
@@ -58,6 +45,7 @@ export async function sendTransactionalEmail({
 			to,
 			subject,
 			html,
+			text,
 			attachments: attachments?.map((a) => ({
 				filename: a.filename,
 				size: a.content.length,
@@ -80,18 +68,21 @@ export async function sendTransactionalEmail({
 	}
 
 	try {
-		const { data, error } = await client.emails.send({
+		const emailPayload = {
 			from: fromEmail,
 			to: [to],
 			replyTo: replyToEmail,
 			subject,
-			html,
 			attachments: attachments?.map((att) => ({
 				filename: att.filename,
 				content: att.content,
 				contentType: att.contentType,
 			})),
-		});
+		};
+
+		const { data, error } = await client.emails.send(
+			text ? { ...emailPayload, text } : { ...emailPayload, html: html ?? "" },
+		);
 
 		if (error) {
 			throw new Error(`Resend API error: ${error.message}`);

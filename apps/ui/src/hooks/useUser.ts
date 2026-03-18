@@ -45,6 +45,7 @@ export function useUser(options?: UseUserOptions) {
 		posthog.identify(data.user.id, {
 			email: data.user.email,
 			name: data.user.name,
+			onboarding_completed: data.user.onboardingCompleted,
 		});
 	}
 
@@ -105,7 +106,7 @@ export function useUser(options?: UseUserOptions) {
 	]);
 
 	return {
-		user: data?.user || null,
+		user: data?.user ?? null,
 		isLoading,
 		error,
 		data,

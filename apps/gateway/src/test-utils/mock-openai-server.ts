@@ -162,14 +162,14 @@ mockOpenAIServer.post("/v1/responses", async (c) => {
 
 	// Get the user's message to include in the response
 	const userMessage =
-		body.input?.find?.((msg: any) => msg.role === "user")?.content || "";
+		body.input?.find?.((msg: any) => msg.role === "user")?.content ?? "";
 
 	// Create a Responses API format response
 	const response = {
 		id: "resp-123",
 		object: "response",
 		created_at: Math.floor(Date.now() / 1000),
-		model: body.model || "gpt-5-nano",
+		model: body.model ?? "gpt-5-nano",
 		output: [
 			{
 				type: "message",
@@ -209,7 +209,7 @@ mockOpenAIServer.post("/v1/chat/completions", async (c) => {
 
 	// Get the user's message to include in the response
 	const userMessage =
-		body.messages.find((msg: any) => msg.role === "user")?.content || "";
+		body.messages.find((msg: any) => msg.role === "user")?.content ?? "";
 
 	// Check if this request should trigger a specific HTTP status code error
 	const statusTrigger = extractStatusCodeTrigger(userMessage);
@@ -271,6 +271,57 @@ mockOpenAIServer.post("/v1/chat/completions", async (c) => {
 	return c.json(response);
 });
 
+// Handle Google Vertex AI generateContent endpoint (Gemini models via Vertex)
+mockOpenAIServer.post(
+	"/v1/projects/:project/locations/:location/publishers/google/models/:model\\:generateContent",
+	async (c) => {
+		const body = await c.req.json();
+
+		const shouldError = body.contents?.some?.((content: any) =>
+			content.parts?.some?.((part: any) =>
+				part.text?.includes?.("TRIGGER_ERROR"),
+			),
+		);
+
+		if (shouldError) {
+			c.status(500);
+			return c.json({
+				error: {
+					code: 500,
+					message: "Internal server error",
+					status: "INTERNAL",
+				},
+			});
+		}
+
+		const userMessage =
+			body.contents?.find?.((ct: any) => ct.role === "user")?.parts?.[0]
+				?.text ?? "";
+
+		return c.json({
+			candidates: [
+				{
+					content: {
+						parts: [
+							{
+								text: `Hello! I received your message: "${userMessage}". This is a mock Google Vertex response.`,
+							},
+						],
+						role: "model",
+					},
+					finishReason: "STOP",
+					index: 0,
+				},
+			],
+			usageMetadata: {
+				promptTokenCount: 10,
+				candidatesTokenCount: 20,
+				totalTokenCount: 30,
+			},
+		});
+	},
+);
+
 // Handle Google AI Studio generateContent endpoint (Gemini models)
 mockOpenAIServer.post("/v1beta/models/:model\\:generateContent", async (c) => {
 	const body = await c.req.json();
@@ -295,7 +346,7 @@ mockOpenAIServer.post("/v1beta/models/:model\\:generateContent", async (c) => {
 
 	// Get the user's message
 	const userMessage =
-		body.contents?.find?.((c: any) => c.role === "user")?.parts?.[0]?.text ||
+		body.contents?.find?.((c: any) => c.role === "user")?.parts?.[0]?.text ??
 		"";
 
 	// Return Google AI Studio format response
@@ -320,6 +371,54 @@ mockOpenAIServer.post("/v1beta/models/:model\\:generateContent", async (c) => {
 			totalTokenCount: 30,
 		},
 	});
+});
+
+mockOpenAIServer.post("/model/:model/converse", async (c) => {
+	const body = await c.req.json();
+	const userMessage = body.messages?.[0]?.content?.[0]?.text ?? "";
+
+	if (userMessage.includes("TRIGGER_BEDROCK_HEADER_ERROR")) {
+		c.header(
+			"x-amzn-errormessage",
+			"The provided model identifier is invalid for this account.",
+		);
+		c.header("x-amzn-errortype", "ValidationException");
+		c.status(400);
+		return c.json({});
+	}
+
+	return c.json({
+		output: {
+			message: {
+				role: "assistant",
+				content: [{ text: `Bedrock mock response: ${userMessage}` }],
+			},
+		},
+		stopReason: "end_turn",
+		usage: {
+			inputTokens: 10,
+			outputTokens: 20,
+			totalTokens: 30,
+		},
+	});
+});
+
+mockOpenAIServer.post("/model/:model/converse-stream", async (c) => {
+	const body = await c.req.json();
+	const userMessage = body.messages?.[0]?.content?.[0]?.text ?? "";
+
+	if (userMessage.includes("TRIGGER_BEDROCK_HEADER_ERROR")) {
+		c.header(
+			"x-amzn-errormessage",
+			"The provided model identifier is invalid for this account.",
+		);
+		c.header("x-amzn-errortype", "ValidationException");
+		c.status(400);
+		return c.json({});
+	}
+
+	c.header("content-type", "application/vnd.amazon.eventstream");
+	return c.body("");
 });
 
 let server: any = null;

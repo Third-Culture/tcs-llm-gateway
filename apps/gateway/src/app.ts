@@ -20,6 +20,7 @@ import { HealthChecker } from "@llmgateway/shared";
 
 import { anthropic } from "./anthropic/anthropic.js";
 import { chat } from "./chat/chat.js";
+import { imagesRoute } from "./images/route.js";
 import { mcpHandler, registerMcpOAuthRoutes } from "./mcp/mcp.js";
 import { tracingMiddleware } from "./middleware/tracing.js";
 import { models } from "./models/route.js";
@@ -89,11 +90,13 @@ app.use(
 // Middleware to check for application/json content type on POST requests
 // Excludes /mcp endpoint which handles its own content type validation
 // Excludes /oauth endpoints which accept form-urlencoded or JSON
+// Excludes /v1/images endpoints which accept multipart/form-data for file uploads
 app.use("*", async (c, next) => {
 	if (
 		c.req.method === "POST" &&
 		!c.req.path.startsWith("/mcp") &&
-		!c.req.path.startsWith("/oauth")
+		!c.req.path.startsWith("/oauth") &&
+		!c.req.path.startsWith("/v1/images")
 	) {
 		const contentType = c.req.header("Content-Type");
 		if (!contentType || !contentType.includes("application/json")) {
@@ -124,6 +127,42 @@ app.onError((error, c) => {
 				...(error.res ? { details: error.res } : {}),
 			},
 			status,
+		);
+	}
+
+	// Handle timeout errors (from AbortSignal.timeout) - these are expected
+	// operational errors when upstream providers are slow, not application bugs
+	if (error instanceof Error && error.name === "TimeoutError") {
+		logger.warn("Request timeout", {
+			message: error.message,
+			path: c.req.path,
+			method: c.req.method,
+		});
+		return c.json(
+			{
+				error: true,
+				status: 504,
+				message: "Gateway Timeout",
+			},
+			504,
+		);
+	}
+
+	// Handle client disconnection (AbortError) - the client closed the
+	// connection before the response was sent. Not an application error.
+	if (error instanceof Error && error.name === "AbortError") {
+		logger.info("Request aborted by client", {
+			message: error.message,
+			path: c.req.path,
+			method: c.req.method,
+		});
+		return c.json(
+			{
+				error: true,
+				status: 499,
+				message: "Client Closed Request",
+			},
+			499 as any,
 		);
 	}
 
@@ -271,6 +310,7 @@ app.openapi(metricsRoute, async (c) => {
 const v1 = new OpenAPIHono<ServerTypes>();
 
 v1.route("/chat", chat);
+v1.route("/images", imagesRoute);
 v1.route("/models", models);
 v1.route("/messages", anthropic);
 v1.route("/responses", responses);

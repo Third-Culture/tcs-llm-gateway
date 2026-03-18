@@ -208,6 +208,7 @@ export const transaction = pgTable(
 				"subscription_end",
 				"credit_topup",
 				"credit_refund",
+				"credit_gift",
 				"dev_plan_start",
 				"dev_plan_upgrade",
 				"dev_plan_downgrade",
@@ -232,6 +233,25 @@ export const transaction = pgTable(
 	},
 	(table) => [
 		index("transaction_organization_id_idx").on(table.organizationId),
+	],
+);
+
+export const followUpEmail = pgTable(
+	"follow_up_email",
+	{
+		id: text().primaryKey().notNull().$defaultFn(shortid),
+		createdAt: timestamp().notNull().defaultNow(),
+		organizationId: text()
+			.notNull()
+			.references(() => organization.id, { onDelete: "cascade" }),
+		emailType: text({
+			enum: ["no_purchase", "low_usage", "no_repurchase"],
+		}).notNull(),
+		sentTo: text().notNull(),
+	},
+	(table) => [
+		unique().on(table.organizationId, table.emailType),
+		index("follow_up_email_organization_id_idx").on(table.organizationId),
 	],
 );
 
@@ -458,7 +478,6 @@ export const log = pgTable(
 		imageOutputCost: real(),
 		estimatedCost: boolean().default(false),
 		discount: real(),
-		serviceFee: real(),
 		pricingTier: text(),
 		canceled: boolean().default(false),
 		streamed: boolean().default(false),
@@ -536,10 +555,10 @@ export const log = pgTable(
 			table.usedModel,
 			table.usedProvider,
 		),
-		// Partial index for data retention cleanup: project_id first for filtering, then created_at for range
+		// Partial index for data retention cleanup: created_at for range filtering
 		// Only indexes rows that need cleanup (data_retention_cleaned_up = false)
 		index("log_data_retention_pending_idx")
-			.on(table.projectId, table.createdAt)
+			.on(table.createdAt)
 			.where(sql`data_retention_cleaned_up = false`),
 		// Index for distinct usedModel queries by project
 		index("log_project_id_used_model_idx").on(table.projectId, table.usedModel),
@@ -569,6 +588,7 @@ export const passkey = pgTable(
 		deviceType: text(),
 		backedUp: boolean(),
 		transports: text(),
+		aaguid: text(),
 	},
 	(table) => [index("passkey_user_id_idx").on(table.userId)],
 );
@@ -731,6 +751,7 @@ export const model = pgTable(
 		family: text().notNull(),
 		free: boolean().default(false).notNull(),
 		output: json().$type<string[]>().default(["text"]).notNull(),
+		imageInputRequired: boolean().default(false).notNull(),
 		stability: text({
 			enum: ["stable", "beta", "unstable", "experimental"],
 		})
@@ -812,6 +833,10 @@ export const modelProviderMapping = pgTable(
 		cachedCount: integer().notNull().default(0),
 		avgTimeToFirstToken: real(),
 		avgTimeToFirstReasoningToken: real(),
+		routingUptime: real(),
+		routingLatency: real(),
+		routingThroughput: real(),
+		routingTotalRequests: integer(),
 		statsUpdatedAt: timestamp(),
 	},
 	(table) => [
@@ -848,6 +873,7 @@ export const modelProviderMappingHistory = pgTable(
 		totalDuration: integer().notNull().default(0),
 		totalTimeToFirstToken: integer().notNull().default(0),
 		totalTimeToFirstReasoningToken: integer().notNull().default(0),
+		totalCost: real().notNull().default(0),
 	},
 	(table) => [
 		// Unique constraint ensures one record per mapping-minute combination
@@ -895,6 +921,7 @@ export const modelHistory = pgTable(
 		totalDuration: integer().notNull().default(0),
 		totalTimeToFirstToken: integer().notNull().default(0),
 		totalTimeToFirstReasoningToken: integer().notNull().default(0),
+		totalCost: real().notNull().default(0),
 	},
 	(table) => [
 		// Unique constraint ensures one record per model-minute combination
@@ -939,6 +966,8 @@ export const auditLogActions = [
 	"payment.method.set_default",
 	"payment.method.delete",
 	"payment.credit_topup",
+	// Credits
+	"credits.gift",
 	// Dev Plan
 	"dev_plan.subscribe",
 	"dev_plan.cancel",
@@ -1237,7 +1266,6 @@ export const projectHourlyStats = pgTable(
 		outputCost: real().notNull().default(0),
 		requestCost: real().notNull().default(0),
 		dataStorageCost: real().notNull().default(0),
-		serviceFee: real().notNull().default(0),
 		discountSavings: real().notNull().default(0),
 		imageInputCost: real().notNull().default(0),
 		imageOutputCost: real().notNull().default(0),
@@ -1247,8 +1275,6 @@ export const projectHourlyStats = pgTable(
 		apiKeysRequestCount: integer().notNull().default(0),
 		creditsCost: real().notNull().default(0),
 		apiKeysCost: real().notNull().default(0),
-		creditsServiceFee: real().notNull().default(0),
-		apiKeysServiceFee: real().notNull().default(0),
 		creditsDataStorageCost: real().notNull().default(0),
 		apiKeysDataStorageCost: real().notNull().default(0),
 	},
@@ -1303,7 +1329,6 @@ export const projectHourlyModelStats = pgTable(
 		outputCost: real().notNull().default(0),
 		requestCost: real().notNull().default(0),
 		dataStorageCost: real().notNull().default(0),
-		serviceFee: real().notNull().default(0),
 		discountSavings: real().notNull().default(0),
 		imageInputCost: real().notNull().default(0),
 		imageOutputCost: real().notNull().default(0),
@@ -1313,8 +1338,6 @@ export const projectHourlyModelStats = pgTable(
 		apiKeysRequestCount: integer().notNull().default(0),
 		creditsCost: real().notNull().default(0),
 		apiKeysCost: real().notNull().default(0),
-		creditsServiceFee: real().notNull().default(0),
-		apiKeysServiceFee: real().notNull().default(0),
 		creditsDataStorageCost: real().notNull().default(0),
 		apiKeysDataStorageCost: real().notNull().default(0),
 	},
@@ -1380,7 +1403,6 @@ export const apiKeyHourlyStats = pgTable(
 		outputCost: real().notNull().default(0),
 		requestCost: real().notNull().default(0),
 		dataStorageCost: real().notNull().default(0),
-		serviceFee: real().notNull().default(0),
 		discountSavings: real().notNull().default(0),
 		imageInputCost: real().notNull().default(0),
 		imageOutputCost: real().notNull().default(0),
@@ -1390,8 +1412,6 @@ export const apiKeyHourlyStats = pgTable(
 		apiKeysRequestCount: integer().notNull().default(0),
 		creditsCost: real().notNull().default(0),
 		apiKeysCost: real().notNull().default(0),
-		creditsServiceFee: real().notNull().default(0),
-		apiKeysServiceFee: real().notNull().default(0),
 		creditsDataStorageCost: real().notNull().default(0),
 		apiKeysDataStorageCost: real().notNull().default(0),
 	},
@@ -1457,7 +1477,6 @@ export const apiKeyHourlyModelStats = pgTable(
 		outputCost: real().notNull().default(0),
 		requestCost: real().notNull().default(0),
 		dataStorageCost: real().notNull().default(0),
-		serviceFee: real().notNull().default(0),
 		discountSavings: real().notNull().default(0),
 		imageInputCost: real().notNull().default(0),
 		imageOutputCost: real().notNull().default(0),
@@ -1467,8 +1486,6 @@ export const apiKeyHourlyModelStats = pgTable(
 		apiKeysRequestCount: integer().notNull().default(0),
 		creditsCost: real().notNull().default(0),
 		apiKeysCost: real().notNull().default(0),
-		creditsServiceFee: real().notNull().default(0),
-		apiKeysServiceFee: real().notNull().default(0),
 		creditsDataStorageCost: real().notNull().default(0),
 		apiKeysDataStorageCost: real().notNull().default(0),
 	},

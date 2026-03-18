@@ -27,7 +27,7 @@ async function startServer() {
 	// Initialize tracing for gateway service
 	try {
 		sdk = initializeInstrumentation({
-			serviceName: process.env.OTEL_SERVICE_NAME || "llmgateway-gateway",
+			serviceName: process.env.OTEL_SERVICE_NAME ?? "llmgateway-gateway",
 			projectId: process.env.GOOGLE_CLOUD_PROJECT,
 		});
 	} catch (error) {
@@ -139,21 +139,15 @@ startServer()
 		// a single request causes an unhandled error.
 		process.on("uncaughtException", (error) => {
 			logger.fatal("Uncaught exception, initiating graceful shutdown", error);
-			gracefulShutdown("uncaughtException", server);
+			void gracefulShutdown("uncaughtException", server);
 		});
 
-		process.on("unhandledRejection", (reason, promise) => {
-			logger.fatal("Unhandled rejection, initiating graceful shutdown", {
-				promise,
-				reason,
-			});
-			gracefulShutdown("unhandledRejection", server);
+		process.on("unhandledRejection", (reason) => {
+			logger.fatal("Unhandled rejection, initiating graceful shutdown", reason);
+			void gracefulShutdown("unhandledRejection", server);
 		});
 	})
 	.catch((error) => {
-		logger.error(
-			"Failed to start server",
-			error instanceof Error ? error : new Error(String(error)),
-		);
+		logger.error("Failed to start server", error);
 		process.exit(1);
 	});

@@ -24,8 +24,9 @@ import {
 } from "@llmgateway/db";
 import { logger } from "@llmgateway/logger";
 import { hasErrorCode } from "@llmgateway/models";
-import { BYOK_FEE_PERCENTAGE, calculateFees } from "@llmgateway/shared";
+import { calculateFees } from "@llmgateway/shared";
 
+import { runFollowUpEmailsLoop } from "./services/follow-up-emails.js";
 import {
 	PROJECT_STATS_REFRESH_INTERVAL_SECONDS,
 	refreshProjectHourlyStats,
@@ -42,9 +43,21 @@ import { syncProvidersAndModels } from "./services/sync-models.js";
 const CURRENT_MINUTE_HISTORY_INTERVAL_SECONDS =
 	Number(process.env.CURRENT_MINUTE_HISTORY_INTERVAL_SECONDS) || 5;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_123", {
-	apiVersion: "2025-04-30.basil",
-});
+let _stripe: Stripe | null = null;
+
+function getStripe(): Stripe {
+	if (!_stripe) {
+		if (!process.env.STRIPE_SECRET_KEY) {
+			throw new Error(
+				"STRIPE_SECRET_KEY environment variable is required for Stripe operations",
+			);
+		}
+		_stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+			apiVersion: "2025-04-30.basil",
+		});
+	}
+	return _stripe;
+}
 
 const AUTO_TOPUP_LOCK_KEY = "auto_topup_check";
 const CREDIT_PROCESSING_LOCK_KEY = "credit_processing";
@@ -89,6 +102,7 @@ const schema = z.object({
 			statusCode: z.number(),
 			statusText: z.string(),
 			responseText: z.string(),
+			cause: z.string().optional(),
 		})
 		.nullable(),
 	trace_id: z.string().nullable(),
@@ -96,6 +110,7 @@ const schema = z.object({
 });
 
 export async function acquireLock(key: string): Promise<boolean> {
+	// eslint-disable-next-line no-mixed-operators
 	const lockExpiry = new Date(Date.now() - LOCK_DURATION_MINUTES * 60 * 1000);
 
 	try {
@@ -115,7 +130,7 @@ export async function acquireLock(key: string): Promise<boolean> {
 			} catch (insertError) {
 				// If the insert failed due to a unique constraint violation within the transaction,
 				// another process holds the lock - throw a special error to be caught outside
-				const actualError = (insertError as any)?.cause || insertError;
+				const actualError = (insertError as any)?.cause ?? insertError;
 				if (hasErrorCode(actualError) && actualError.code === "23505") {
 					throw new Error("LOCK_EXISTS");
 				}
@@ -156,7 +171,7 @@ async function processAutoTopUp(): Promise<void> {
 		// Filter organizations that need top-up based on credits vs threshold
 		const filteredOrgs = orgsNeedingTopUp.filter((org) => {
 			const credits = Number(org.credits || 0);
-			const threshold = Number(org.autoTopUpThreshold || 10);
+			const threshold = Number(org.autoTopUpThreshold ?? 10);
 			return credits < threshold;
 		});
 
@@ -179,6 +194,7 @@ async function processAutoTopUp(): Promise<void> {
 
 				// Check for pending transaction within 1 hour
 				if (recentTransaction) {
+					// eslint-disable-next-line no-mixed-operators
 					const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 					if (
 						recentTransaction.createdAt > oneHourAgo &&
@@ -232,7 +248,7 @@ async function processAutoTopUp(): Promise<void> {
 					continue;
 				}
 
-				const topUpAmount = Number(org.autoTopUpAmount || "10");
+				const topUpAmount = Number(org.autoTopUpAmount ?? "10");
 
 				// Get the first user associated with this organization for email metadata
 				const orgUser = await db.query.userOrganization.findFirst({
@@ -271,7 +287,7 @@ async function processAutoTopUp(): Promise<void> {
 				);
 
 				try {
-					const paymentIntent = await stripe.paymentIntents.create({
+					const paymentIntent = await getStripe().paymentIntents.create({
 						amount: Math.round(feeBreakdown.totalAmount * 100),
 						currency: "usd",
 						description: `Auto top-up for ${topUpAmount} USD (total: ${feeBreakdown.totalAmount} including fees)`,
@@ -373,6 +389,7 @@ export async function cleanupExpiredLogData(): Promise<void> {
 
 		// Calculate cutoff date (30 days ago)
 		const cutoffDate = new Date(
+			// eslint-disable-next-line no-mixed-operators
 			now.getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000,
 		);
 
@@ -382,6 +399,13 @@ export async function cleanupExpiredLogData(): Promise<void> {
 		let hasMoreRecords = true;
 		while (hasMoreRecords) {
 			const batchResult = await db.transaction(async (tx) => {
+				// Hint the planner to prefer index scans for this transaction.
+				// Without this, PostgreSQL's default random_page_cost=4 causes it to
+				// choose a sequential scan over the partial index, even though the index
+				// is far more efficient (scanning ~500 rows vs ~11.5M rows).
+				// SET LOCAL resets automatically when the transaction commits.
+				await tx.execute(sql`SET LOCAL random_page_cost = 1.1`);
+
 				// Find IDs of records to clean up (with LIMIT for batching)
 				// IMPORTANT: Use raw SQL for the boolean condition to match the partial index exactly
 				// (parameterized values like $20 prevent PostgreSQL from using partial indexes)
@@ -516,7 +540,6 @@ export async function batchProcessLogs(): Promise<void> {
 			// Use Decimal.js to avoid floating point rounding errors
 			const orgCosts = new Map<string, Decimal>();
 			const apiKeyCosts = new Map<string, Decimal>();
-			const logServiceFees = new Map<string, number>();
 			const logIds: string[] = [];
 
 			for (const raw of unprocessedLogs.rows) {
@@ -560,7 +583,7 @@ export async function batchProcessLogs(): Promise<void> {
 				if (row.cost && row.cost > 0 && !row.cached) {
 					// Always update API key usage for non-cached logs with cost
 					const currentApiKeyCost =
-						apiKeyCosts.get(row.api_key_id) || new Decimal(0);
+						apiKeyCosts.get(row.api_key_id) ?? new Decimal(0);
 					apiKeyCosts.set(
 						row.api_key_id,
 						currentApiKeyCost.plus(new Decimal(row.cost)),
@@ -572,37 +595,23 @@ export async function batchProcessLogs(): Promise<void> {
 					if (row.used_mode === "credits") {
 						// In credits mode, deduct the full cost
 						const currentOrgCost =
-							orgCosts.get(row.organization_id) || new Decimal(0);
+							orgCosts.get(row.organization_id) ?? new Decimal(0);
 						orgCosts.set(
 							row.organization_id,
 							currentOrgCost.plus(new Decimal(row.cost)),
 						);
 					} else if (row.used_mode === "api-keys") {
-						// In API keys mode, charge BYOK fee (% of tracked cost) + storage cost
-						let totalToDeduct = new Decimal(0);
-
-						// Add BYOK fee (e.g., 1% of the tracked cost)
-						if (row.cost) {
-							const byokFee = new Decimal(row.cost).times(BYOK_FEE_PERCENTAGE);
-							totalToDeduct = totalToDeduct.plus(byokFee);
-							// Store the service fee for this log
-							logServiceFees.set(row.id, byokFee.toNumber());
-						}
-
-						// Add storage cost if applicable
+						// In API keys mode, only deduct storage cost (data retention billing)
 						if (row.data_storage_cost) {
-							totalToDeduct = totalToDeduct.plus(
-								new Decimal(row.data_storage_cost),
-							);
-						}
-
-						if (totalToDeduct.greaterThan(0)) {
-							const currentOrgCost =
-								orgCosts.get(row.organization_id) || new Decimal(0);
-							orgCosts.set(
-								row.organization_id,
-								currentOrgCost.plus(totalToDeduct),
-							);
+							const storageCost = new Decimal(row.data_storage_cost);
+							if (storageCost.greaterThan(0)) {
+								const currentOrgCost =
+									orgCosts.get(row.organization_id) ?? new Decimal(0);
+								orgCosts.set(
+									row.organization_id,
+									currentOrgCost.plus(storageCost),
+								);
+							}
 						}
 					}
 				}
@@ -683,7 +692,7 @@ export async function batchProcessLogs(): Promise<void> {
 					if (referral) {
 						const earnings = totalCost.times(0.01);
 						const currentEarnings =
-							referralEarnings.get(referral.referrerOrganizationId) ||
+							referralEarnings.get(referral.referrerOrganizationId) ??
 							new Decimal(0);
 						referralEarnings.set(
 							referral.referrerOrganizationId,
@@ -724,16 +733,6 @@ export async function batchProcessLogs(): Promise<void> {
 
 					logger.debug(`Added ${costNumber} usage to API key ${apiKeyId}`);
 				}
-			}
-
-			// Update service fees for logs that have them (api-keys mode)
-			for (const [logId, serviceFee] of logServiceFees.entries()) {
-				await tx
-					.update(log)
-					.set({
-						serviceFee,
-					})
-					.where(eq(log.id, logId));
 			}
 
 			// Mark all logs as processed within the same transaction
@@ -868,7 +867,7 @@ let stopFailed = false;
 async function interruptibleSleep(ms: number): Promise<void> {
 	const chunkMs = 500;
 	let remaining = ms;
-	// eslint-disable-next-line no-unmodified-loop-condition
+
 	while (remaining > 0 && !shouldStop) {
 		await new Promise((resolve) => {
 			setTimeout(resolve, Math.min(remaining, chunkMs));
@@ -882,7 +881,6 @@ async function runLogQueueLoop() {
 	activeLoops++;
 	logger.info("Starting log queue processing loop...");
 	try {
-		// eslint-disable-next-line no-unmodified-loop-condition
 		while (!shouldStop) {
 			try {
 				await processLogQueue();
@@ -918,7 +916,6 @@ async function runAutoTopUpLoop() {
 	);
 
 	try {
-		// eslint-disable-next-line no-unmodified-loop-condition
 		while (!shouldStop) {
 			try {
 				await processAutoTopUp();
@@ -954,7 +951,6 @@ async function runBatchProcessLoop() {
 	);
 
 	try {
-		// eslint-disable-next-line no-unmodified-loop-condition
 		while (!shouldStop) {
 			try {
 				await batchProcessLogs();
@@ -999,7 +995,6 @@ async function runMinutelyHistoryLoop() {
 			);
 		}
 
-		// eslint-disable-next-line no-unmodified-loop-condition
 		while (!shouldStop) {
 			// Calculate delay to next minute boundary
 			const now = new Date();
@@ -1043,7 +1038,6 @@ async function runCurrentMinuteHistoryLoop() {
 	);
 
 	try {
-		// eslint-disable-next-line no-unmodified-loop-condition
 		while (!shouldStop) {
 			try {
 				await calculateCurrentMinuteHistory();
@@ -1088,7 +1082,6 @@ async function runAggregatedStatsLoop() {
 			);
 		}
 
-		// eslint-disable-next-line no-unmodified-loop-condition
 		while (!shouldStop) {
 			// Calculate delay to next 5-minute boundary
 			const now = new Date();
@@ -1134,7 +1127,6 @@ async function runProjectStatsLoop() {
 	);
 
 	try {
-		// eslint-disable-next-line no-unmodified-loop-condition
 		while (!shouldStop) {
 			try {
 				await refreshProjectHourlyStats();
@@ -1170,7 +1162,6 @@ async function runDataRetentionLoop() {
 	);
 
 	try {
-		// eslint-disable-next-line no-unmodified-loop-condition
 		while (!shouldStop) {
 			try {
 				await cleanupExpiredLogData();
@@ -1256,6 +1247,9 @@ export async function startWorker() {
 	logger.info(
 		`- Project hourly stats: runs every ${PROJECT_STATS_REFRESH_INTERVAL_SECONDS} seconds for dashboard aggregations`,
 	);
+	logger.info(
+		"- Follow-up emails: runs every hour to check for lifecycle emails",
+	);
 
 	void runMinutelyHistoryLoop();
 	void runCurrentMinuteHistoryLoop();
@@ -1265,6 +1259,18 @@ export async function startWorker() {
 	void runAutoTopUpLoop();
 	void runBatchProcessLoop();
 	void runDataRetentionLoop();
+	void runFollowUpEmailsLoop({
+		shouldStop: () => shouldStop,
+		acquireLock,
+		releaseLock,
+		interruptibleSleep,
+		registerLoop: () => {
+			activeLoops++;
+		},
+		unregisterLoop: () => {
+			activeLoops--;
+		},
+	});
 }
 
 export async function stopWorker(): Promise<boolean> {
@@ -1285,7 +1291,6 @@ export async function stopWorker(): Promise<boolean> {
 		`Waiting for all worker loops to finish (active loops: ${activeLoops})...`,
 	);
 
-	// eslint-disable-next-line no-unmodified-loop-condition
 	while (activeLoops > 0) {
 		const elapsed = Date.now() - startTime;
 
