@@ -1235,35 +1235,35 @@ chat.openapi(completions, async (c) => {
 			};
 			const availableModelProviders = iamFilteredModelProviders.filter(
 				(provider) => {
-				if (!availableProviders.includes(provider.providerId)) {
-					return false;
-				}
-				const reasons = getProviderFilterReasons(
-					provider as ProviderModelMapping,
-					directFilterOpts,
-				);
-				if (reasons.length > 0) {
-					filteredOutProvidersDirect.push({
-						providerId: provider.providerId,
-						reasons,
-					});
-					return false;
-				}
-				// Prefer non-reasoning variants when the request does not ask for reasoning.
-				if (reasoning_effort === undefined && !no_reasoning) {
-					const hasNonReasoningAlternative = modelInfo.providers.some(
-						(p) =>
-							p.providerId === provider.providerId &&
-							(p as ProviderModelMapping).reasoning !== true,
-					);
-					if (
-						hasNonReasoningAlternative &&
-						(provider as ProviderModelMapping).reasoning === true
-					) {
+					if (!availableProviders.includes(provider.providerId)) {
 						return false;
 					}
-				}
-				return true;
+					const reasons = getProviderFilterReasons(
+						provider as ProviderModelMapping,
+						directFilterOpts,
+					);
+					if (reasons.length > 0) {
+						filteredOutProvidersDirect.push({
+							providerId: provider.providerId,
+							reasons,
+						});
+						return false;
+					}
+					// Prefer non-reasoning variants when the request does not ask for reasoning.
+					if (reasoning_effort === undefined && !no_reasoning) {
+						const hasNonReasoningAlternative = modelInfo.providers.some(
+							(p) =>
+								p.providerId === provider.providerId &&
+								(p as ProviderModelMapping).reasoning !== true,
+						);
+						if (
+							hasNonReasoningAlternative &&
+							(provider as ProviderModelMapping).reasoning === true
+						) {
+							return false;
+						}
+					}
+					return true;
 				},
 			);
 
