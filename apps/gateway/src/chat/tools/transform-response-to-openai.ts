@@ -618,6 +618,7 @@ export function transformResponseToOpenai(
 			}
 			break;
 		}
+		case "avalanche":
 		case "xai": {
 			// Check if this is a Grok Imagine image generation response
 			// Format: { data: [{ url: "..." }] }

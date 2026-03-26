@@ -174,7 +174,7 @@ export const providers = [
 	{
 		id: "avalanche",
 		name: "Avalanche",
-		description: "Avalanche - video generation provider.",
+		description: "Avalanche - image and video generation provider.",
 		env: {
 			required: {
 				apiKey: "LLM_AVALANCHE_API_KEY",

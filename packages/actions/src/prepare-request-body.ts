@@ -8,6 +8,7 @@ import {
 	type OpenAIFunctionToolInput,
 	type OpenAIRequestBody,
 	type OpenAIResponsesRequestBody,
+	type AvalancheImageRequestBody,
 	type OpenAIToolInput,
 	type ProviderRequestBody,
 	type ToolChoiceType,
@@ -283,6 +284,59 @@ function mapGoogleImageSize(imageSize: string): string {
 	}
 
 	return imageSize;
+}
+
+function mapImageSizeToAspectRatio(imageSize: string): string | undefined {
+	const match = imageSize.match(/^(\d+)x(\d+)$/);
+	if (!match) {
+		return undefined;
+	}
+
+	const width = Number(match[1]);
+	const height = Number(match[2]);
+	if (!Number.isFinite(width) || !Number.isFinite(height) || height === 0) {
+		return undefined;
+	}
+	if (width === height) {
+		return "1:1";
+	}
+	if (width === 1792 && height === 1024) {
+		return "7:4";
+	}
+	if (width === 1024 && height === 1792) {
+		return "4:7";
+	}
+	if (width === 1536 && height === 1024) {
+		return "3:2";
+	}
+	if (width === 1024 && height === 1536) {
+		return "2:3";
+	}
+
+	return `${width}:${height}`;
+}
+
+function mapAvalancheImageResolution(imageSize: string | undefined): string {
+	if (!imageSize) {
+		return "2K";
+	}
+
+	const match = imageSize.match(/^(\d+)x(\d+)$/);
+	if (!match) {
+		return "2K";
+	}
+
+	const width = Number(match[1]);
+	const height = Number(match[2]);
+	const longestEdge = Math.max(width, height);
+	if (longestEdge <= 1024) {
+		return "1K";
+	}
+	if (longestEdge >= 2048) {
+		return "4K";
+	}
+
+	return "2K";
 }
 
 /**
@@ -752,6 +806,71 @@ export async function prepareRequestBody(
 		};
 
 		return bytedanceImageRequest;
+	}
+
+	if (imageGenerations && usedProvider === "avalanche") {
+		const lastUserMessage = [...messages]
+			.reverse()
+			.find((message) => message.role === "user");
+		let prompt = "";
+		const imageInputs: string[] = [];
+
+		if (lastUserMessage) {
+			if (typeof lastUserMessage.content === "string") {
+				prompt = lastUserMessage.content;
+			} else if (Array.isArray(lastUserMessage.content)) {
+				for (const part of lastUserMessage.content) {
+					if (part.type === "text" && part.text) {
+						prompt += (prompt ? "\n" : "") + part.text;
+					} else if (part.type === "image_url" && part.image_url) {
+						const imageUrl =
+							typeof part.image_url === "string"
+								? part.image_url
+								: part.image_url.url;
+						if (imageUrl) {
+							imageInputs.push(imageUrl);
+						}
+					}
+				}
+			}
+		}
+
+		if (usedModel === "google/nano-banana") {
+			const avalancheImageRequest = {
+				model: usedModel,
+				input: {
+					prompt,
+					output_format: "png",
+					image_size:
+						image_config?.aspect_ratio ??
+						(image_config?.image_size
+							? mapImageSizeToAspectRatio(image_config.image_size)
+							: undefined) ??
+						"1:1",
+				},
+			} satisfies AvalancheImageRequestBody;
+
+			return avalancheImageRequest;
+		}
+
+		const avalancheImageRequest = {
+			model: usedModel,
+			input: {
+				prompt,
+				aspect_ratio:
+					image_config?.aspect_ratio ??
+					(image_config?.image_size
+						? mapImageSizeToAspectRatio(image_config.image_size)
+						: undefined) ??
+					"auto",
+				resolution: mapAvalancheImageResolution(image_config?.image_size),
+				output_format: "jpg",
+				google_search: false,
+				image_input: imageInputs,
+			},
+		} satisfies AvalancheImageRequestBody;
+
+		return avalancheImageRequest;
 	}
 
 	// Check if the model supports system role

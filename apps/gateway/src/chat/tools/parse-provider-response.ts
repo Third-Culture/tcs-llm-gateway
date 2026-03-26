@@ -478,10 +478,15 @@ export function parseProviderResponse(
 			}
 			break;
 		}
+		case "avalanche":
 		default: // OpenAI format
 			// Check if this is an xAI Grok Imagine image generation response
 			// Format: { data: [{ url: "..." }] }
-			if (usedProvider === "xai" && json.data && Array.isArray(json.data)) {
+			if (
+				(usedProvider === "xai" || usedProvider === "avalanche") &&
+				json.data &&
+				Array.isArray(json.data)
+			) {
 				const imageData = json.data;
 				if (imageData.length > 0) {
 					images = imageData.map(
@@ -494,7 +499,7 @@ export function parseProviderResponse(
 					);
 					content = imageLabel;
 					finishReason = "stop";
-					// Grok Imagine image generation doesn't return token usage
+					// Avalanche and Grok image generation don't return token usage
 					promptTokens = 0;
 					completionTokens = 0;
 					totalTokens = 0;

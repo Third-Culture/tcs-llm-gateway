@@ -75,6 +75,187 @@ describe("api", () => {
 		expect(logs[0].finishReason).toBe("stop");
 	});
 
+	test("/v1/chat/completions polls avalanche nano banana 2", async () => {
+		await db.insert(tables.apiKey).values({
+			id: "token-id",
+			token: "real-token",
+			projectId: "project-id",
+			description: "Test API Key",
+			createdBy: "user-id",
+		});
+
+		await db.insert(tables.providerKey).values({
+			id: "provider-key-avalanche-image",
+			token: "sk-avalanche-key",
+			provider: "avalanche",
+			organizationId: "org-id",
+			baseUrl: mockServerUrl,
+		});
+
+		const requestId = "avalanche-image-request-id";
+		const res = await app.request("/v1/chat/completions", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: "Bearer real-token",
+				"x-request-id": requestId,
+			},
+			body: JSON.stringify({
+				model: "avalanche/gemini-3-pro-image-preview",
+				messages: [
+					{
+						role: "user",
+						content: "Generate an image of a white crane in snowfall",
+					},
+				],
+			}),
+		});
+
+		expect(res.status).toBe(200);
+		const json = await res.json();
+		expect(json.metadata.used_provider).toBe("avalanche");
+		expect(json.metadata.underlying_used_model).toBe("nano-banana-2");
+		expect(json.choices[0].message.images).toHaveLength(1);
+		expect(json.choices[0].message.images[0].image_url.url).toMatch(
+			/^data:image\/png;base64,/,
+		);
+
+		const logs = await waitForLogs(1);
+		const log = logs.find((entry) => entry.requestId === requestId);
+		expect(log?.usedProvider).toBe("avalanche");
+		expect(log?.usedModelMapping).toBe("nano-banana-2");
+		expect(log?.finishReason).toBe("stop");
+	});
+
+	test("/v1/chat/completions streams fake SSE for avalanche image models", async () => {
+		await db.insert(tables.apiKey).values({
+			id: "token-id",
+			token: "real-token",
+			projectId: "project-id",
+			description: "Test API Key",
+			createdBy: "user-id",
+		});
+
+		await db.insert(tables.providerKey).values({
+			id: "provider-key-avalanche-image",
+			token: "sk-avalanche-key",
+			provider: "avalanche",
+			organizationId: "org-id",
+			baseUrl: mockServerUrl,
+		});
+
+		const res = await app.request("/v1/chat/completions", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: "Bearer real-token",
+			},
+			body: JSON.stringify({
+				model: "avalanche/gemini-3-pro-image-preview",
+				stream: true,
+				messages: [
+					{
+						role: "user",
+						content: "Generate an image of a glowing canyon at dusk",
+					},
+				],
+			}),
+		});
+
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toContain("text/event-stream");
+
+		const streamResult = await readAll(res.body);
+		expect(streamResult.hasValidSSE).toBe(true);
+		expect(streamResult.hasOpenAIFormat).toBe(true);
+
+		const imageChunk = streamResult.chunks.find(
+			(chunk) => chunk.choices?.[0]?.delta?.images,
+		);
+		expect(
+			imageChunk?.choices?.[0]?.delta?.images?.[0]?.image_url?.url,
+		).toMatch(/^data:image\/png;base64,/);
+	});
+
+	test("/v1/chat/completions surfaces avalanche poll failures", async () => {
+		await db.insert(tables.apiKey).values({
+			id: "token-id",
+			token: "real-token",
+			projectId: "project-id",
+			description: "Test API Key",
+			createdBy: "user-id",
+		});
+
+		await db.insert(tables.providerKey).values({
+			id: "provider-key-avalanche-image",
+			token: "sk-avalanche-key",
+			provider: "avalanche",
+			organizationId: "org-id",
+			baseUrl: mockServerUrl,
+		});
+
+		const res = await app.request("/v1/chat/completions", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: "Bearer real-token",
+			},
+			body: JSON.stringify({
+				model: "avalanche/gemini-3-pro-image-preview",
+				messages: [
+					{
+						role: "user",
+						content: "TRIGGER_POLL_FAIL generate an image of a paper lantern",
+					},
+				],
+			}),
+		});
+
+		expect(res.status).toBe(500);
+		const json = await res.json();
+		expect(json.error.type).toBe("upstream_error");
+		expect(json.error.message).toContain(
+			"Mock avalanche image generation failed",
+		);
+		expect(json.error.usedProvider).toBe("avalanche");
+		expect(json.error.usedModel).toBe("nano-banana-2");
+	});
+
+	test("/v1/images/generations supports avalanche nano banana", async () => {
+		await db.insert(tables.apiKey).values({
+			id: "token-id",
+			token: "real-token",
+			projectId: "project-id",
+			description: "Test API Key",
+			createdBy: "user-id",
+		});
+
+		await db.insert(tables.providerKey).values({
+			id: "provider-key-avalanche-image",
+			token: "sk-avalanche-key",
+			provider: "avalanche",
+			organizationId: "org-id",
+			baseUrl: mockServerUrl,
+		});
+
+		const res = await app.request("/v1/images/generations", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: "Bearer real-token",
+			},
+			body: JSON.stringify({
+				model: "avalanche/gemini-2.5-flash-image",
+				prompt: "A studio photo of a glass apple on black velvet",
+			}),
+		});
+
+		expect(res.status).toBe(200);
+		const json = await res.json();
+		expect(json.data).toHaveLength(1);
+		expect(json.data[0].b64_json).toMatch(/^[A-Za-z0-9+/=]+$/);
+	});
+
 	test("/v1/moderations e2e success", async () => {
 		await db.insert(tables.apiKey).values({
 			id: "token-id",

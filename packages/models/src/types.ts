@@ -292,12 +292,26 @@ export interface GoogleRequestBody {
 	};
 }
 
+export interface AvalancheImageRequestBody {
+	model: string;
+	input: {
+		prompt: string;
+		output_format?: string;
+		image_size?: string;
+		aspect_ratio?: string;
+		resolution?: string;
+		google_search?: boolean;
+		image_input?: string[];
+	};
+}
+
 // Generic request body type
 export type ProviderRequestBody =
 	| OpenAIRequestBody
 	| OpenAIResponsesRequestBody
 	| AnthropicRequestBody
-	| GoogleRequestBody;
+	| GoogleRequestBody
+	| AvalancheImageRequestBody;
 
 // Image processing result
 export interface ProcessedImage {

@@ -233,10 +233,13 @@ let videoCounter = 0;
 
 interface MockVideoJobState {
 	id: string;
-	object: "video";
+	object: "video" | "image";
 	model: string;
 	status: string;
 	progress: number;
+	pollCount?: number;
+	autoCompleteOnPoll?: boolean;
+	failOnPoll?: boolean;
 	firstFrame?: {
 		bytesBase64Encoded: string;
 		mimeType: string;
@@ -264,7 +267,7 @@ interface MockVideoJobState {
 	expires_at: number | null;
 	error: { code?: string; message: string } | null;
 	content?: Array<{
-		type: "video";
+		type: "video" | "image";
 		url: string;
 		mime_type: string;
 	}>;
@@ -446,6 +449,38 @@ export function setMockVideoStatus(
 
 export function getMockVideo(videoId: string): MockVideoJobState | undefined {
 	return videoJobs.get(videoId);
+}
+
+function advanceMockAvalancheImageJob(job: MockVideoJobState) {
+	if (job.object !== "image" || !job.autoCompleteOnPoll) {
+		return;
+	}
+
+	job.pollCount = (job.pollCount ?? 0) + 1;
+	if (job.status === "queued" && job.pollCount >= 1) {
+		job.status = "in_progress";
+		job.progress = 50;
+	}
+	if (job.pollCount >= 2) {
+		job.status = job.failOnPoll ? "failed" : "completed";
+		job.progress = job.failOnPoll ? 0 : 100;
+		job.completed_at = Math.floor(Date.now() / 1000);
+		job.error = job.failOnPoll
+			? {
+					code: "501",
+					message: "Mock avalanche image generation failed",
+				}
+			: null;
+		if (!job.failOnPoll && !job.content) {
+			job.content = [
+				{
+					type: "image",
+					url: `${currentMockServerUrl}/mock-assets/${job.id}`,
+					mime_type: "image/png",
+				},
+			];
+		}
+	}
 }
 
 export function setMockWebhookStatus(name: string, status: number) {
@@ -894,6 +929,7 @@ mockOpenAIServer.post("/api/v1/veo/generate", async (c) => {
 
 mockOpenAIServer.post("/api/v1/jobs/createTask", async (c) => {
 	const body = await c.req.json();
+	const model = typeof body.model === "string" ? body.model : "";
 	const prompt =
 		body.input &&
 		typeof body.input === "object" &&
@@ -916,6 +952,38 @@ mockOpenAIServer.post("/api/v1/jobs/createTask", async (c) => {
 		body.input && typeof body.input === "object"
 			? (body.input as Record<string, unknown>)
 			: {};
+	if (model === "google/nano-banana" || model === "nano-banana-2") {
+		const job: MockVideoJobState = {
+			id,
+			object: "image",
+			model,
+			status: "queued",
+			progress: 0,
+			pollCount: 0,
+			autoCompleteOnPoll: true,
+			failOnPoll: prompt.includes("TRIGGER_POLL_FAIL"),
+			imageUrls: Array.isArray(input.image_input)
+				? input.image_input.filter(
+						(value: unknown): value is string => typeof value === "string",
+					)
+				: undefined,
+			created_at: Math.floor(Date.now() / 1000),
+			completed_at: null,
+			expires_at: null,
+			error: null,
+		};
+
+		videoJobs.set(id, job);
+
+		return c.json({
+			code: 200,
+			msg: "success",
+			data: {
+				taskId: id,
+			},
+		});
+	}
+
 	const videoSize = getMockAvalancheSoraVideoSizeMetadata(
 		input.aspect_ratio,
 		input.size,
@@ -1372,6 +1440,8 @@ mockOpenAIServer.get("/api/v1/jobs/recordInfo", async (c) => {
 		});
 	}
 
+	advanceMockAvalancheImageJob(job);
+
 	const state =
 		job.status === "completed"
 			? "success"
@@ -1401,7 +1471,12 @@ mockOpenAIServer.get("/api/v1/jobs/recordInfo", async (c) => {
 						})
 					: "",
 			failCode: job.status === "failed" ? "501" : "",
-			failMsg: job.status === "failed" ? "Mock video generation failed" : "",
+			failMsg:
+				job.status === "failed"
+					? job.object === "image"
+						? "Mock avalanche image generation failed"
+						: "Mock video generation failed"
+					: "",
 			completeTime: job.completed_at ? job.completed_at * 1000 : null,
 			createTime: job.created_at * 1000,
 			updateTime: (job.completed_at ?? job.created_at) * 1000,
@@ -1487,6 +1562,21 @@ mockOpenAIServer.post("/api/v1/veo/get-4k-video", async (c) => {
 
 mockOpenAIServer.get("/mock-assets/:id", async (c) => {
 	const id = c.req.param("id");
+	const baseId = id.replace(/-(1080p|4k)$/, "");
+	const imageJob = videoJobs.get(baseId);
+	if (imageJob?.object === "image") {
+		return c.body(
+			Buffer.from(
+				"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aapwAAAAASUVORK5CYII=",
+				"base64",
+			),
+			200,
+			{
+				"Content-Type": "image/png",
+			},
+		);
+	}
+
 	return c.body(`mock-video-${id}`, 200, {
 		"Content-Type": "video/mp4",
 	});

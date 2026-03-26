@@ -85,6 +85,7 @@ import {
 	getContentFilterMode,
 	shouldApplyContentFilterToModel,
 } from "./tools/check-content-filter.js";
+import { completeAvalancheImageRequest } from "./tools/complete-avalanche-image-request.js";
 import { convertImagesToBase64 } from "./tools/convert-images-to-base64.js";
 import { countInputImages } from "./tools/count-input-images.js";
 import { createLogEntry } from "./tools/create-log-entry.js";
@@ -6262,6 +6263,17 @@ chat.openapi(completions, async (c) => {
 				body: JSON.stringify(requestBody),
 				signal: fetchSignal,
 			});
+			if (res.ok && usedProvider === "avalanche" && isImageGeneration) {
+				res = await completeAvalancheImageRequest({
+					createTaskUrl: url,
+					token: usedToken,
+					configIndex,
+					requestBody,
+					signal: fetchSignal,
+					maxImageSizeMB,
+					userPlan,
+				});
+			}
 		} catch (error) {
 			// Check for timeout error first (AbortSignal.timeout throws TimeoutError)
 			if (isTimeoutError(error)) {

@@ -142,6 +142,14 @@ export function getProviderEndpoint(
 					);
 				}
 				break;
+			case "avalanche":
+				url = getProviderEnvValue("avalanche", "baseUrl", configIndex);
+				if (!url) {
+					throw new Error(
+						"Avalanche provider requires LLM_AVALANCHE_BASE_URL environment variable",
+					);
+				}
+				break;
 			case "inference.net":
 				url = "https://api.inference.net";
 				break;
@@ -274,6 +282,11 @@ export function getProviderEndpoint(
 				? `${baseEndpoint}?${queryParams.join("&")}`
 				: baseEndpoint;
 		}
+		case "avalanche":
+			if (imageGenerations) {
+				return `${url}/api/v1/jobs/createTask`;
+			}
+			return `${url}/v1/chat/completions`;
 		case "google-vertex":
 		case "quartz":
 			return buildVertexCompatibleEndpoint(
