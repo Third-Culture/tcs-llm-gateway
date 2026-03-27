@@ -141,7 +141,7 @@ export async function resolveProviderContext(
 		usedModel,
 		providerMapping.region,
 	);
-	const baseModelName = modelInfo.id || upstreamModelName;
+	const baseModelName = modelInfo.id ?? upstreamModelName;
 	const usedModelMapping = usedModel;
 	const usedModelFormatted = formatUsedModelForDisplay(
 		usedProvider,

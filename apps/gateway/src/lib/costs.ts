@@ -4,7 +4,6 @@ import { encode, encodeChat } from "gpt-tokenizer";
 import { getEffectiveDiscount } from "@llmgateway/db";
 import { logger } from "@llmgateway/logger";
 import {
-	type ModelDefinition,
 	type ProviderModelMapping,
 	models,
 	type PricingTier,
@@ -106,17 +105,11 @@ export async function calculateCosts(
 	// Find the model info - try both base model name and provider model name
 	// Strip :region suffix if present (e.g., "deepseek-v3.2:cn-beijing" → "deepseek-v3.2")
 	const baseModel = model.includes(":") ? model.split(":")[0] : model;
-	let modelInfo = models.find(
-		(m) => m.id === model || m.id === baseModel,
-	) as ModelDefinition;
+	let modelInfo = models.find((m) => m.id === model || m.id === baseModel);
 
-	if (!modelInfo) {
-		modelInfo = models.find((m) =>
-			m.providers.some(
-				(p) => p.modelName === model || p.modelName === baseModel,
-			),
-		) as ModelDefinition;
-	}
+	modelInfo ??= models.find((m) =>
+		m.providers.some((p) => p.modelName === model || p.modelName === baseModel),
+	);
 
 	if (!modelInfo) {
 		return {

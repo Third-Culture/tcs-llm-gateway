@@ -520,7 +520,7 @@ export function ModelProviderCard({
 										>
 											<span className="text-muted-foreground">
 												{tier.upToTokens === Infinity
-													? `>${(tiers[index - 1]?.upToTokens || 0) / 1000}K tokens`
+													? `>${(tiers[index - 1]?.upToTokens ?? 0) / 1000}K tokens`
 													: `≤${tier.upToTokens / 1000}K tokens`}
 											</span>
 											{provider.discount ? (

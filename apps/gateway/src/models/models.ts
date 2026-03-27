@@ -262,14 +262,12 @@ modelsApi.openapi(listModels, async (c) => {
 				// Get supported parameters from model definitions with fallback to defaults
 				supported_parameters: getSupportedParametersFromModel(model),
 				// Add model-level capabilities
-				json_output:
-					model.providers.some(
-						(p) => (p as ProviderModelMapping).jsonOutput === true,
-					) || false,
-				structured_outputs:
-					model.providers.some(
-						(p) => (p as ProviderModelMapping).jsonOutputSchema === true,
-					) || false,
+				json_output: model.providers.some(
+					(p) => (p as ProviderModelMapping).jsonOutput === true,
+				),
+				structured_outputs: model.providers.some(
+					(p) => (p as ProviderModelMapping).jsonOutputSchema === true,
+				),
 				free: model.free ?? false,
 				// Calculate earliest deprecatedAt from all provider mappings
 				deprecated_at: model.providers

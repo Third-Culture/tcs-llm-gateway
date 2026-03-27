@@ -44,12 +44,19 @@ const providerKeySchema = z.object({
 
 // Schema for creating a new provider key
 const createProviderKeySchema = z.object({
-	provider: z
-		.string()
-		.refine((val) => providers.some((p) => p.id === val) || val === "custom", {
+	provider: z.string().refine(
+		(val) => {
+			if (val === "custom") {
+				return true;
+			}
+
+			return providers.some((p) => p.id === val);
+		},
+		{
 			message:
 				"Invalid provider. Must be one of the supported providers or 'custom'.",
-		}),
+		},
+	),
 	token: z.string().min(1, "API key is required"),
 	name: z
 		.string()
@@ -216,7 +223,7 @@ keysProvider.openapi(create, async (c) => {
 	}
 
 	if (validationResult.error) {
-		const errorMessage = validationResult.error || "Upstream server error";
+		const errorMessage = validationResult.error ?? "Upstream server error";
 		logger.warn("Provider key validation failed", {
 			provider,
 			model: validationResult.model ?? "unknown",
