@@ -11,6 +11,7 @@ import {
 	MoreVerticalIcon,
 	Loader2,
 	ImagePlus,
+	Film,
 } from "lucide-react";
 // import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -404,6 +405,16 @@ export function ChatSidebar({
 							Image Studio
 						</Link>
 					</Button>
+					<Button
+						variant="ghost"
+						className="w-full flex items-center gap-2"
+						asChild
+					>
+						<Link href="/video">
+							<Film className="h-4 w-4" />
+							Video Studio
+						</Link>
+					</Button>
 				</div>
 			</SidebarHeader>
 
@@ -479,6 +490,18 @@ export function ChatSidebar({
 						<LogOutIcon className="h-4 w-4" />
 					</Button>
 				</div>
+				<a
+					href="https://status.llmgateway.io/"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="flex items-center justify-center gap-2 px-4 pb-4 text-xs text-muted-foreground hover:text-foreground transition-colors"
+				>
+					<span className="relative flex h-2 w-2">
+						<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+						<span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+					</span>
+					All systems operational
+				</a>
 			</SidebarFooter>
 		</Sidebar>
 	);

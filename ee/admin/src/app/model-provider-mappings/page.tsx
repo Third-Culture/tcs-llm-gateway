@@ -27,6 +27,9 @@ type MappingSortBy =
 	| "modelId"
 	| "logsCount"
 	| "errorsCount"
+	| "clientErrorsCount"
+	| "gatewayErrorsCount"
+	| "upstreamErrorsCount"
 	| "avgTimeToFirstToken"
 	| "updatedAt";
 
@@ -126,6 +129,15 @@ function MappingRow({ mapping }: { mapping: ModelProviderMappingEntry }) {
 				</div>
 			</TableCell>
 			<TableCell>
+				{mapping.region ? (
+					<span className="text-xs text-muted-foreground">
+						{mapping.region}
+					</span>
+				) : (
+					<span className="text-xs text-muted-foreground">—</span>
+				)}
+			</TableCell>
+			<TableCell>
 				<Badge variant={mapping.status === "active" ? "secondary" : "outline"}>
 					{mapping.status}
 				</Badge>
@@ -135,6 +147,15 @@ function MappingRow({ mapping }: { mapping: ModelProviderMappingEntry }) {
 			</TableCell>
 			<TableCell className="tabular-nums">
 				{formatNumber(mapping.errorsCount)}
+			</TableCell>
+			<TableCell className="tabular-nums">
+				{formatNumber(mapping.clientErrorsCount)}
+			</TableCell>
+			<TableCell className="tabular-nums">
+				{formatNumber(mapping.gatewayErrorsCount)}
+			</TableCell>
+			<TableCell className="tabular-nums">
+				{formatNumber(mapping.upstreamErrorsCount)}
 			</TableCell>
 			<TableCell className="tabular-nums">{errorRate}%</TableCell>
 			<TableCell className="tabular-nums">
@@ -202,6 +223,8 @@ export default async function ModelProviderMappingsPage({
 				sortOrder,
 				limit: 500,
 				offset: 0,
+				from,
+				to,
 			},
 		},
 	});
@@ -224,15 +247,9 @@ export default async function ModelProviderMappingsPage({
 		);
 	}
 
-	// Compute aggregate stats from the mapping data using projectHourlyModelStats via from/to
-	// Since the mappings API doesn't yet return totalTokens/totalCost aggregates,
-	// we derive totals from the models endpoint with the same window
-	const { data: modelsData } = await $api.GET("/admin/models", {
-		params: { query: { limit: 1, offset: 0, from, to } },
-	});
-	const totalTokens = modelsData?.totalTokens ?? 0;
-	const totalCost = modelsData?.totalCost ?? 0;
-	const totalRequests = data.mappings.reduce((s, m) => s + m.logsCount, 0);
+	const totalTokens = data.totalTokens;
+	const totalCost = data.totalCost;
+	const totalRequests = data.totalRequests;
 
 	async function handleSearch(formData: FormData) {
 		"use server";
@@ -325,9 +342,13 @@ export default async function ModelProviderMappingsPage({
 						<TableRow>
 							{sh("Provider", "providerId")}
 							{sh("Model", "modelId")}
+							<TableHead>Region</TableHead>
 							<TableHead>Status</TableHead>
 							{sh("Requests", "logsCount")}
 							{sh("Errors", "errorsCount")}
+							{sh("Client", "clientErrorsCount")}
+							{sh("Gateway", "gatewayErrorsCount")}
+							{sh("Upstream", "upstreamErrorsCount")}
 							<TableHead>Error Rate</TableHead>
 							{sh("Avg TTFT", "avgTimeToFirstToken")}
 							<TableHead>Input Price</TableHead>
@@ -339,7 +360,7 @@ export default async function ModelProviderMappingsPage({
 						{data.mappings.length === 0 ? (
 							<TableRow>
 								<TableCell
-									colSpan={10}
+									colSpan={14}
 									className="h-24 text-center text-muted-foreground"
 								>
 									No mappings found

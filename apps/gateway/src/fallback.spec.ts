@@ -162,21 +162,31 @@ describe("fallback and error status code handling", () => {
 		modelId: string,
 		providerId: string,
 		routingUptime: number,
+		options?: {
+			region?: string;
+			routingLatency?: number;
+			routingThroughput?: number;
+			routingTotalRequests?: number;
+		},
 	) {
+		const conditions = [
+			eq(tables.modelProviderMapping.modelId, modelId),
+			eq(tables.modelProviderMapping.providerId, providerId),
+		];
+
+		if (options?.region) {
+			conditions.push(eq(tables.modelProviderMapping.region, options.region));
+		}
+
 		await db
 			.update(tables.modelProviderMapping)
 			.set({
 				routingUptime,
-				routingLatency: 100,
-				routingThroughput: 100,
-				routingTotalRequests: 100,
+				routingLatency: options?.routingLatency ?? 100,
+				routingThroughput: options?.routingThroughput ?? 100,
+				routingTotalRequests: options?.routingTotalRequests ?? 100,
 			})
-			.where(
-				and(
-					eq(tables.modelProviderMapping.modelId, modelId),
-					eq(tables.modelProviderMapping.providerId, providerId),
-				),
-			);
+			.where(and(...conditions));
 	}
 
 	async function insertIamRules(
@@ -775,9 +785,309 @@ describe("fallback and error status code handling", () => {
 				"low-uptime-fallback",
 			);
 		});
+
+		test("low-uptime fallback ignores synthetic root region mappings", async () => {
+			await db.insert(tables.providerKey).values([
+				{
+					id: "provider-key-zai",
+					token: "sk-zai-key",
+					provider: "zai",
+					organizationId: "org-id",
+					baseUrl: mockServerUrl,
+				},
+				{
+					id: "provider-key-alibaba",
+					token: "sk-alibaba-key",
+					provider: "alibaba",
+					organizationId: "org-id",
+					baseUrl: mockServerUrl,
+				},
+				{
+					id: "provider-key-novita",
+					token: "sk-novita-key",
+					provider: "novita",
+					organizationId: "org-id",
+					baseUrl: mockServerUrl,
+				},
+			]);
+
+			await db
+				.insert(tables.model)
+				.values({
+					id: "glm-4.6",
+					name: "GLM-4.6",
+					family: "glm",
+					releasedAt: new Date("2025-09-30"),
+				})
+				.onConflictDoNothing();
+
+			await db
+				.insert(tables.modelProviderMapping)
+				.values([
+					{
+						id: "glm-4-6-zai-root",
+						modelId: "glm-4.6",
+						providerId: "zai",
+						modelName: "glm-4.6",
+						streaming: true,
+					},
+					{
+						id: "glm-4-6-alibaba-root",
+						modelId: "glm-4.6",
+						providerId: "alibaba",
+						modelName: "glm-4.6",
+						streaming: true,
+					},
+					{
+						id: "glm-4-6-alibaba-cn-beijing",
+						modelId: "glm-4.6",
+						providerId: "alibaba",
+						modelName: "glm-4.6:cn-beijing",
+						region: "cn-beijing",
+						streaming: true,
+					},
+					{
+						id: "glm-4-6-novita-root",
+						modelId: "glm-4.6",
+						providerId: "novita",
+						modelName: "zai-org/glm-4.6",
+						streaming: true,
+					},
+				])
+				.onConflictDoNothing();
+
+			await setRoutingMetrics("glm-4.6", "zai", 55, {
+				routingLatency: 238,
+				routingThroughput: 65,
+			});
+			await setRoutingMetrics("glm-4.6", "alibaba", 100, {
+				routingLatency: 10,
+				routingThroughput: 1000,
+			});
+			await setRoutingMetrics("glm-4.6", "alibaba", 100, {
+				region: "cn-beijing",
+				routingLatency: 400,
+				routingThroughput: 80,
+			});
+			await setRoutingMetrics("glm-4.6", "novita", 100, {
+				routingLatency: 1200,
+				routingThroughput: 30,
+			});
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token",
+				},
+				body: JSON.stringify({
+					model: "zai/glm-4.6",
+					messages: [{ role: "user", content: "Hello!" }],
+				}),
+			});
+
+			expect(res.status).toBe(200);
+
+			const logs = await waitForLogs(1);
+			expect(logs).toHaveLength(1);
+			expect(logs[0].usedProvider).toBe("alibaba");
+			expect(logs[0].usedModel).toBe("alibaba/glm-4.6:cn-beijing");
+			expect(logs[0].routingMetadata?.selectedProvider).toBe("alibaba");
+			expect(logs[0].routingMetadata?.selectionReason).toBe(
+				"low-uptime-fallback",
+			);
+			expect(
+				logs[0].routingMetadata?.providerScores?.some(
+					(score) => score.providerId === "alibaba" && !score.region,
+				),
+			).toBe(false);
+			expect(
+				logs[0].routingMetadata?.providerScores?.some(
+					(score) =>
+						score.providerId === "alibaba" && score.region === "singapore",
+				),
+			).toBe(false);
+		});
 	});
 
 	describe("routing metadata in DB log entries", () => {
+		test("direct provider selection picks the best available region", async () => {
+			await setupKeys("alibaba");
+
+			await setRoutingMetrics("deepseek-v3.2", "alibaba", 100, {
+				region: "singapore",
+				routingLatency: 1200,
+				routingThroughput: 10,
+			});
+			await setRoutingMetrics("deepseek-v3.2", "alibaba", 100, {
+				region: "cn-beijing",
+				routingLatency: 900,
+				routingThroughput: 20,
+			});
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token",
+				},
+				body: JSON.stringify({
+					model: "alibaba/deepseek-v3.2",
+					messages: [{ role: "user", content: "Hello!" }],
+				}),
+			});
+
+			expect(res.status).toBe(200);
+
+			const logs = await waitForLogs(1);
+			const singaporeScore = logs[0].routingMetadata?.providerScores?.find(
+				(score) =>
+					score.providerId === "alibaba" && score.region === "singapore",
+			);
+			const beijingScore = logs[0].routingMetadata?.providerScores?.find(
+				(score) =>
+					score.providerId === "alibaba" && score.region === "cn-beijing",
+			);
+
+			expect(logs[0].usedModel).toBe("alibaba/deepseek-v3.2:cn-beijing");
+			expect(logs[0].routingMetadata?.selectionReason).toBe(
+				"direct-provider-specified",
+			);
+			expect(singaporeScore).toBeTruthy();
+			expect(beijingScore).toBeTruthy();
+			expect(beijingScore?.score ?? Number.MAX_VALUE).toBeLessThan(
+				singaporeScore?.score ?? 0,
+			);
+			expect(logs[0].routingMetadata?.routing).toEqual([
+				expect.objectContaining({
+					provider: "alibaba",
+					model: "deepseek-v3.2",
+					region: "cn-beijing",
+					status_code: 200,
+					succeeded: true,
+				}),
+			]);
+		});
+
+		test("direct provider selection only records the direct region", async () => {
+			await setupKeys("alibaba");
+			await db
+				.update(tables.providerKey)
+				.set({
+					options: {
+						alibaba_region: "singapore",
+					},
+				})
+				.where(eq(tables.providerKey.id, "provider-key-id"));
+
+			await setRoutingMetrics("deepseek-v3.2", "alibaba", 100, {
+				region: "singapore",
+				routingLatency: 866,
+				routingThroughput: 1,
+			});
+			await setRoutingMetrics("deepseek-v3.2", "alibaba", 100, {
+				region: "cn-beijing",
+				routingLatency: 1767,
+				routingThroughput: 0.5,
+			});
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token",
+				},
+				body: JSON.stringify({
+					model: "alibaba/deepseek-v3.2",
+					messages: [{ role: "user", content: "Hello!" }],
+				}),
+			});
+
+			expect(res.status).toBe(200);
+
+			const logs = await waitForLogs(1);
+			const singaporeScore = logs[0].routingMetadata?.providerScores?.find(
+				(score) =>
+					score.providerId === "alibaba" && score.region === "singapore",
+			);
+			const beijingScore = logs[0].routingMetadata?.providerScores?.find(
+				(score) =>
+					score.providerId === "alibaba" && score.region === "cn-beijing",
+			);
+			expect(logs[0].routingMetadata?.selectionReason).toBe(
+				"direct-provider-specified",
+			);
+			expect(singaporeScore).toBeTruthy();
+			expect(beijingScore).toBeFalsy();
+			expect(
+				logs[0].routingMetadata?.providerScores?.some(
+					(score) => score.providerId === "alibaba" && !score.region,
+				),
+			).toBe(false);
+			expect(logs[0].routingMetadata?.routing).toEqual([
+				expect.objectContaining({
+					provider: "alibaba",
+					model: "deepseek-v3.2",
+					region: "singapore",
+					status_code: 200,
+					succeeded: true,
+				}),
+			]);
+			expect(logs[0].routingMetadata?.providerScores).toEqual([
+				expect.objectContaining({
+					providerId: "alibaba",
+					region: "singapore",
+					score: 1,
+				}),
+			]);
+		});
+
+		test("provider-agnostic routing keeps regional mappings aggregated", async () => {
+			await setupKeys("alibaba");
+
+			await setRoutingMetrics("deepseek-v3.2", "alibaba", 99, {
+				routingLatency: 950,
+				routingThroughput: 15,
+			});
+			await setRoutingMetrics("deepseek-v3.2", "alibaba", 100, {
+				region: "singapore",
+				routingLatency: 1200,
+				routingThroughput: 10,
+			});
+			await setRoutingMetrics("deepseek-v3.2", "alibaba", 100, {
+				region: "cn-beijing",
+				routingLatency: 900,
+				routingThroughput: 20,
+			});
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token",
+				},
+				body: JSON.stringify({
+					model: "deepseek-v3.2",
+					messages: [{ role: "user", content: "Hello!" }],
+				}),
+			});
+
+			expect(res.status).toBe(200);
+
+			const logs = await waitForLogs(1);
+			expect(logs[0].routingMetadata?.providerScores).toEqual([
+				expect.objectContaining({
+					providerId: "alibaba",
+					score: expect.any(Number),
+				}),
+			]);
+			expect(
+				logs[0].routingMetadata?.providerScores?.some(
+					(score) => score.providerId === "alibaba" && Boolean(score.region),
+				),
+			).toBe(false);
+		});
+
 		test("successful request stores routing metadata with selection reason in DB log", async () => {
 			await setupKeys("openai");
 

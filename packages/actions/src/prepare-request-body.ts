@@ -277,6 +277,14 @@ function stripUnsupportedSchemaProperties(
 	return cleaned;
 }
 
+function mapGoogleImageSize(imageSize: string): string {
+	if (imageSize === "0.5K") {
+		return "512";
+	}
+
+	return imageSize;
+}
+
 /**
  * Recursively sanitizes tool input schemas for AWS Bedrock Converse.
  * Bedrock is stricter than Anthropic's direct API and rejects several JSON Schema
@@ -783,6 +791,29 @@ export async function prepareRequestBody(
 		requestBody.tool_choice = tool_choice;
 	}
 
+	const forcesToolUse =
+		tools &&
+		tools.filter(isFunctionTool).length > 0 &&
+		(tool_choice === "required" ||
+			(typeof tool_choice === "object" && tool_choice.type === "function"));
+
+	if (forcesToolUse && usedProvider === "alibaba") {
+		const providerMapping = modelDef?.providers.find(
+			(p) => p.modelName === usedModel && p.providerId === usedProvider,
+		);
+		const isExplicitThinkingModel =
+			providerMapping &&
+			"reasoning" in providerMapping &&
+			providerMapping.reasoning === true;
+		if (!isExplicitThinkingModel) {
+			requestBody.enable_thinking = false;
+		}
+	}
+
+	if (forcesToolUse && usedProvider === "moonshot") {
+		requestBody.thinking = { enabled: false };
+	}
+
 	// Override temperature to 1 for GPT-5 models (they only support temperature = 1)
 	if (usedModel.startsWith("gpt-5")) {
 		temperature = 1;
@@ -1194,15 +1225,12 @@ export async function prepareRequestBody(
 						type: "tool",
 						name: tool_choice.function.name,
 					};
+				} else if (tool_choice === "required") {
+					requestBody.tool_choice = { type: "any" };
 				} else if (tool_choice === "auto") {
 					// "auto" is the default behavior for Anthropic, omit it
-					// Anthropic doesn't need explicit "auto" tool_choice
 				} else if (tool_choice === "none") {
-					// "none" should work as-is
-					requestBody.tool_choice = tool_choice;
-				} else {
-					// Other string values (though not standard)
-					requestBody.tool_choice = tool_choice;
+					requestBody.tool_choice = { type: "none" };
 				}
 			}
 
@@ -1564,11 +1592,34 @@ export async function prepareRequestBody(
 		}
 		case "google-ai-studio":
 		case "google-vertex":
+		case "quartz":
 		case "obsidian": {
 			delete requestBody.model; // Not used in body
 			delete requestBody.stream; // Stream is handled via URL parameter
 			delete requestBody.messages; // Not used in body for Google providers
-			delete requestBody.tool_choice; // Google doesn't support tool_choice parameter
+			// Map OpenAI tool_choice to Google's toolConfig format
+			if (tool_choice && tools && tools.filter(isFunctionTool).length > 0) {
+				if (tool_choice === "required") {
+					requestBody.toolConfig = {
+						functionCallingConfig: { mode: "ANY" },
+					};
+				} else if (tool_choice === "none") {
+					requestBody.toolConfig = {
+						functionCallingConfig: { mode: "NONE" },
+					};
+				} else if (
+					typeof tool_choice === "object" &&
+					tool_choice.type === "function"
+				) {
+					requestBody.toolConfig = {
+						functionCallingConfig: {
+							mode: "ANY",
+							allowedFunctionNames: [tool_choice.function.name],
+						},
+					};
+				}
+			}
+			delete requestBody.tool_choice;
 
 			requestBody.contents = await transformGoogleMessages(
 				processedMessages,
@@ -1678,7 +1729,7 @@ export async function prepareRequestBody(
 				}
 				if (image_config.image_size !== undefined) {
 					requestBody.generationConfig.imageConfig.imageSize =
-						image_config.image_size;
+						mapGoogleImageSize(image_config.image_size);
 				}
 			}
 
