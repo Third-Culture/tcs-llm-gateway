@@ -113,7 +113,6 @@ import { healJsonResponse } from "./tools/heal-json-response.js";
 import { isModelTrulyFree } from "./tools/is-model-truly-free.js";
 import { messagesContainImages } from "./tools/messages-contain-images.js";
 import { mightBeCompleteJson } from "./tools/might-be-complete-json.js";
-import { normalizeRoutingMetadataForLogging } from "./tools/normalize-routing-metadata.js";
 import { normalizeStreamingError } from "./tools/normalize-streaming-error.js";
 import { checkOpenAIContentFilter } from "./tools/openai-content-filter.js";
 import { convertAwsEventStreamToSSE } from "./tools/parse-aws-eventstream.js";
@@ -1237,7 +1236,11 @@ chat.openapi(completions, async (c) => {
 			const cheapestResult = getCheapestFromAvailableProviders(
 				providerAgnosticSelectedProviders,
 				selectedModel,
-				{ metricsMap, isStreaming: stream },
+				{
+					metricsMap,
+					isStreaming: stream,
+					includeProviderScoreRegions: false,
+				},
 			);
 
 			if (cheapestResult) {
@@ -1709,7 +1712,11 @@ chat.openapi(completions, async (c) => {
 							const cheapestResult = getCheapestFromAvailableProviders(
 								betterUptimeProviders,
 								modelWithPricing,
-								{ metricsMap: allMetricsMap, isStreaming: stream },
+								{
+									metricsMap: allMetricsMap,
+									isStreaming: stream,
+									includeProviderScoreRegions: false,
+								},
 							);
 
 							// Get price info for the original requested provider to include in scores
@@ -1874,7 +1881,11 @@ chat.openapi(completions, async (c) => {
 				const cheapestResult = getCheapestFromAvailableProviders(
 					providerAgnosticCandidates,
 					modelWithPricing,
-					{ metricsMap, isStreaming: stream },
+					{
+						metricsMap,
+						isStreaming: stream,
+						includeProviderScoreRegions: false,
+					},
 				);
 
 				if (cheapestResult) {
@@ -2032,6 +2043,8 @@ chat.openapi(completions, async (c) => {
 						{
 							metricsMap,
 							isStreaming: stream,
+							includeProviderScoreRegions:
+								selectionReason === "direct-provider-specified",
 						},
 					);
 
@@ -2055,18 +2068,19 @@ chat.openapi(completions, async (c) => {
 					throughput: metrics?.throughput ?? 0,
 				};
 			});
+		const includeRoutingScoreRegions =
+			selectionReason === "direct-provider-specified";
 
 		routingMetadata = {
 			availableProviders: routingMetadataProviders.map((p) => p.providerId),
 			selectedProvider: usedProvider,
 			selectionReason,
-			providerScores: allProviderScores,
+			providerScores: allProviderScores.map((score) => ({
+				...score,
+				region: includeRoutingScoreRegions ? score.region : undefined,
+			})),
 			...(noFallback ? { noFallback: true } : {}),
 		};
-	}
-
-	if (routingMetadata) {
-		routingMetadata = normalizeRoutingMetadataForLogging(routingMetadata);
 	}
 
 	// Update baseModelName to match the final usedModel after routing

@@ -111,6 +111,7 @@ export interface ProviderSelectionOptions {
 	metricsMap?: Map<string, ProviderMetrics>;
 	isStreaming?: boolean;
 	videoPricing?: VideoPricingContext;
+	includeProviderScoreRegions?: boolean;
 }
 
 export interface VideoPricingContext {
@@ -212,6 +213,8 @@ export function getCheapestFromAvailableProviders<
 	const metricsMap = options?.metricsMap;
 	const isStreaming = options?.isStreaming ?? false;
 	const videoPricing = options?.videoPricing;
+	const includeProviderScoreRegions =
+		options?.includeProviderScoreRegions ?? true;
 	// Use higher price weight for image generation models
 	const isImageModel = modelWithPricing.output?.includes("image") ?? false;
 	const effectivePriceWeight = isImageModel ? IMAGE_PRICE_WEIGHT : PRICE_WEIGHT;
@@ -259,7 +262,12 @@ export function getCheapestFromAvailableProviders<
 
 	// If no metrics provided, fall back to price-only selection
 	if (!metricsMap || metricsMap.size === 0) {
-		return selectByPriceOnly(stableProviders, modelWithPricing, videoPricing);
+		return selectByPriceOnly(
+			stableProviders,
+			modelWithPricing,
+			videoPricing,
+			includeProviderScoreRegions,
+		);
 	}
 
 	// Calculate scores for each provider
@@ -390,7 +398,7 @@ export function getCheapestFromAvailableProviders<
 			const priority = providerDef?.priority ?? 1;
 			return {
 				providerId: p.provider.providerId,
-				region: p.provider.region,
+				region: includeProviderScoreRegions ? p.provider.region : undefined,
 				score: Number(p.score.toFixed(3)),
 				uptime: p.uptime,
 				latency: p.latency,
@@ -414,6 +422,7 @@ function selectByPriceOnly<T extends AvailableModelProvider>(
 	stableProviders: T[],
 	modelWithPricing: ModelWithPricing & { id: string; output?: string[] },
 	videoPricing?: VideoPricingContext,
+	includeProviderScoreRegions = true,
 ): ProviderSelectionResult<T> {
 	let cheapestProvider = stableProviders[0];
 	let lowestEffectivePrice = Number.MAX_VALUE;
@@ -458,7 +467,7 @@ function selectByPriceOnly<T extends AvailableModelProvider>(
 		selectionReason: "price-only-no-metrics",
 		providerScores: providerPrices.map((p) => ({
 			providerId: p.providerId,
-			region: p.region,
+			region: includeProviderScoreRegions ? p.region : undefined,
 			score: 0,
 			price: p.price,
 			priority: p.priority,

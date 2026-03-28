@@ -618,6 +618,50 @@ describe("getCheapestFromAvailableProviders", () => {
 		expect(avalancheScore?.price).toBeCloseTo(2.56);
 	});
 
+	it("should omit provider score regions when disabled", () => {
+		const regionalProviders: ProviderModelMapping[] = [
+			{
+				providerId: "alibaba",
+				modelName: "deepseek-v3.2",
+				region: "singapore",
+				inputPrice: 2,
+				outputPrice: 2,
+				streaming: true,
+			},
+			{
+				providerId: "alibaba",
+				modelName: "deepseek-v3.2",
+				region: "cn-beijing",
+				inputPrice: 1,
+				outputPrice: 1,
+				streaming: true,
+			},
+		];
+
+		const result = getCheapestFromAvailableProviders(
+			regionalProviders,
+			{
+				id: "deepseek-v3.2",
+				output: ["text"],
+				providers: regionalProviders,
+			},
+			{
+				includeProviderScoreRegions: false,
+			},
+		);
+
+		expect(result?.metadata.providerScores).toEqual([
+			expect.objectContaining({
+				providerId: "alibaba",
+				region: undefined,
+			}),
+			expect.objectContaining({
+				providerId: "alibaba",
+				region: undefined,
+			}),
+		]);
+	});
+
 	it("should disable random exploration for vitest processes", () => {
 		const videoModel = models.find(
 			(model) => model.id === "veo-3.1-generate-preview",

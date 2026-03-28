@@ -896,11 +896,12 @@ describe("fallback and error status code handling", () => {
 			expect(logs[0].routingMetadata?.selectionReason).toBe(
 				"low-uptime-fallback",
 			);
-			expect(
-				logs[0].routingMetadata?.providerScores?.some(
-					(score) => score.providerId === "alibaba" && !score.region,
-				),
-			).toBe(false);
+			const alibabaScores =
+				logs[0].routingMetadata?.providerScores?.filter(
+					(score) => score.providerId === "alibaba",
+				) ?? [];
+			expect(alibabaScores).toHaveLength(1);
+			expect(alibabaScores[0]?.region).toBeUndefined();
 			expect(
 				logs[0].routingMetadata?.providerScores?.some(
 					(score) =>
@@ -1017,11 +1018,12 @@ describe("fallback and error status code handling", () => {
 			expect(log).toBeTruthy();
 			expect(log?.usedProvider).toBe("alibaba");
 			expect(log?.usedModel).toBe("alibaba/glm-4.6:cn-beijing");
-			expect(
-				log?.routingMetadata?.providerScores?.some(
-					(score) => score.providerId === "alibaba" && !score.region,
-				),
-			).toBe(false);
+			const alibabaScores =
+				log?.routingMetadata?.providerScores?.filter(
+					(score) => score.providerId === "alibaba",
+				) ?? [];
+			expect(alibabaScores).toHaveLength(1);
+			expect(alibabaScores[0]?.region).toBeUndefined();
 			expect(
 				log?.routingMetadata?.providerScores?.some(
 					(score) =>
@@ -1305,13 +1307,18 @@ describe("fallback and error status code handling", () => {
 			expect(res.status).toBe(200);
 
 			const logs = await waitForLogs(1);
-			expect(logs[0].routingMetadata?.providerScores).toContainEqual(
+			const alibabaScores =
+				logs[0].routingMetadata?.providerScores?.filter(
+					(score) => score.providerId === "alibaba",
+				) ?? [];
+			expect(alibabaScores).toHaveLength(1);
+			expect(alibabaScores[0]).toEqual(
 				expect.objectContaining({
 					providerId: "alibaba",
-					region: "cn-beijing",
 					score: expect.any(Number),
 				}),
 			);
+			expect(alibabaScores[0]?.region).toBeUndefined();
 			expect(
 				logs[0].routingMetadata?.providerScores?.some(
 					(score) =>
