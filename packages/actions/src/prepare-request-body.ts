@@ -1878,6 +1878,63 @@ export async function prepareRequestBody(
 			}
 			break;
 		}
+		case "alibaba": {
+			if (stream) {
+				requestBody.stream_options = {
+					include_usage: true,
+				};
+			}
+			if (response_format) {
+				requestBody.response_format = response_format;
+			}
+
+			if (temperature !== undefined) {
+				requestBody.temperature = temperature;
+			}
+			if (max_tokens !== undefined) {
+				requestBody.max_tokens = max_tokens;
+			}
+			if (top_p !== undefined) {
+				requestBody.top_p = top_p;
+			}
+			if (frequency_penalty !== undefined) {
+				requestBody.frequency_penalty = frequency_penalty;
+			}
+			if (presence_penalty !== undefined) {
+				requestBody.presence_penalty = presence_penalty;
+			}
+
+			if (
+				usedModel === "deepseek-v3.2" &&
+				supportsReasoning &&
+				(reasoning_effort !== undefined || reasoning_max_tokens !== undefined)
+			) {
+				requestBody.enable_thinking = true;
+
+				if (reasoning_max_tokens !== undefined) {
+					requestBody.thinking_budget = Math.min(reasoning_max_tokens, 32768);
+				} else if (reasoning_effort !== undefined) {
+					const getThinkingBudget = (effort: string) => {
+						switch (effort) {
+							case "minimal":
+								return 512;
+							case "low":
+								return 2048;
+							case "high":
+								return 24576;
+							case "xhigh":
+								return 32768;
+							case "medium":
+							default:
+								return 8192;
+						}
+					};
+
+					requestBody.thinking_budget = getThinkingBudget(reasoning_effort);
+				}
+			}
+			break;
+		}
 		default: {
 			if (stream) {
 				requestBody.stream_options = {

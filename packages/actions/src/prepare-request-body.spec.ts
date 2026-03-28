@@ -662,6 +662,36 @@ describe("prepareRequestBody - Google AI Studio", () => {
 	});
 });
 
+describe("prepareRequestBody - Alibaba", () => {
+	test("should enable thinking for Alibaba DeepSeek v3.2 when reasoning is requested", async () => {
+		const requestBody = (await prepareRequestBody(
+			"alibaba",
+			"deepseek-v3.2",
+			[{ role: "user", content: "Solve this carefully" }],
+			false,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			"medium",
+			true,
+			false,
+		)) as unknown as {
+			enable_thinking?: boolean;
+			thinking_budget?: number;
+			reasoning_effort?: string;
+		};
+
+		expect(requestBody.enable_thinking).toBe(true);
+		expect(requestBody.thinking_budget).toBe(8192);
+		expect(requestBody).not.toHaveProperty("reasoning_effort");
+	});
+});
+
 describe("prepareRequestBody - AWS Bedrock", () => {
 	test("should sanitize complex tool schemas for Bedrock Converse", async () => {
 		const requestBody = (await prepareRequestBody(
