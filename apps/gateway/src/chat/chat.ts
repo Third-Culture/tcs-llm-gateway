@@ -113,6 +113,7 @@ import { healJsonResponse } from "./tools/heal-json-response.js";
 import { isModelTrulyFree } from "./tools/is-model-truly-free.js";
 import { messagesContainImages } from "./tools/messages-contain-images.js";
 import { mightBeCompleteJson } from "./tools/might-be-complete-json.js";
+import { normalizeRoutingMetadataForLogging } from "./tools/normalize-routing-metadata.js";
 import { normalizeStreamingError } from "./tools/normalize-streaming-error.js";
 import { checkOpenAIContentFilter } from "./tools/openai-content-filter.js";
 import { convertAwsEventStreamToSSE } from "./tools/parse-aws-eventstream.js";
@@ -2062,6 +2063,10 @@ chat.openapi(completions, async (c) => {
 			providerScores: allProviderScores,
 			...(noFallback ? { noFallback: true } : {}),
 		};
+	}
+
+	if (routingMetadata) {
+		routingMetadata = normalizeRoutingMetadataForLogging(routingMetadata);
 	}
 
 	// Update baseModelName to match the final usedModel after routing
