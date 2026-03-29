@@ -11,6 +11,7 @@ import { logger } from "@llmgateway/logger";
 
 import type { ServerTypes } from "@/vars.js";
 import type { LogInsertData } from "@llmgateway/db";
+import type { Context } from "hono";
 
 function getSynthesizedClientErrorLog(
 	baseLogEntry: ReturnType<typeof buildBaseLogEntry>,
@@ -79,6 +80,58 @@ function getSynthesizedClientErrorLog(
 	};
 }
 
+async function flushChatCompletionLogs(
+	c: Context<ServerTypes>,
+	state: ChatCompletionLogState,
+) {
+	try {
+		await state.streamCompletion;
+	} catch (error) {
+		logger.error(
+			"Error waiting for chat stream completion before flushing logs",
+			error instanceof Error ? error : new Error(String(error)),
+		);
+	}
+
+	const status =
+		state.caughtError instanceof HTTPException
+			? state.caughtError.status
+			: c.res.status;
+	const hasQueuedClientError = state.pendingLogs.some(
+		(log) =>
+			log.finishReason === "client_error" ||
+			log.unifiedFinishReason === "client_error",
+	);
+
+	if (status >= 400 && status < 500 && !hasQueuedClientError) {
+		const synthesizedLog = getSynthesizedClientErrorLog(
+			buildBaseLogEntry(c),
+			status,
+			state.caughtError,
+		);
+		if (synthesizedLog) {
+			state.pendingLogs.push(synthesizedLog);
+			state.clientErrorSynthesized = true;
+		}
+	}
+
+	for (const logData of state.pendingLogs) {
+		try {
+			await _insertLog({
+				...logData,
+				internalContentFilter: state.internalContentFilter
+					? true
+					: logData.internalContentFilter,
+			});
+		} catch (error) {
+			logger.error(
+				"Failed to flush queued chat completion log",
+				error instanceof Error ? error : new Error(String(error)),
+			);
+		}
+	}
+}
+
 export const chatCompletionLogMiddleware = createMiddleware<ServerTypes>(
 	async (c, next) => {
 		const state: ChatCompletionLogState = {
@@ -93,52 +146,12 @@ export const chatCompletionLogMiddleware = createMiddleware<ServerTypes>(
 			state.caughtError = error;
 			throw error;
 		} finally {
-			try {
-				await state.streamCompletion;
-			} catch (error) {
+			void flushChatCompletionLogs(c, state).catch((error) => {
 				logger.error(
-					"Error waiting for chat stream completion before flushing logs",
+					"Unexpected failure flushing queued chat completion logs",
 					error instanceof Error ? error : new Error(String(error)),
 				);
-			}
-
-			const status =
-				state.caughtError instanceof HTTPException
-					? state.caughtError.status
-					: c.res.status;
-			const hasQueuedClientError = state.pendingLogs.some(
-				(log) =>
-					log.finishReason === "client_error" ||
-					log.unifiedFinishReason === "client_error",
-			);
-
-			if (status >= 400 && status < 500 && !hasQueuedClientError) {
-				const synthesizedLog = getSynthesizedClientErrorLog(
-					buildBaseLogEntry(c),
-					status,
-					state.caughtError,
-				);
-				if (synthesizedLog) {
-					state.pendingLogs.push(synthesizedLog);
-					state.clientErrorSynthesized = true;
-				}
-			}
-
-			for (const logData of state.pendingLogs) {
-				try {
-					await _insertLog({
-						...logData,
-						internalContentFilter: state.internalContentFilter
-							? true
-							: logData.internalContentFilter,
-					});
-				} catch (error) {
-					logger.error(
-						"Failed to flush queued chat completion log",
-						error instanceof Error ? error : new Error(String(error)),
-					);
-				}
-			}
+			});
 		}
 	},
 );
