@@ -155,13 +155,15 @@ When creating a new package in `packages/`, include these config files. Copy the
 - Always use pnpm for package management
 - Use cookies for user-settings which are not saved in the database to ensure SSR works
 - Apply DRY principles for code reuse
+- Do not add explicit caching or memoization around `process.env` reads or parsed env-var values unless there is a measured hot-path need
 - Exception: in `packages/models`, explicit duplication of model/provider mappings is acceptable and preferred over helper-based expansion. This is the only place in the repo where duplicating model definitions is OK.
 - No unnecessary code comments
 - Do not use broad try/catch in API handlers unless to check for specific errors; instead, let errors propagate and be handled by the global error handler
 
 ### Testing and Quality Assurance
 
-- Run `pnpm test:unit` and `pnpm test:e2e` after adding features
+- Run `pnpm test:unit` after adding features
+- NEVER RUN THE FULL E2E suite, instead run specific tests related to your changes. Use `TEST_MODELS` to limit the models tested for faster feedback.
 - Run `pnpm build` to ensure production builds work
 - Run `pnpm format` after code changes
 

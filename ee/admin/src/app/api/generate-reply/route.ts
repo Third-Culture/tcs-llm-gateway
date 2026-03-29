@@ -109,7 +109,22 @@ async function getApiKey(): Promise<{
 }
 
 export async function POST(req: Request) {
-	const data: GenerateReplyRequest = await req.json();
+	let data: GenerateReplyRequest;
+	try {
+		data = await req.json();
+	} catch {
+		return Response.json(
+			{ error: "Invalid JSON in request body" },
+			{ status: 400 },
+		);
+	}
+
+	if (!data.name || !data.email || !data.type) {
+		return Response.json(
+			{ error: "Missing required fields: name, email, type" },
+			{ status: 400 },
+		);
+	}
 
 	const keyResult = await getApiKey();
 	if (!keyResult) {
@@ -132,7 +147,7 @@ export async function POST(req: Request) {
 
 	try {
 		const leadResearch = await generateText({
-			model: llmgateway("openai/gpt-4o-mini"),
+			model: llmgateway("auto"),
 			system: `You are a lead research agent. Given a person's name or email address, research them thoroughly using your built-in web search capabilities.
 
 Produce a structured summary with the following sections:
@@ -166,7 +181,7 @@ User details:
 - Plan: ${data.plan ?? "free"}`;
 
 		const emailDraft = await generateText({
-			model: llmgateway("openai/gpt-4o-mini"),
+			model: llmgateway("auto"),
 			output: Output.object({ schema: emailSchema }),
 			system: `You are an email drafting assistant for LLM Gateway, an AI/LLM API gateway service that provides access to 300+ AI models through a single OpenAI-compatible API.
 

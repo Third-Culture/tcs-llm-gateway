@@ -42,16 +42,10 @@ const textModelDefs = (models as unknown as ModelDefinition[]).filter((m) => {
 	if (m.id === "custom" || m.id === "auto") {
 		return false;
 	}
-	// Exclude models that ONLY produce image/video (no text token pricing)
-	const outputs = m.output ?? ["text"];
-	if (!outputs.includes("text")) {
+	if (m.output?.includes("image")) {
 		return false;
 	}
-	// Exclude models with no token pricing at all
-	const hasTokenPricing = m.providers.some(
-		(p) => (p.inputPrice ?? 0) > 0 || (p.outputPrice ?? 0) > 0,
-	);
-	if (!hasTokenPricing) {
+	if (m.output?.includes("video")) {
 		return false;
 	}
 	const hasActiveProvider = m.providers.some(
@@ -77,15 +71,14 @@ function getProviderName(providerId: string): string {
 function getOfficialProvider(
 	model: ModelDefinition,
 ): ProviderModelMapping | undefined {
-	return (
-		model.providers.find((p) => p.providerId === model.family) ??
-		model.providers[0]
-	);
+	return model.providers.find((p) => p.providerId === model.family);
 }
 
-/** Get the cheapest active provider for a model (considering discounts) */
+/** Get the cheapest active provider for a model weighted by actual token usage */
 function getCheapestProvider(
 	model: ModelDefinition,
+	inputTokens: number,
+	outputTokens: number,
 ): ProviderModelMapping | undefined {
 	const activeProviders = model.providers.filter(
 		(p) => !p.deactivatedAt || new Date(p.deactivatedAt) > now,
@@ -94,20 +87,35 @@ function getCheapestProvider(
 		return undefined;
 	}
 
-	return activeProviders.reduce((cheapest, current) => {
-		const cheapestInput =
-			(cheapest.inputPrice ?? 0) * (1 - (cheapest.discount ?? 0));
-		const cheapestOutput =
-			(cheapest.outputPrice ?? 0) * (1 - (cheapest.discount ?? 0));
-		const currentInput =
-			(current.inputPrice ?? 0) * (1 - (current.discount ?? 0));
-		const currentOutput =
-			(current.outputPrice ?? 0) * (1 - (current.discount ?? 0));
-		// Compare by combined input+output cost weight
-		const cheapestTotal = cheapestInput + cheapestOutput;
-		const currentTotal = currentInput + currentOutput;
-		return currentTotal < cheapestTotal ? current : cheapest;
-	});
+	function hasPricing(p: ProviderModelMapping): boolean {
+		if (inputTokens > 0 && p.inputPrice === undefined) {
+			return false;
+		}
+		if (outputTokens > 0 && p.outputPrice === undefined) {
+			return false;
+		}
+		return true;
+	}
+
+	function weightedCost(p: ProviderModelMapping): number {
+		if (!hasPricing(p)) {
+			return Infinity;
+		}
+		const inPrice = (p.inputPrice ?? 0) * (1 - (p.discount ?? 0));
+		const outPrice = (p.outputPrice ?? 0) * (1 - (p.discount ?? 0));
+		const inCost = inPrice * inputTokens;
+		const outCost = outPrice * outputTokens;
+		return inCost + outCost;
+	}
+
+	const pricedProviders = activeProviders.filter(hasPricing);
+	if (pricedProviders.length === 0) {
+		return activeProviders[0];
+	}
+
+	return pricedProviders.reduce((cheapest, current) =>
+		weightedCost(current) < weightedCost(cheapest) ? current : cheapest,
+	);
 }
 
 function parseModelFromSelector(selectorValue: string): {
@@ -248,7 +256,8 @@ export function TokenCostCalculatorClient() {
 			}
 
 			const officialMapping = getOfficialProvider(model) ?? null;
-			const cheapestMapping = getCheapestProvider(model) ?? null;
+			const cheapestMapping =
+				getCheapestProvider(model, row.inputTokens, row.outputTokens) ?? null;
 
 			const officialInputPrice = officialMapping?.inputPrice ?? 0;
 			const officialOutputPrice = officialMapping?.outputPrice ?? 0;
@@ -409,7 +418,9 @@ function ModelRowCard({
 	const parsed = parseModelFromSelector(row.selectorValue);
 	const model = parsed ? getModelById(parsed.modelId) : null;
 	const officialMapping = model ? getOfficialProvider(model) : null;
-	const cheapestMapping = model ? getCheapestProvider(model) : null;
+	const cheapestMapping = model
+		? (getCheapestProvider(model, row.inputTokens, row.outputTokens) ?? null)
+		: null;
 
 	const handlePreset = (preset: (typeof TOKEN_PRESETS)[number]) => {
 		onUpdate(row.id, {
@@ -424,7 +435,7 @@ function ModelRowCard({
 				<button
 					type="button"
 					onClick={() => onRemove(row.id)}
-					className="absolute top-3 right-3 p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+					className="absolute top-3 right-3 p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 focus-visible:opacity-100 focus-visible:text-red-500 focus-visible:bg-red-500/10 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
 					aria-label="Remove model"
 				>
 					<X className="h-4 w-4" />
@@ -443,7 +454,10 @@ function ModelRowCard({
 			<div className="grid gap-4 sm:grid-cols-[1fr_1fr_1fr] items-end">
 				{/* Model selector */}
 				<div>
-					<label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+					<label
+						htmlFor={`model-${row.id}`}
+						className="text-xs font-medium text-muted-foreground mb-1.5 block"
+					>
 						Model
 					</label>
 					<ModelSelector
@@ -453,15 +467,20 @@ function ModelRowCard({
 						onValueChange={(val) => onUpdate(row.id, { selectorValue: val })}
 						placeholder="Select model..."
 						rootOnly
+						id={`model-${row.id}`}
 					/>
 				</div>
 
 				{/* Input tokens */}
 				<div>
-					<label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+					<label
+						htmlFor={`inputTokens-${row.id}`}
+						className="text-xs font-medium text-muted-foreground mb-1.5 block"
+					>
 						Input tokens
 					</label>
 					<Input
+						id={`inputTokens-${row.id}`}
 						type="number"
 						min={0}
 						step={1000}
@@ -477,10 +496,14 @@ function ModelRowCard({
 
 				{/* Output tokens */}
 				<div>
-					<label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+					<label
+						htmlFor={`outputTokens-${row.id}`}
+						className="text-xs font-medium text-muted-foreground mb-1.5 block"
+					>
 						Output tokens
 					</label>
 					<Input
+						id={`outputTokens-${row.id}`}
 						type="number"
 						min={0}
 						step={1000}
@@ -626,7 +649,10 @@ function ResultsPanel({
 		savingsPercent,
 	]);
 
-	const pageUrl = "https://llmgateway.io/token-cost-calculator";
+	const pageUrl =
+		typeof window !== "undefined"
+			? `${window.location.origin}/token-cost-calculator`
+			: "https://llmgateway.io/token-cost-calculator";
 
 	const handleCopy = async () => {
 		await navigator.clipboard.writeText(`${shareText}\n${pageUrl}`);
@@ -826,11 +852,7 @@ function ResultsPanel({
 						{savingsPercent}% less than official provider pricing
 					</p>
 					<p className="text-sm text-muted-foreground mt-4">
-						That&apos;s{" "}
-						<span className="font-semibold text-green-600 dark:text-green-400">
-							{formatUsd(savings * 12)}
-						</span>{" "}
-						saved annually at this volume
+						Based on the token volumes entered above
 					</p>
 				</Card>
 			)}
