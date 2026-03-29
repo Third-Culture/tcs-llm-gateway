@@ -10,7 +10,6 @@ import {
 	getProviderHeaders,
 	prepareRequestBody,
 } from "@llmgateway/actions";
-import { logger } from "@llmgateway/logger";
 import {
 	type BaseMessage,
 	getRegionSpecificEnvValue,
@@ -277,16 +276,6 @@ export async function resolveProviderContext(
 		usedRegion,
 	);
 
-	logger.info("[region-debug] Provider context resolved", {
-		provider: usedProvider,
-		model: usedModel,
-		region: usedRegion ?? "none",
-		endpoint: url ?? "unresolved",
-		tokenSource: providerKey ? "db-provider-key" : "env-var",
-		tokenEnvVar: envVarName,
-		projectMode: project.mode,
-	});
-
 	if (!url) {
 		throw new HTTPException(400, {
 			message: `No base URL set for provider: ${usedProvider}`,
@@ -342,8 +331,9 @@ export async function resolveProviderContext(
 		const effectiveMaxOutput = providerMappingForSelected.maxOutput;
 		if (effectiveMaxOutput !== undefined) {
 			if (max_tokens > effectiveMaxOutput) {
-				// Silently cap to max output instead of throwing on retry
-				max_tokens = effectiveMaxOutput;
+				throw new HTTPException(400, {
+					message: `The requested max_tokens (${max_tokens}) exceeds the maximum output tokens allowed for model ${usedModel} (${effectiveMaxOutput})`,
+				});
 			}
 		}
 	}
@@ -391,7 +381,9 @@ export async function resolveProviderContext(
 			providerMappingForSelected.maxOutput !== undefined
 		) {
 			if (requestBody.max_tokens > providerMappingForSelected.maxOutput) {
-				requestBody.max_tokens = providerMappingForSelected.maxOutput;
+				throw new HTTPException(400, {
+					message: `The effective max_tokens (${requestBody.max_tokens}) exceeds the maximum output tokens allowed for model ${usedModel} (${providerMappingForSelected.maxOutput})`,
+				});
 			}
 		}
 	}
