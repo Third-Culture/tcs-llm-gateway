@@ -1457,9 +1457,7 @@ chat.openapi(completions, async (c) => {
 
 			// Attempt to re-route to alternative providers (same pattern as low-uptime fallback)
 			const providerIds = modelInfo.providers
-				.filter(
-					(p) => !(p.providerId === usedProvider && p.region === usedRegion),
-				)
+				.filter((p) => p.providerId !== usedProvider)
 				.map((p) => p.providerId);
 
 			if (providerIds.length > 0) {
@@ -1476,39 +1474,18 @@ chat.openapi(completions, async (c) => {
 								.filter((p) => hasProviderEnvironmentToken(p.id as Provider))
 								.map((p) => p.id);
 
-				const availableModelProviders = preferConcreteRegionalMappings(
-					iamFilteredModelProviders,
-				).filter((provider) => {
-					if (!availableProviders.includes(provider.providerId)) {
-						return false;
-					}
-					if (
-						provider.providerId === usedProvider &&
-						provider.region === usedRegion
-					) {
-						return false;
-					}
-					if (webSearchTool && provider.webSearch !== true) {
-						return false;
-					}
-					if (
-						response_format?.type === "json_object" ||
-						response_format?.type === "json_schema"
-					) {
-						if (provider.jsonOutput !== true) {
-							return false;
-						}
-					}
-					if (response_format?.type === "json_schema") {
-						if (provider.jsonOutputSchema !== true) {
-							return false;
-						}
-					}
-					if (hasImages && provider.vision !== true) {
-						return false;
-					}
-					return true;
-				});
+				const availableModelProviders = filterEligibleModelProviders(
+					preferProviderRootMappings(expandedIamFilteredModelProviders),
+					{
+						allProviderVariants: modelInfo.providers,
+						availableProviders,
+						webSearchTool,
+						responseFormatType: response_format?.type,
+						hasImages,
+						maxTokens: max_tokens,
+						reasoningEffort: reasoning_effort,
+					},
+				).filter((provider) => provider.providerId !== usedProvider);
 
 				// Also filter out rate-limited alternatives
 				const rateLimitedAlternatives = await filterRateLimitedProviders(
@@ -1554,6 +1531,7 @@ chat.openapi(completions, async (c) => {
 							{
 								metricsMap: allMetricsMap,
 								isStreaming: stream,
+								includeProviderScoreRegions: false,
 							},
 						);
 
