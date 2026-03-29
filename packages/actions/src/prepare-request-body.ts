@@ -1722,12 +1722,13 @@ export async function prepareRequestBody(
 			) {
 				// Set responseModalities to enable image output
 				requestBody.generationConfig.responseModalities = ["TEXT", "IMAGE"];
-				requestBody.generationConfig.imageConfig = {};
 				if (image_config.aspect_ratio !== undefined) {
+					requestBody.generationConfig.imageConfig ??= {};
 					requestBody.generationConfig.imageConfig.aspectRatio =
 						image_config.aspect_ratio;
 				}
 				if (image_config.image_size !== undefined) {
+					requestBody.generationConfig.imageConfig ??= {};
 					requestBody.generationConfig.imageConfig.imageSize =
 						mapGoogleImageSize(image_config.image_size);
 				}

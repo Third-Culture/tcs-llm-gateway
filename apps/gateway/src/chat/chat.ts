@@ -143,6 +143,11 @@ import { validateModelCapabilities } from "./tools/validate-model-capabilities.j
 import type { OriginalRequestParams } from "./tools/resolve-provider-context.js";
 import type { ServerTypes } from "@/vars.js";
 
+const googleSingleImageModels = new Set([
+	"gemini-3-pro-image-preview",
+	"gemini-3.1-flash-image-preview",
+]);
+
 /**
  * Filter expanded region entries to only those with available API keys.
  * - Non-regional mappings (no region) pass through unchanged.
@@ -669,11 +674,9 @@ chat.openapi(completions, async (c) => {
 	const requestedRegion = parseResult.requestedRegion;
 
 	// Count input images from messages for cost calculation
-	const inputImageCount =
-		requestedModel === "gemini-3-pro-image-preview" ||
-		requestedModel === "gemini-3.1-flash-image-preview"
-			? countInputImages(messages)
-			: 0;
+	const inputImageCount = googleSingleImageModels.has(requestedModel)
+		? countInputImages(messages)
+		: 0;
 
 	// Resolve model info and filter deactivated providers
 	const modelInfoResult = resolveModelInfo(
@@ -730,6 +733,15 @@ chat.openapi(completions, async (c) => {
 	) {
 		throw new HTTPException(400, {
 			message: `Model ${requestedModel} requires at least one image input. Please include an image in your request.`,
+		});
+	}
+
+	if (
+		googleSingleImageModels.has(requestedModel) &&
+		(image_config?.n ?? 1) > 1
+	) {
+		throw new HTTPException(400, {
+			message: `Model ${requestedModel} does not support image_config.n > 1. Use n=1.`,
 		});
 	}
 

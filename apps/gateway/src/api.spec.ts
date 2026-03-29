@@ -1323,6 +1323,37 @@ describe("api", () => {
 		expect(res.status).toBe(400);
 	});
 
+	for (const model of [
+		"gemini-3-pro-image-preview",
+		"gemini-3.1-flash-image-preview",
+	]) {
+		test(`/v1/chat/completions rejects image_config.n > 1 for ${model}`, async () => {
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer fake",
+				},
+				body: JSON.stringify({
+					model,
+					messages: [
+						{
+							role: "user",
+							content: "Generate a simple image of a red circle.",
+						},
+					],
+					image_config: {
+						n: 2,
+					},
+				}),
+			});
+
+			expect(res.status).toBe(400);
+			const json = await res.json();
+			expect(json.message).toContain("image_config.n > 1");
+		});
+	}
+
 	// test for missing Content-Type header
 	test("/v1/chat/completions missing Content-Type header", async () => {
 		const res = await app.request("/v1/chat/completions", {
