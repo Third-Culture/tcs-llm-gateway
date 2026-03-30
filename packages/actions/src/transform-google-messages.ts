@@ -31,6 +31,19 @@ interface GoogleMessageExtended {
 	parts: GooglePart[];
 }
 
+function appendOrPushMessage(
+	result: GoogleMessageExtended[],
+	message: GoogleMessageExtended,
+) {
+	const lastMsg = result[result.length - 1];
+	if (lastMsg && lastMsg.role === message.role) {
+		lastMsg.parts.push(...message.parts);
+		return;
+	}
+
+	result.push(message);
+}
+
 /**
  * Transforms OpenAI format messages to Google format, handling:
  * - Text content
@@ -52,8 +65,6 @@ export async function transformGoogleMessages(
 	for (const m of messages) {
 		// Handle tool role messages - these become user messages with functionResponse
 		if (m.role === "tool") {
-			// Check if there's already a user message for function responses we can append to
-			const lastMsg = result[result.length - 1];
 			const functionResponsePart: GooglePart = {
 				functionResponse: {
 					name: m.name ?? "unknown_function",
@@ -63,16 +74,10 @@ export async function transformGoogleMessages(
 				},
 			};
 
-			if (lastMsg && lastMsg.role === "user") {
-				// Append to existing user message
-				lastMsg.parts.push(functionResponsePart);
-			} else {
-				// Create new user message
-				result.push({
-					role: "user",
-					parts: [functionResponsePart],
-				});
-			}
+			appendOrPushMessage(result, {
+				role: "user",
+				parts: [functionResponsePart],
+			});
 			continue;
 		}
 
@@ -131,7 +136,7 @@ export async function transformGoogleMessages(
 				}
 			}
 
-			result.push({
+			appendOrPushMessage(result, {
 				role: "model",
 				parts,
 			});
@@ -184,7 +189,7 @@ export async function transformGoogleMessages(
 			parts.push({ text: m.content });
 		}
 
-		result.push({ role, parts });
+		appendOrPushMessage(result, { role, parts });
 	}
 
 	return result;

@@ -130,6 +130,12 @@ export interface ProviderModelMapping {
 	 */
 	minCacheableTokens?: number;
 	/**
+	 * Whether this provider/model should be included in the prompt caching e2e.
+	 * Use false when pricing advertises cached input but the live API path does not
+	 * currently report cache-hit usage details.
+	 */
+	supportsPromptCachingE2E?: boolean;
+	/**
 	 * Price per image input in USD
 	 */
 	imageInputPrice?: number;

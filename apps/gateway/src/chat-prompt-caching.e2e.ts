@@ -42,6 +42,10 @@ const promptCachingModels = filteredModels
 				continue;
 			}
 
+			if (provider.supportsPromptCachingE2E === false) {
+				continue;
+			}
+
 			// Skip deactivated provider mappings
 			if (provider.deactivatedAt && new Date() > provider.deactivatedAt) {
 				continue;
