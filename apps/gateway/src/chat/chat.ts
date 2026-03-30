@@ -5531,12 +5531,8 @@ chat.openapi(completions, async (c) => {
 											}
 											break;
 										default: // OpenAI format
-											if (
-												transformedData?.choices &&
-												transformedData.choices[0]?.finish_reason
-											) {
-												finishReason = transformedData.choices[0].finish_reason;
-												sawProviderTerminalEvent = true;
+											if (data.choices && data.choices[0]?.finish_reason) {
+												finishReason = data.choices[0].finish_reason;
 											}
 											break;
 									}
