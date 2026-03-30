@@ -132,9 +132,21 @@ const NOTIFIABLE_PROVIDER_ERROR_REASONS = new Set([
 ]);
 
 function shouldNotifyProviderError(logRow: ProcessedLogRow): boolean {
+	if (logRow.hasError !== true) {
+		return false;
+	}
+
+	if (logRow.unified_finish_reason === "client_error") {
+		return false;
+	}
+
+	const statusCode = logRow.error_details?.statusCode;
+	if (statusCode !== undefined) {
+		return statusCode >= 500;
+	}
+
 	return (
-		logRow.hasError === true &&
-		logRow.unified_finish_reason !== null &&
+		logRow.unified_finish_reason === null ||
 		NOTIFIABLE_PROVIDER_ERROR_REASONS.has(logRow.unified_finish_reason)
 	);
 }
@@ -681,9 +693,7 @@ export async function batchProcessLogs(): Promise<void> {
 					unifiedFinishReason: row.unified_finish_reason,
 				});
 
-				const unifiedFinishReason = row.unified_finish_reason;
-
-				if (shouldNotifyProviderError(row) && unifiedFinishReason) {
+				if (shouldNotifyProviderError(row)) {
 					providerErrorLogs.push({
 						duration: row.duration,
 						errorDetails: row.error_details,
@@ -694,7 +704,7 @@ export async function batchProcessLogs(): Promise<void> {
 						requestedModel: row.requested_model,
 						requestedProvider: row.requested_provider,
 						traceId: row.trace_id,
-						unifiedFinishReason,
+						unifiedFinishReason: row.unified_finish_reason,
 						usedModel: row.used_model,
 						usedModelMapping: row.used_model_mapping,
 						usedProvider: row.used_provider,
