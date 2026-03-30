@@ -32,6 +32,10 @@ import {
 	refreshProjectHourlyStats,
 } from "./services/project-stats-aggregator.js";
 import {
+	notifyProviderError,
+	type ProviderErrorNotificationLog,
+} from "./services/provider-error-discord.js";
+import {
 	backfillHistoryIfNeeded,
 	calculateAggregatedStatistics,
 	calculateCurrentMinuteHistory,
@@ -119,6 +123,21 @@ const schema = z.object({
 	trace_id: z.string().nullable(),
 	unified_finish_reason: z.string().nullable(),
 });
+
+type ProcessedLogRow = z.infer<typeof schema>;
+
+const NOTIFIABLE_PROVIDER_ERROR_REASONS = new Set([
+	"gateway_error",
+	"upstream_error",
+]);
+
+function shouldNotifyProviderError(logRow: ProcessedLogRow): boolean {
+	return (
+		logRow.hasError === true &&
+		logRow.unified_finish_reason !== null &&
+		NOTIFIABLE_PROVIDER_ERROR_REASONS.has(logRow.unified_finish_reason)
+	);
+}
 
 export async function acquireLock(key: string): Promise<boolean> {
 	// eslint-disable-next-line no-mixed-operators
@@ -564,6 +583,8 @@ export async function batchProcessLogs(): Promise<void> {
 		return;
 	}
 
+	const providerErrorLogs: ProviderErrorNotificationLog[] = [];
+
 	try {
 		await db.transaction(async (tx) => {
 			// Get unprocessed logs with row-level locking to prevent concurrent processing
@@ -659,6 +680,26 @@ export async function batchProcessLogs(): Promise<void> {
 					traceId: row.trace_id,
 					unifiedFinishReason: row.unified_finish_reason,
 				});
+
+				const unifiedFinishReason = row.unified_finish_reason;
+
+				if (shouldNotifyProviderError(row) && unifiedFinishReason) {
+					providerErrorLogs.push({
+						duration: row.duration,
+						errorDetails: row.error_details,
+						logId: row.id,
+						organizationId: row.organization_id,
+						projectId: row.project_id,
+						requestId: row.request_id,
+						requestedModel: row.requested_model,
+						requestedProvider: row.requested_provider,
+						traceId: row.trace_id,
+						unifiedFinishReason,
+						usedModel: row.used_model,
+						usedModelMapping: row.used_model_mapping,
+						usedProvider: row.used_provider,
+					});
+				}
 
 				if (row.cost && row.cost > 0 && !row.cached) {
 					// Always update API key usage for non-cached logs with cost
@@ -825,6 +866,14 @@ export async function batchProcessLogs(): Promise<void> {
 
 			logger.debug(`Marked ${logIds.length} logs as processed`);
 		});
+
+		if (providerErrorLogs.length > 0) {
+			await Promise.all(
+				providerErrorLogs.map(async (providerErrorLog) => {
+					await notifyProviderError(providerErrorLog);
+				}),
+			);
+		}
 	} catch (error) {
 		logger.error(
 			"Error processing batch credit deductions",
