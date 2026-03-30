@@ -757,7 +757,7 @@ describe("api", () => {
 		const previousOpenAIKey = process.env.LLM_OPENAI_API_KEY;
 		const requestId = "chat-openai-content-filter-fail-open-request-id";
 		const originalFetch = globalThis.fetch;
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
 			.mockImplementation(async (input, init) => {
@@ -816,6 +816,7 @@ describe("api", () => {
 					apiKeyId: "token-id",
 					error: "moderation fetch failed",
 				}),
+				expect.any(Error),
 			);
 
 			const logs = await waitForLogs(1);
@@ -872,7 +873,7 @@ describe("api", () => {
 		const previousContentFilterModels = process.env.LLM_CONTENT_FILTER_MODELS;
 		const previousOpenAIKey = process.env.LLM_OPENAI_API_KEY;
 		const requestId = "chat-openai-content-filter-missing-key-request-id";
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
 
 		try {
 			process.env.LLM_CONTENT_FILTER_MODE = "enabled";
@@ -914,6 +915,7 @@ describe("api", () => {
 					apiKeyId: "token-id",
 					error: expect.stringContaining("openai"),
 				}),
+				expect.any(Error),
 			);
 
 			const logs = await waitForLogs(1);
