@@ -96,6 +96,10 @@ function formatDuration(ms: number) {
 	return `${(ms / 1000).toFixed(2)}s`;
 }
 
+function getRoutingEntryKey(provider: string, region?: string) {
+	return region ? `${provider}:${region}` : provider;
+}
+
 function copyToClipboard(text: string) {
 	void navigator.clipboard.writeText(text);
 }
@@ -142,12 +146,24 @@ export function LogCard({ log }: { log: ProjectLogEntry }) {
 		log.dataStorageCost !== undefined &&
 		Number(log.dataStorageCost) > 0;
 	const [isExpanded, setIsExpanded] = useState(false);
+	const selectedRoutingAttempt = routingMetadata?.routing
+		?.slice()
+		.reverse()
+		.find((attempt) => attempt.succeeded);
 	const selectedRoutingProvider =
-		routingMetadata?.selectedProvider ?? log.usedProvider;
+		selectedRoutingAttempt?.provider ??
+		routingMetadata?.selectedProvider ??
+		log.usedProvider;
+	const selectedRoutingKey = getRoutingEntryKey(
+		selectedRoutingAttempt?.provider ?? selectedRoutingProvider,
+		selectedRoutingAttempt?.region,
+	);
 	const sortedProviderScores = routingMetadata?.providerScores
 		? [...routingMetadata.providerScores].sort((a, b) => {
-				const aSelected = a.providerId === selectedRoutingProvider;
-				const bSelected = b.providerId === selectedRoutingProvider;
+				const aSelected =
+					getRoutingEntryKey(a.providerId, a.region) === selectedRoutingKey;
+				const bSelected =
+					getRoutingEntryKey(b.providerId, b.region) === selectedRoutingKey;
 				if (aSelected !== bSelected) {
 					return aSelected ? -1 : 1;
 				}
@@ -396,94 +412,97 @@ export function LogCard({ log }: { log: ProjectLogEntry }) {
 												</div>
 											)}
 										{sortedProviderScores.length > 0 && (
-												<div className="pt-1 border-t border-dashed">
-													<div className="flex justify-between gap-2 mb-1">
-														<div className="text-muted-foreground">Scores</div>
-														<div className="text-[11px] text-muted-foreground">
-															lower is better
-														</div>
-													</div>
-													<div className="space-y-1">
-														{sortedProviderScores.map((score) => (
-															<div
-																key={`${score.providerId}-${score.region ?? "default"}`}
-																className="flex justify-between items-center"
-															>
-																<span className="font-mono flex items-center gap-1.5">
-																	{score.providerId}
-																	{score.providerId === selectedRoutingProvider && (
-																		<Badge
-																			variant="outline"
-																			className="h-4 px-1 text-[10px]"
-																		>
-																			selected
-																		</Badge>
-																	)}
-																	{score.region && (
-																		<span className="text-muted-foreground">
-																			({score.region})
-																		</span>
-																	)}
-																	{score.failed && (
-																		<span className="inline-flex items-center gap-0.5 text-red-500">
-																			<AlertCircle className="h-3 w-3" />
-																			<span>
-																				{score.status_code}
-																				{score.error_type && (
-																					<span className="ml-0.5 text-red-400">
-																						{score.error_type}
-																					</span>
-																				)}
-																			</span>
-																		</span>
-																	)}
-																	{score.rate_limited && (
-																		<span className="inline-flex items-center gap-0.5 text-amber-500">
-																			<Clock className="h-3 w-3" />
-																			<span>rpm capped</span>
-																		</span>
-																	)}
-																	{score.excludedByContentFilter && (
-																		<span className="inline-flex items-center gap-0.5 text-amber-500">
-																			<Ban className="h-3 w-3" />
-																			<span>content filter</span>
-																		</span>
-																	)}
-																</span>
-																<span className="text-muted-foreground">
-																	{score.score.toFixed(2)}
-																	{score.uptime !== undefined && (
-																		<span className="ml-2">
-																			↑{score.uptime?.toFixed(0)}%
-																		</span>
-																	)}
-																	{score.throughput !== undefined && (
-																		<span className="ml-2">
-																			{score.throughput?.toFixed(0)}t/s
-																		</span>
-																	)}
-																	{score.latency !== undefined && (
-																		<span className="ml-2">
-																			{score.latency?.toFixed(0)}ms
-																		</span>
-																	)}
-																	{score.price !== undefined && (
-																		<span className="ml-2">
-																			${score.price.toFixed(6)}
-																		</span>
-																	)}
-																	{score.priority !== undefined &&
-																		score.priority !== 1 && (
-																			<span className="ml-2">
-																				p:{score.priority}
-																			</span>
-																		)}
-																</span>
-															</div>
-														))}
+											<div className="pt-1 border-t border-dashed">
+												<div className="flex justify-between gap-2 mb-1">
+													<div className="text-muted-foreground">Scores</div>
+													<div className="text-[11px] text-muted-foreground">
+														lower is better
 													</div>
 												</div>
-											)}
+												<div className="space-y-1">
+													{sortedProviderScores.map((score) => (
+														<div
+															key={`${score.providerId}-${score.region ?? "default"}`}
+															className="flex justify-between items-center"
+														>
+															<span className="font-mono flex items-center gap-1.5">
+																{score.providerId}
+																{getRoutingEntryKey(
+																	score.providerId,
+																	score.region,
+																) === selectedRoutingKey && (
+																	<Badge
+																		variant="outline"
+																		className="h-4 px-1 text-[10px]"
+																	>
+																		selected
+																	</Badge>
+																)}
+																{score.region && (
+																	<span className="text-muted-foreground">
+																		({score.region})
+																	</span>
+																)}
+																{score.failed && (
+																	<span className="inline-flex items-center gap-0.5 text-red-500">
+																		<AlertCircle className="h-3 w-3" />
+																		<span>
+																			{score.status_code}
+																			{score.error_type && (
+																				<span className="ml-0.5 text-red-400">
+																					{score.error_type}
+																				</span>
+																			)}
+																		</span>
+																	</span>
+																)}
+																{score.rate_limited && (
+																	<span className="inline-flex items-center gap-0.5 text-amber-500">
+																		<Clock className="h-3 w-3" />
+																		<span>rpm capped</span>
+																	</span>
+																)}
+																{score.excludedByContentFilter && (
+																	<span className="inline-flex items-center gap-0.5 text-amber-500">
+																		<Ban className="h-3 w-3" />
+																		<span>content filter</span>
+																	</span>
+																)}
+															</span>
+															<span className="text-muted-foreground">
+																{score.score.toFixed(2)}
+																{score.uptime !== undefined && (
+																	<span className="ml-2">
+																		↑{score.uptime?.toFixed(0)}%
+																	</span>
+																)}
+																{score.throughput !== undefined && (
+																	<span className="ml-2">
+																		{score.throughput?.toFixed(0)}t/s
+																	</span>
+																)}
+																{score.latency !== undefined && (
+																	<span className="ml-2">
+																		{score.latency?.toFixed(0)}ms
+																	</span>
+																)}
+																{score.price !== undefined && (
+																	<span className="ml-2">
+																		${score.price.toFixed(6)}
+																	</span>
+																)}
+																{score.priority !== undefined &&
+																	score.priority !== 1 && (
+																		<span className="ml-2">
+																			p:{score.priority}
+																		</span>
+																	)}
+															</span>
+														</div>
+													))}
+												</div>
+											</div>
+										)}
 										{routingMetadata.routing &&
 											routingMetadata.routing.length > 0 && (
 												<div className="pt-1 border-t border-dashed">
