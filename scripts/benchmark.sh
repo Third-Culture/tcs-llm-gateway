@@ -1,21 +1,31 @@
 #!/bin/bash
 
-# Gemini 3 Flash Benchmark: Direct (Google AI Studio / Vertex) vs LLM Gateway vs OpenRouter
+set -o pipefail
+
+# Gemini 3 Flash Benchmark: direct providers vs LLM Gateway vs OpenRouter
 #
-# Required env vars (set whichever endpoints you want to test):
-#   GOOGLE_AI_KEY          - Google AI Studio API key
-#   GOOGLE_VERTEX_API_KEY  - Google Vertex AI API key
-#   LLM_GATEWAY_API_KEY    - LLM Gateway API key
-#   OPENROUTER_API_KEY     - OpenRouter API key
+# Preferred env vars (set whichever endpoints you want to test):
+#   LLM_GOOGLE_VERTEX_API_KEY   - Google Vertex API key
+#   LLM_GOOGLE_CLOUD_PROJECT    - GCP project ID for Vertex AI
+#   LLM_GOOGLE_VERTEX_REGION    - Vertex AI region (default: global)
+#   LLM_GOOGLE_AI_STUDIO_API_KEY - Google AI Studio API key
+#   LLM_OPENROUTER_API_KEY      - OpenRouter API key
+#   LLM_GATEWAY_API_KEY         - LLM Gateway API key
 #
 # Optional env vars:
-#   VERTEX_PROJECT_ID      - GCP project ID for Vertex AI
-#   VERTEX_REGION          - Vertex AI region (default: us-central1)
-#   REQUESTS_PER_ENDPOINT  - Number of requests per endpoint (default: 5)
+#   REQUESTS_PER_ENDPOINT       - Number of requests per endpoint (default: 5)
+#   MODEL_NAME                  - Model to benchmark (default: gemini-3-flash-preview)
+#   BENCHMARK_PROMPT            - Prompt to send for each request
+#   OUTPUT_FILE                 - Where to write the benchmark JSON
+#   LLM_GATEWAY_BASE_URL        - Override LLM Gateway base URL
+#   LLM_OPENROUTER_BASE_URL     - Override OpenRouter base URL
 
 REQUESTS=${REQUESTS_PER_ENDPOINT:-5}
-MODEL_NAME="gemini-3-flash-preview"
-OUTPUT_FILE="benchmark_gemini3_flash.json"
+MODEL_NAME="${MODEL_NAME:-gemini-3-flash-preview}"
+PROMPT="${BENCHMARK_PROMPT:-Write a haiku about programming}"
+OUTPUT_FILE="${OUTPUT_FILE:-benchmark_gemini3_flash.json}"
+GATEWAY_BASE_URL="${LLM_GATEWAY_BASE_URL:-https://api.llmgateway.io}"
+OPENROUTER_BASE_URL="${LLM_OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}"
 
 # Colors
 RED='\033[0;31m'
@@ -30,39 +40,100 @@ now_ms() {
 	perl -MTime::HiRes -e 'printf("%.0f\n", Time::HiRes::time() * 1000)'
 }
 
+first_csv_value() {
+	printf '%s' "$1" | awk -F',' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1); print $1}'
+}
+
+build_payload() {
+	local request_mode=$1
+	local model=$2
+
+	case "$request_mode" in
+		openai-chat)
+			jq -cn \
+				--arg model "$model" \
+				--arg prompt "$PROMPT" \
+				'{
+					model: $model,
+					messages: [
+						{role: "user", content: $prompt}
+					],
+					stream: true,
+					max_tokens: 100
+				}'
+			;;
+		google-native)
+			jq -cn \
+				--arg prompt "$PROMPT" \
+				'{
+					contents: [
+						{
+							role: "user",
+							parts: [{text: $prompt}]
+						}
+					],
+					generationConfig: {
+						maxOutputTokens: 100
+					}
+				}'
+			;;
+		*)
+			echo "Unknown request mode: $request_mode" >&2
+			return 1
+			;;
+	esac
+}
+
+extract_error_message() {
+	local file=$1
+
+	if [[ ! -s "$file" ]]; then
+		return
+	fi
+
+	tr '\r\n' '  ' < "$file" | sed 's/[[:space:]]\+/ /g' | cut -c 1-200
+}
+
+VERTEX_API_KEY=$(first_csv_value "${LLM_GOOGLE_VERTEX_API_KEY:-}")
+VERTEX_PROJECT=$(first_csv_value "${LLM_GOOGLE_CLOUD_PROJECT:-}")
+VERTEX_REGION=$(first_csv_value "${LLM_GOOGLE_VERTEX_REGION:-global}")
+GOOGLE_AI_STUDIO_API_KEY=$(first_csv_value "${LLM_GOOGLE_AI_STUDIO_API_KEY:-}")
+OPENROUTER_API_KEY=$(first_csv_value "${LLM_OPENROUTER_API_KEY:-}")
+GATEWAY_API_KEY=$(first_csv_value "${LLM_GATEWAY_API_KEY:-}")
+
 # --- Endpoint definitions ---
-# Each endpoint: label|url|auth_header|model_field
+# Each endpoint: label|request_mode|url|auth_type|auth_value|model_field|extra_header
 ENDPOINTS=()
 
-# 1. Google AI Studio (direct)
-if [[ -n "$GOOGLE_AI_KEY" ]]; then
-	ENDPOINTS+=("google-ai-studio-direct|https://generativelanguage.googleapis.com/v1beta/openai/chat/completions|Bearer ${GOOGLE_AI_KEY}|${MODEL_NAME}")
+# 1. Google AI Studio (direct, native API key flow)
+if [[ -n "$GOOGLE_AI_STUDIO_API_KEY" ]]; then
+	GOOGLE_AI_STUDIO_URL="https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:streamGenerateContent?alt=sse&key=${GOOGLE_AI_STUDIO_API_KEY}"
+	ENDPOINTS+=("google-ai-studio-direct|google-native|${GOOGLE_AI_STUDIO_URL}|none||${MODEL_NAME}|")
 else
-	echo -e "${YELLOW}Skipping Google AI Studio (set GOOGLE_AI_KEY to enable)${NC}"
+	echo -e "${YELLOW}Skipping Google AI Studio (set LLM_GOOGLE_AI_STUDIO_API_KEY to enable)${NC}"
 fi
 
-# 2. Google Vertex AI (direct, API key auth)
-if [[ -n "$GOOGLE_VERTEX_API_KEY" && -n "$VERTEX_PROJECT_ID" ]]; then
-	VERTEX_REGION="${VERTEX_REGION:-us-central1}"
-	VERTEX_URL="https://${VERTEX_REGION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_REGION}/endpoints/openapi/chat/completions?key=${GOOGLE_VERTEX_API_KEY}"
-	ENDPOINTS+=("google-vertex-direct|${VERTEX_URL}|_none_|${MODEL_NAME}")
+# 2. Google Vertex AI (direct, native API key flow)
+if [[ -n "$VERTEX_API_KEY" && -n "$VERTEX_PROJECT" ]]; then
+	VERTEX_URL="https://aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT}/locations/${VERTEX_REGION}/publishers/google/models/${MODEL_NAME}:streamGenerateContent?alt=sse&key=${VERTEX_API_KEY}"
+	ENDPOINTS+=("google-vertex-direct|google-native|${VERTEX_URL}|none||${MODEL_NAME}|")
 else
-	echo -e "${YELLOW}Skipping Google Vertex (set GOOGLE_VERTEX_API_KEY + VERTEX_PROJECT_ID to enable)${NC}"
+	echo -e "${YELLOW}Skipping Google Vertex (set LLM_GOOGLE_VERTEX_API_KEY + LLM_GOOGLE_CLOUD_PROJECT to enable)${NC}"
 fi
 
-# 3. LLM Gateway (both provider routes)
-if [[ -n "$LLM_GATEWAY_API_KEY" ]]; then
-	ENDPOINTS+=("llm-gw-ai-studio|https://api.llmgateway.io/v1/chat/completions|Bearer ${LLM_GATEWAY_API_KEY}|google-ai-studio/${MODEL_NAME}")
-	ENDPOINTS+=("llm-gw-vertex|https://api.llmgateway.io/v1/chat/completions|Bearer ${LLM_GATEWAY_API_KEY}|google-vertex/${MODEL_NAME}")
+# 3. LLM Gateway (provider-pinned, no fallback)
+if [[ -n "$GATEWAY_API_KEY" ]]; then
+	ENDPOINTS+=("llm-gw-ai-studio|openai-chat|${GATEWAY_BASE_URL%/}/v1/chat/completions|bearer|${GATEWAY_API_KEY}|google-ai-studio/${MODEL_NAME}|x-no-fallback: true")
+	ENDPOINTS+=("llm-gw-vertex|openai-chat|${GATEWAY_BASE_URL%/}/v1/chat/completions|bearer|${GATEWAY_API_KEY}|google-vertex/${MODEL_NAME}|x-no-fallback: true")
 else
 	echo -e "${YELLOW}Skipping LLM Gateway (set LLM_GATEWAY_API_KEY to enable)${NC}"
 fi
 
 # 4. OpenRouter
 if [[ -n "$OPENROUTER_API_KEY" ]]; then
-	ENDPOINTS+=("openrouter|https://openrouter.ai/api/v1/chat/completions|Bearer ${OPENROUTER_API_KEY}|google/${MODEL_NAME}")
+	ENDPOINTS+=("openrouter|openai-chat|${OPENROUTER_BASE_URL%/}/chat/completions|bearer|${OPENROUTER_API_KEY}|google/${MODEL_NAME}|")
 else
-	echo -e "${YELLOW}Skipping OpenRouter (set OPENROUTER_API_KEY to enable)${NC}"
+	echo -e "${YELLOW}Skipping OpenRouter (set LLM_OPENROUTER_API_KEY to enable)${NC}"
 fi
 
 if [[ ${#ENDPOINTS[@]} -eq 0 ]]; then
@@ -74,6 +145,7 @@ echo ""
 echo -e "${BOLD}Gemini 3 Flash Benchmark${NC}"
 echo "Endpoints: ${#ENDPOINTS[@]}"
 echo "Requests per endpoint: $REQUESTS"
+echo "Prompt: $PROMPT"
 echo ""
 
 # Initialize results
@@ -82,46 +154,71 @@ results="[]"
 # Benchmark a single streaming request
 benchmark_request() {
 	local url=$1
-	local auth=$2
-	local model=$3
-	local label=$4
-	local request_num=$5
+	local auth_type=$2
+	local auth_value=$3
+	local model=$4
+	local label=$5
+	local request_num=$6
+	local request_mode=$7
+	local extra_header=$8
 
 	local response_file=$(mktemp)
 	local timing_file=$(mktemp)
-
-	local payload=$(cat <<EOF
-{
-  "model": "$model",
-  "messages": [
-    {"role": "user", "content": "Write a haiku about programming"}
-  ],
-  "stream": true,
-  "max_tokens": 100
-}
-EOF
-)
+	local status_file=$(mktemp)
+	local curl_error_file=$(mktemp)
+	local payload
+	payload=$(build_payload "$request_mode" "$model") || {
+		rm -f "$response_file" "$timing_file" "$status_file" "$curl_error_file"
+		return 1
+	}
 
 	local start_time=$(now_ms)
+	local curl_args=(
+		-sS
+		-N
+		-X POST
+		"$url"
+		-H "Content-Type: application/json"
+		-d "$payload"
+	)
 
-	# Stream response; write TTFT timestamp to timing_file on first data chunk
-	local auth_args=()
-	if [[ "$auth" != "_none_" ]]; then
-		auth_args=(-H "Authorization: $auth")
+	case "$auth_type" in
+		bearer)
+			curl_args+=(-H "Authorization: Bearer ${auth_value}")
+			;;
+		x-goog-api-key)
+			curl_args+=(-H "x-goog-api-key: ${auth_value}")
+			;;
+		none)
+			;;
+		*)
+			echo "Unknown auth type: $auth_type" >&2
+			rm -f "$response_file" "$timing_file" "$status_file" "$curl_error_file"
+			return 1
+			;;
+	esac
+
+	if [[ -n "$extra_header" ]]; then
+		curl_args+=(-H "$extra_header")
 	fi
 
-	curl -s -N -X POST "$url" \
-		"${auth_args[@]}" \
-		-H "Content-Type: application/json" \
-		-d "$payload" 2>/dev/null | while IFS= read -r line; do
+	# Stream response; write TTFT timestamp to timing_file on first data chunk
+	curl "${curl_args[@]}" \
+		--write-out $'\n__LLM_BENCH_HTTP_STATUS__:%{http_code}\n' \
+		2>"$curl_error_file" | while IFS= read -r line; do
+		if [[ $line == __LLM_BENCH_HTTP_STATUS__:* ]]; then
+			printf '%s\n' "${line#__LLM_BENCH_HTTP_STATUS__:}" > "$status_file"
+			continue
+		fi
 
 		# First SSE data line = time to first token
 		if [[ ! -s "$timing_file" && $line == data:* ]]; then
 			now_ms > "$timing_file"
 		fi
 
-		echo "$line" >> "$response_file"
+		printf '%s\n' "$line" >> "$response_file"
 	done
+	local curl_exit=${PIPESTATUS[0]}
 
 	local end_time=$(now_ms)
 
@@ -133,47 +230,68 @@ EOF
 	fi
 
 	local total_ms=$(( end_time - start_time ))
+	local http_status="000"
+	if [[ -s "$status_file" ]]; then
+		http_status=$(cat "$status_file")
+	fi
 
 	# Check success
 	local status="error"
 	local error_msg=""
-	if [[ -f "$response_file" ]] && grep -q "data:" "$response_file"; then
+	if [[ $curl_exit -eq 0 && $http_status =~ ^2[0-9][0-9]$ ]] && grep -q '^data:' "$response_file"; then
 		status="success"
-	elif [[ -f "$response_file" && -s "$response_file" ]]; then
-		# Capture first 200 chars of error response for debugging
-		error_msg=$(head -c 200 "$response_file" | tr '\n' ' ')
+	elif [[ $curl_exit -ne 0 ]]; then
+		error_msg=$(extract_error_message "$curl_error_file")
+	else
+		error_msg=$(extract_error_message "$response_file")
+		if [[ -n "$error_msg" ]]; then
+			error_msg="HTTP ${http_status}: ${error_msg}"
+		else
+			error_msg="HTTP ${http_status}"
+		fi
 	fi
 
-	rm -f "$response_file" "$timing_file"
+	rm -f "$response_file" "$timing_file" "$status_file" "$curl_error_file"
 
-	echo "{\"endpoint\":\"$label\",\"model\":\"$model\",\"request\":$request_num,\"ttft_ms\":$ttft_ms,\"total_ms\":$total_ms,\"status\":\"$status\",\"error\":\"$error_msg\"}"
+	jq -cn \
+		--arg endpoint "$label" \
+		--arg model "$model" \
+		--argjson request "$request_num" \
+		--argjson ttft_ms "$ttft_ms" \
+		--argjson total_ms "$total_ms" \
+		--arg status "$status" \
+		--arg error "$error_msg" \
+		'{
+			endpoint: $endpoint,
+			model: $model,
+			request: $request,
+			ttft_ms: $ttft_ms,
+			total_ms: $total_ms,
+			status: $status,
+			error: $error
+		}'
 }
 
 # Run benchmarks
 for endpoint_def in "${ENDPOINTS[@]}"; do
-	IFS='|' read -r label url auth model <<< "$endpoint_def"
+	IFS='|' read -r label request_mode url auth_type auth_value model extra_header <<< "$endpoint_def"
 
 	echo -e "${CYAN}[$label]${NC} ${YELLOW}$model${NC}"
 
 	for i in $(seq 1 $REQUESTS); do
 		echo -n "  Request $i/$REQUESTS... "
 
-		result=$(benchmark_request "$url" "$auth" "$model" "$label" "$i")
+		result=$(benchmark_request "$url" "$auth_type" "$auth_value" "$model" "$label" "$i" "$request_mode" "$extra_header")
+		results=$(printf '%s' "$results" | jq -c --argjson item "$result" '. + [$item]')
 
-		if [[ "$results" == "[]" ]]; then
-			results="[$result]"
-		else
-			results="${results%]}, $result]"
-		fi
-
-		ttft=$(echo "$result" | grep -o '"ttft_ms":[0-9]*' | cut -d':' -f2)
-		total=$(echo "$result" | grep -o '"total_ms":[0-9]*' | cut -d':' -f2)
-		status=$(echo "$result" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+		ttft=$(printf '%s' "$result" | jq -r '.ttft_ms // "null"')
+		total=$(printf '%s' "$result" | jq -r '.total_ms')
+		status=$(printf '%s' "$result" | jq -r '.status')
 
 		if [[ "$status" == "success" ]]; then
-			echo -e "${GREEN}OK${NC} TTFT: ${ttft:-null}ms, Total: ${total}ms"
+			echo -e "${GREEN}OK${NC} TTFT: ${ttft}ms, Total: ${total}ms"
 		else
-			error_msg=$(echo "$result" | sed 's/.*"error":"\([^"]*\)".*/\1/' | head -c 120)
+			error_msg=$(printf '%s' "$result" | jq -r '.error' | cut -c 1-120)
 			echo -e "${RED}FAIL${NC} ${error_msg}"
 		fi
 	done
@@ -184,8 +302,7 @@ done
 echo -e "${BOLD}Statistics${NC}"
 echo ""
 
-stats="{"
-first=true
+stats='{}'
 
 declare -a seen_labels=()
 for endpoint_def in "${ENDPOINTS[@]}"; do
@@ -194,9 +311,9 @@ for endpoint_def in "${ENDPOINTS[@]}"; do
 done
 
 for label in "${seen_labels[@]}"; do
-	# Use grep -F for fixed-string match (no regex issues with special chars)
-	ttfts=$(echo "$results" | grep -o "{[^}]*}" | grep -F "\"endpoint\":\"$label\"" | grep -o '"ttft_ms":[0-9]*' | cut -d':' -f2)
-	totals=$(echo "$results" | grep -o "{[^}]*}" | grep -F "\"endpoint\":\"$label\"" | grep -o '"total_ms":[0-9]*' | cut -d':' -f2)
+	ttfts=$(printf '%s' "$results" | jq -r --arg label "$label" '.[] | select(.endpoint == $label and .status == "success" and .ttft_ms != null) | .ttft_ms')
+	totals=$(printf '%s' "$results" | jq -r --arg label "$label" '.[] | select(.endpoint == $label and .status == "success") | .total_ms')
+	success_count=$(printf '%s' "$results" | jq -r --arg label "$label" '[.[] | select(.endpoint == $label and .status == "success")] | length')
 
 	if [[ -n "$ttfts" ]]; then
 		avg_ttft=$(echo "$ttfts" | awk '{sum+=$1; count++} END {if(count>0) print int(sum/count); else print 0}')
@@ -214,26 +331,49 @@ for label in "${seen_labels[@]}"; do
 		avg_total=0; min_total=0; max_total=0
 	fi
 
-	if [[ "$first" == false ]]; then stats="$stats,"; fi
-	first=false
-
-	stats="$stats\"$label\":{\"avg_ttft_ms\":$avg_ttft,\"min_ttft_ms\":$min_ttft,\"max_ttft_ms\":$max_ttft,\"avg_total_ms\":$avg_total,\"min_total_ms\":$min_total,\"max_total_ms\":$max_total,\"requests\":$REQUESTS}"
+	stats=$(printf '%s' "$stats" | jq -c \
+		--arg label "$label" \
+		--argjson avg_ttft "$avg_ttft" \
+		--argjson min_ttft "$min_ttft" \
+		--argjson max_ttft "$max_ttft" \
+		--argjson avg_total "$avg_total" \
+		--argjson min_total "$min_total" \
+		--argjson max_total "$max_total" \
+		--argjson requests "$REQUESTS" \
+		--argjson successful_requests "$success_count" \
+		'. + {
+			($label): {
+				avg_ttft_ms: $avg_ttft,
+				min_ttft_ms: $min_ttft,
+				max_ttft_ms: $max_ttft,
+				avg_total_ms: $avg_total,
+				min_total_ms: $min_total,
+				max_total_ms: $max_total,
+				requests: $requests,
+				successful_requests: $successful_requests
+			}
+		}')
 
 	echo -e "${CYAN}$label${NC}"
 	echo "  TTFT:  avg=${avg_ttft}ms  min=${min_ttft}ms  max=${max_ttft}ms"
 	echo "  Total: avg=${avg_total}ms  min=${min_total}ms  max=${max_total}ms"
+	echo "  Success: ${success_count}/${REQUESTS}"
 	echo ""
 done
-
-stats="$stats}"
 
 # --- Comparison table ---
 echo -e "${BOLD}Comparison (avg TTFT / avg Total)${NC}"
 printf "%-30s %10s %10s\n" "Endpoint" "TTFT" "Total"
 echo "----------------------------------------------------"
 for label in "${seen_labels[@]}"; do
-	avg_ttft=$(echo "$results" | grep -o "{[^}]*}" | grep -F "\"endpoint\":\"$label\"" | grep -o '"ttft_ms":[0-9]*' | cut -d':' -f2 | awk '{sum+=$1; count++} END {if(count>0) printf "%dms", int(sum/count); else printf "N/A"}')
-	avg_total=$(echo "$results" | grep -o "{[^}]*}" | grep -F "\"endpoint\":\"$label\"" | grep -o '"total_ms":[0-9]*' | cut -d':' -f2 | awk '{sum+=$1; count++} END {if(count>0) printf "%dms", int(sum/count); else printf "N/A"}')
+	success_count=$(printf '%s' "$results" | jq -r --arg label "$label" '[.[] | select(.endpoint == $label and .status == "success")] | length')
+	if [[ "$success_count" -gt 0 ]]; then
+		avg_ttft=$(printf '%s' "$results" | jq -r --arg label "$label" '[.[] | select(.endpoint == $label and .status == "success" and .ttft_ms != null) | .ttft_ms] | if length > 0 then ((add / length) | floor | tostring) + "ms" else "N/A" end')
+		avg_total=$(printf '%s' "$results" | jq -r --arg label "$label" '[.[] | select(.endpoint == $label and .status == "success") | .total_ms] | if length > 0 then ((add / length) | floor | tostring) + "ms" else "N/A" end')
+	else
+		avg_ttft="N/A"
+		avg_total="N/A"
+	fi
 	printf "%-30s %10s %10s\n" "$label" "$avg_ttft" "$avg_total"
 done
 echo "----------------------------------------------------"
