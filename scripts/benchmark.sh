@@ -135,18 +135,13 @@ EOF
 	if [[ -f "$response_file" ]] && grep -q "data:" "$response_file"; then
 		status="success"
 	elif [[ -f "$response_file" && -s "$response_file" ]]; then
-		# Capture error response, escape for JSON, truncate
-		error_msg=$(cat "$response_file" | tr '\n' ' ' | sed 's/"/\\"/g' | head -c 300)
+		# Capture first 200 chars of error response for debugging
+		error_msg=$(head -c 200 "$response_file" | tr '\n' ' ')
 	fi
 
 	rm -f "$response_file" "$timing_file"
 
-	if [[ "$status" == "error" && -n "$error_msg" ]]; then
-		# Print full error to stderr for debugging
-		echo "  [ERROR] $error_msg" >&2
-	fi
-
-	echo "{\"endpoint\":\"$label\",\"model\":\"$model\",\"request\":$request_num,\"ttft_ms\":$ttft_ms,\"total_ms\":$total_ms,\"status\":\"$status\"}"
+	echo "{\"endpoint\":\"$label\",\"model\":\"$model\",\"request\":$request_num,\"ttft_ms\":$ttft_ms,\"total_ms\":$total_ms,\"status\":\"$status\",\"error\":\"$error_msg\"}"
 }
 
 # Run benchmarks
@@ -173,7 +168,8 @@ for endpoint_def in "${ENDPOINTS[@]}"; do
 		if [[ "$status" == "success" ]]; then
 			echo -e "${GREEN}OK${NC} TTFT: ${ttft:-null}ms, Total: ${total}ms"
 		else
-			echo -e "${RED}FAIL${NC} (see error above)"
+			error_msg=$(echo "$result" | sed 's/.*"error":"\([^"]*\)".*/\1/' | head -c 120)
+			echo -e "${RED}FAIL${NC} ${error_msg}"
 		fi
 	done
 	echo ""
