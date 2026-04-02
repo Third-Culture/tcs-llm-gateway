@@ -4,11 +4,11 @@
 #
 # Required env vars (set whichever endpoints you want to test):
 #   GOOGLE_AI_KEY          - Google AI Studio API key
+#   GOOGLE_VERTEX_API_KEY  - Google Vertex AI API key
 #   LLM_GATEWAY_API_KEY    - LLM Gateway API key
 #   OPENROUTER_API_KEY     - OpenRouter API key
 #
 # Optional env vars:
-#   GOOGLE_VERTEX_TOKEN    - Vertex AI access token (from `gcloud auth print-access-token`)
 #   VERTEX_PROJECT_ID      - GCP project ID for Vertex AI
 #   VERTEX_REGION          - Vertex AI region (default: us-central1)
 #   REQUESTS_PER_ENDPOINT  - Number of requests per endpoint (default: 5)
@@ -41,13 +41,13 @@ else
 	echo -e "${YELLOW}Skipping Google AI Studio (set GOOGLE_AI_KEY to enable)${NC}"
 fi
 
-# 2. Google Vertex AI (direct)
-if [[ -n "$GOOGLE_VERTEX_TOKEN" && -n "$VERTEX_PROJECT_ID" ]]; then
+# 2. Google Vertex AI (direct, API key auth)
+if [[ -n "$GOOGLE_VERTEX_API_KEY" && -n "$VERTEX_PROJECT_ID" ]]; then
 	VERTEX_REGION="${VERTEX_REGION:-us-central1}"
-	VERTEX_URL="https://${VERTEX_REGION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_REGION}/endpoints/openapi/chat/completions"
-	ENDPOINTS+=("google-vertex-direct|${VERTEX_URL}|Bearer ${GOOGLE_VERTEX_TOKEN}|${MODEL_NAME}")
+	VERTEX_URL="https://${VERTEX_REGION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_REGION}/endpoints/openapi/chat/completions?key=${GOOGLE_VERTEX_API_KEY}"
+	ENDPOINTS+=("google-vertex-direct|${VERTEX_URL}|_none_|${MODEL_NAME}")
 else
-	echo -e "${YELLOW}Skipping Google Vertex (set GOOGLE_VERTEX_TOKEN + VERTEX_PROJECT_ID to enable)${NC}"
+	echo -e "${YELLOW}Skipping Google Vertex (set GOOGLE_VERTEX_API_KEY + VERTEX_PROJECT_ID to enable)${NC}"
 fi
 
 # 3. LLM Gateway (both provider routes)
@@ -105,8 +105,13 @@ EOF
 	local start_time=$(now_ms)
 
 	# Stream response; write TTFT timestamp to timing_file on first data chunk
+	local auth_args=()
+	if [[ "$auth" != "_none_" ]]; then
+		auth_args=(-H "Authorization: $auth")
+	fi
+
 	curl -s -N -X POST "$url" \
-		-H "Authorization: $auth" \
+		"${auth_args[@]}" \
 		-H "Content-Type: application/json" \
 		-d "$payload" 2>/dev/null | while IFS= read -r line; do
 
