@@ -92,6 +92,7 @@ get_google_thinking_budget() {
 build_payload() {
 	local request_mode=$1
 	local model=$2
+	local provider_route=$3
 	local google_thinking_budget=""
 
 	google_thinking_budget=$(get_google_thinking_budget "$BENCHMARK_REASONING_EFFORT") || return 1
@@ -102,6 +103,7 @@ build_payload() {
 				--arg model "$model" \
 				--arg prompt "$PROMPT" \
 				--arg reasoning_effort "$BENCHMARK_REASONING_EFFORT" \
+				--arg provider_route "$provider_route" \
 				'{
 					model: $model,
 					messages: [
@@ -114,6 +116,17 @@ build_payload() {
 					if ($reasoning_effort == "off" or $reasoning_effort == "none" or $reasoning_effort == "")
 					then {}
 					else {reasoning_effort: $reasoning_effort}
+					end
+				)
+				+ (
+					if $provider_route == ""
+					then {}
+					else {
+						provider: {
+							order: [$provider_route],
+							allow_fallbacks: false
+						}
+					}
 					end
 				)'
 			;;
@@ -177,13 +190,13 @@ else
 fi
 
 # --- Endpoint definitions ---
-# Each endpoint: label|request_mode|url|auth_type|auth_value|model_field|extra_header
+# Each endpoint: label|request_mode|url|auth_type|auth_value|model_field|extra_header|provider_route
 ENDPOINTS=()
 
 # 1. Google AI Studio (direct, native API key flow)
 if [[ -n "$GOOGLE_AI_STUDIO_API_KEY" ]]; then
 	GOOGLE_AI_STUDIO_URL="https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:streamGenerateContent?alt=sse&key=${GOOGLE_AI_STUDIO_API_KEY}"
-	ENDPOINTS+=("google-ai-studio-direct|google-native|${GOOGLE_AI_STUDIO_URL}|none||${MODEL_NAME}|")
+	ENDPOINTS+=("google-ai-studio-direct|google-native|${GOOGLE_AI_STUDIO_URL}|none||${MODEL_NAME}||")
 else
 	echo -e "${YELLOW}Skipping Google AI Studio (set LLM_GOOGLE_AI_STUDIO_API_KEY to enable)${NC}"
 fi
@@ -191,22 +204,23 @@ fi
 # 2. Google Vertex AI (direct, native API key flow)
 if [[ -n "$VERTEX_API_KEY" && -n "$VERTEX_PROJECT" ]]; then
 	VERTEX_URL="https://aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT}/locations/${VERTEX_REGION}/publishers/google/models/${MODEL_NAME}:streamGenerateContent?alt=sse&key=${VERTEX_API_KEY}"
-	ENDPOINTS+=("google-vertex-direct|google-native|${VERTEX_URL}|none||${MODEL_NAME}|")
+	ENDPOINTS+=("google-vertex-direct|google-native|${VERTEX_URL}|none||${MODEL_NAME}||")
 else
 	echo -e "${YELLOW}Skipping Google Vertex (set LLM_GOOGLE_VERTEX_API_KEY + LLM_GOOGLE_CLOUD_PROJECT to enable)${NC}"
 fi
 
 # 3. LLM Gateway (provider-pinned, no fallback)
 if [[ -n "$GATEWAY_API_KEY" ]]; then
-	ENDPOINTS+=("llm-gw-ai-studio|openai-chat|${GATEWAY_BASE_URL%/}/v1/chat/completions|bearer|${GATEWAY_API_KEY}|google-ai-studio/${MODEL_NAME}|x-no-fallback: true")
-	ENDPOINTS+=("llm-gw-vertex|openai-chat|${GATEWAY_BASE_URL%/}/v1/chat/completions|bearer|${GATEWAY_API_KEY}|google-vertex/${MODEL_NAME}|x-no-fallback: true")
+	ENDPOINTS+=("llm-gw-ai-studio|openai-chat|${GATEWAY_BASE_URL%/}/v1/chat/completions|bearer|${GATEWAY_API_KEY}|google-ai-studio/${MODEL_NAME}|x-no-fallback: true|")
+	ENDPOINTS+=("llm-gw-vertex|openai-chat|${GATEWAY_BASE_URL%/}/v1/chat/completions|bearer|${GATEWAY_API_KEY}|google-vertex/${MODEL_NAME}|x-no-fallback: true|")
 else
 	echo -e "${YELLOW}Skipping LLM Gateway (set LLM_GATEWAY_API_KEY to enable)${NC}"
 fi
 
 # 4. OpenRouter
 if [[ -n "$OPENROUTER_API_KEY" ]]; then
-	ENDPOINTS+=("openrouter|openai-chat|${OPENROUTER_BASE_URL%/}/chat/completions|bearer|${OPENROUTER_API_KEY}|google/${MODEL_NAME}|")
+	ENDPOINTS+=("openrouter-ai-studio|openai-chat|${OPENROUTER_BASE_URL%/}/chat/completions|bearer|${OPENROUTER_API_KEY}|google/${MODEL_NAME}||google-ai-studio")
+	ENDPOINTS+=("openrouter-vertex|openai-chat|${OPENROUTER_BASE_URL%/}/chat/completions|bearer|${OPENROUTER_API_KEY}|google/${MODEL_NAME}||google-vertex")
 else
 	echo -e "${YELLOW}Skipping OpenRouter (set LLM_OPENROUTER_API_KEY to enable)${NC}"
 fi
@@ -239,13 +253,14 @@ benchmark_request() {
 	local request_num=$6
 	local request_mode=$7
 	local extra_header=$8
+	local provider_route=$9
 
 	local response_file=$(mktemp)
 	local timing_file=$(mktemp)
 	local status_file=$(mktemp)
 	local curl_error_file=$(mktemp)
 	local payload
-	payload=$(build_payload "$request_mode" "$model") || {
+	payload=$(build_payload "$request_mode" "$model" "$provider_route") || {
 		rm -f "$response_file" "$timing_file" "$status_file" "$curl_error_file"
 		return 1
 	}
@@ -371,6 +386,7 @@ run_endpoint_benchmark() {
 	local auth_value=$5
 	local model=$6
 	local extra_header=$7
+	local provider_route=$8
 	local endpoint_dir="${RESULTS_DIR}/${label}"
 
 	mkdir -p "$endpoint_dir"
@@ -386,7 +402,7 @@ run_endpoint_benchmark() {
 			local status
 			local error_msg
 
-			result=$(benchmark_request "$url" "$auth_type" "$auth_value" "$model" "$label" "$i" "$request_mode" "$extra_header")
+			result=$(benchmark_request "$url" "$auth_type" "$auth_value" "$model" "$label" "$i" "$request_mode" "$extra_header" "$provider_route")
 			printf '%s\n' "$result" > "${endpoint_dir}/${i}.json"
 
 			ttft=$(printf '%s' "$result" | jq -r '.ttft_ms // "null"')
@@ -417,8 +433,8 @@ run_endpoint_benchmark() {
 
 # Run benchmarks
 for endpoint_def in "${ENDPOINTS[@]}"; do
-	IFS='|' read -r label request_mode url auth_type auth_value model extra_header <<< "$endpoint_def"
-	run_endpoint_benchmark "$label" "$request_mode" "$url" "$auth_type" "$auth_value" "$model" "$extra_header"
+	IFS='|' read -r label request_mode url auth_type auth_value model extra_header provider_route <<< "$endpoint_def"
+	run_endpoint_benchmark "$label" "$request_mode" "$url" "$auth_type" "$auth_value" "$model" "$extra_header" "$provider_route"
 done
 
 # --- Statistics ---
