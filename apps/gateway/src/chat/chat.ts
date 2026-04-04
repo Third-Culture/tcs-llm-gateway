@@ -4,7 +4,12 @@ import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 
 import { validateSource } from "@/chat/tools/validate-source.js";
-import { reportKeyError, reportKeySuccess } from "@/lib/api-key-health.js";
+import {
+	reportKeyError,
+	reportKeySuccess,
+	reportTrackedKeyError,
+	reportTrackedKeySuccess,
+} from "@/lib/api-key-health.js";
 import { assertApiKeyWithinUsageLimits } from "@/lib/api-key-usage-limits.js";
 import {
 	findApiKeyByToken,
@@ -4246,9 +4251,12 @@ chat.openapi(completions, async (c) => {
 								retriedByLogId: willRetryFetch ? finalLogId : null,
 							});
 
-							// Report key health for environment-based tokens
+							// Report key health for the selected token source
 							if (envVarName !== undefined) {
 								reportKeyError(envVarName, configIndex, 0);
+							}
+							if (providerKey?.id) {
+								reportTrackedKeyError(providerKey.id, 0);
 							}
 
 							if (willRetryFetch) {
@@ -4429,12 +4437,19 @@ chat.openapi(completions, async (c) => {
 							retriedByLogId: willRetryHttpError ? finalLogId : null,
 						});
 
-						// Report key health for environment-based tokens
+						// Report key health for the selected token source
 						// Don't report content_filter as a key error - it's intentional provider behavior
 						if (envVarName !== undefined && finishReason !== "content_filter") {
 							reportKeyError(
 								envVarName,
 								configIndex,
+								res.status,
+								errorResponseText,
+							);
+						}
+						if (providerKey?.id && finishReason !== "content_filter") {
+							reportTrackedKeyError(
+								providerKey.id,
 								res.status,
 								errorResponseText,
 							);
@@ -6719,12 +6734,19 @@ chat.openapi(completions, async (c) => {
 						toolChoice: tool_choice,
 					});
 
-					// Report key health for environment-based tokens
+					// Report key health for the selected token source
 					if (envVarName !== undefined) {
 						if (streamingError !== null) {
 							reportKeyError(envVarName, configIndex, 500);
 						} else {
 							reportKeySuccess(envVarName, configIndex);
+						}
+					}
+					if (providerKey?.id) {
+						if (streamingError !== null) {
+							reportTrackedKeyError(providerKey.id, 500);
+						} else {
+							reportTrackedKeySuccess(providerKey.id);
 						}
 					}
 
@@ -7095,9 +7117,12 @@ chat.openapi(completions, async (c) => {
 				retriedByLogId: willRetryFetchNonStreaming ? finalLogId : null,
 			});
 
-			// Report key health for environment-based tokens
+			// Report key health for the selected token source
 			if (envVarName !== undefined) {
 				reportKeyError(envVarName, configIndex, 0);
+			}
+			if (providerKey?.id) {
+				reportTrackedKeyError(providerKey.id, 0);
 			}
 
 			if (willRetryFetchNonStreaming) {
@@ -7531,10 +7556,13 @@ chat.openapi(completions, async (c) => {
 				retriedByLogId: willRetryHttpNonStreaming ? finalLogId : null,
 			});
 
-			// Report key health for environment-based tokens
+			// Report key health for the selected token source
 			// Don't report content_filter as a key error - it's intentional provider behavior
 			if (envVarName !== undefined && finishReason !== "content_filter") {
 				reportKeyError(envVarName, configIndex, res.status, errorResponseText);
+			}
+			if (providerKey?.id && finishReason !== "content_filter") {
+				reportTrackedKeyError(providerKey.id, res.status, errorResponseText);
 			}
 
 			if (willRetryHttpNonStreaming) {
@@ -8218,10 +8246,13 @@ chat.openapi(completions, async (c) => {
 		toolChoice: tool_choice,
 	});
 
-	// Report key health for environment-based tokens
+	// Report key health for the selected token source
 	// Note: We don't report empty responses as key errors since they're not upstream errors
 	if (envVarName !== undefined) {
 		reportKeySuccess(envVarName, configIndex);
+	}
+	if (providerKey?.id) {
+		reportTrackedKeySuccess(providerKey.id);
 	}
 
 	if (cachingEnabled && cacheKey && !stream && !hasEmptyNonStreamingResponse) {
