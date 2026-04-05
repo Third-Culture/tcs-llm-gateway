@@ -3,6 +3,7 @@ import { encode } from "gpt-tokenizer";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 
+import { extractFirstSseEventData } from "@/chat/tools/extract-first-sse-event-data.js";
 import { validateSource } from "@/chat/tools/validate-source.js";
 import { getApiKeyFingerprint } from "@/lib/api-key-fingerprint.js";
 import {
@@ -509,28 +510,6 @@ function isGoogleCompatibleProvider(provider: string): boolean {
 const SSE_FIELD_PATTERN = /^[a-zA-Z_-]+:\s*/;
 const IMMEDIATE_STREAM_ERROR_PEEK_LIMIT = 64 * 1024;
 
-function extractFirstSseEventData(buffer: string): string | null {
-	const dataLines: string[] = [];
-	let sawEventLine = false;
-
-	for (const rawLine of buffer.split("\n")) {
-		const line = rawLine.replace(/\r$/, "");
-		if (line === "") {
-			if (!sawEventLine) {
-				continue;
-			}
-			return dataLines.length > 0 ? dataLines.join("\n").trim() : null;
-		}
-
-		sawEventLine = true;
-		if (line.startsWith("data:")) {
-			dataLines.push(line.slice(5).trimStart());
-		}
-	}
-
-	return null;
-}
-
 async function inspectImmediateStreamingProviderError(
 	response: Response,
 	provider: Provider,
@@ -781,8 +760,9 @@ const completions = createRoute({
 										region: z.string().optional(),
 										status_code: z.number(),
 										error_type: z.string(),
-										succeeded: z.boolean().optional(),
+										succeeded: z.boolean(),
 										apiKeyHash: z.string().optional(),
+										logId: z.string().optional(),
 									}),
 								)
 								.optional(),
