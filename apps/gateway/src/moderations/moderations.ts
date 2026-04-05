@@ -288,7 +288,7 @@ const createModeration = createRoute({
 });
 
 moderations.openapi(createModeration, async (c): Promise<any> => {
-	const requestId = c.req.header("x-request-id") ?? shortid(40);
+	const requestId = c.req.header("x-request-id")?.trim() || shortid(40);
 	c.header("x-request-id", requestId);
 
 	let rawBody: unknown;

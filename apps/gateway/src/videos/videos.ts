@@ -664,11 +664,13 @@ async function requireRequestContext(c: Context): Promise<RequestContext> {
 		});
 	}
 
+	const requestId = c.req.header("x-request-id")?.trim() || shortid(40);
+
 	return {
 		apiKey,
 		project,
 		organization,
-		requestId: c.req.header("x-request-id") ?? shortid(40),
+		requestId,
 	};
 }
 

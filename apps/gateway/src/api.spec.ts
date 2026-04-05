@@ -171,6 +171,103 @@ describe("api", () => {
 		}
 	});
 
+	test("/v1/chat/completions generates request id when empty", async () => {
+		await db.insert(tables.apiKey).values({
+			id: "token-id-empty-request-id",
+			token: "real-token-empty-request-id",
+			projectId: "project-id",
+			description: "Test API Key",
+			createdBy: "user-id",
+		});
+
+		await db.insert(tables.providerKey).values({
+			id: "provider-key-id-empty-request-id",
+			token: "sk-test-key-empty-request-id",
+			provider: "llmgateway",
+			organizationId: "org-id",
+			baseUrl: mockServerUrl,
+		});
+
+		const originalFetch = globalThis.fetch;
+		let upstreamRequestId: string | null = null;
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockImplementation(async (input, init) => {
+				const url =
+					typeof input === "string"
+						? input
+						: input instanceof URL
+							? input.toString()
+							: input.url;
+
+				if (url === `${mockServerUrl}/v1/chat/completions`) {
+					const headers =
+						input instanceof Request
+							? input.headers
+							: new Headers(init?.headers);
+					upstreamRequestId = headers.get("x-request-id");
+
+					return new Response(
+						JSON.stringify({
+							id: "chatcmpl-empty-request-id",
+							object: "chat.completion",
+							created: 1774549411,
+							model: "llmgateway/custom",
+							choices: [
+								{
+									index: 0,
+									message: {
+										role: "assistant",
+										content: "Hello!",
+									},
+									finish_reason: "stop",
+								},
+							],
+							usage: {
+								prompt_tokens: 5,
+								completion_tokens: 3,
+								total_tokens: 8,
+							},
+						}),
+						{
+							status: 200,
+							headers: {
+								"Content-Type": "application/json",
+							},
+						},
+					);
+				}
+
+				return await originalFetch(input as RequestInfo | URL, init);
+			});
+
+		try {
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token-empty-request-id",
+					"x-request-id": "",
+				},
+				body: JSON.stringify({
+					model: "llmgateway/custom",
+					messages: [
+						{
+							role: "user",
+							content: "Hello!",
+						},
+					],
+				}),
+			});
+
+			expect(res.status).toBe(200);
+			expect(upstreamRequestId).toBeTruthy();
+			expect(res.headers.get("x-request-id")).toBe(upstreamRequestId);
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
 	test("/v1/moderations e2e success", async () => {
 		await db.insert(tables.apiKey).values({
 			id: "token-id",
