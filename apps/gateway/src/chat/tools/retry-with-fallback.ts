@@ -1,5 +1,11 @@
 export const MAX_RETRIES = 2;
 
+export type RetryableErrorType =
+	| "network_error"
+	| "provider_error"
+	| "upstream_error"
+	| "upstream_timeout";
+
 export interface RoutingAttempt {
 	provider: string;
 	model: string;
@@ -15,18 +21,12 @@ export interface RoutingAttempt {
  */
 export type FailedAttempt = RoutingAttempt;
 
-/**
- * Checks if an HTTP status code (or 0 for network errors) is retryable.
- * Retryable: 5xx server errors, 429 rate limits, 404 upstream not found, 0
- * (network failures/timeouts).
- * NOT retryable: 400 (client error), 401/403 (auth).
- */
-export function isRetryableError(statusCode: number): boolean {
+export function isRetryableErrorType(errorType: string): boolean {
 	return (
-		statusCode === 404 ||
-		statusCode === 429 ||
-		statusCode >= 500 ||
-		statusCode === 0
+		errorType === "network_error" ||
+		errorType === "provider_error" ||
+		errorType === "upstream_error" ||
+		errorType === "upstream_timeout"
 	);
 }
 
@@ -38,7 +38,7 @@ export function isRetryableError(statusCode: number): boolean {
 export function shouldRetryRequest(opts: {
 	requestedProvider: string | undefined;
 	noFallback: boolean;
-	statusCode: number;
+	errorType: string;
 	retryCount: number;
 	remainingProviders: number;
 	usedProvider: string;
@@ -49,7 +49,7 @@ export function shouldRetryRequest(opts: {
 	if (opts.noFallback) {
 		return false;
 	}
-	if (!isRetryableError(opts.statusCode)) {
+	if (!isRetryableErrorType(opts.errorType)) {
 		return false;
 	}
 	if (opts.retryCount >= MAX_RETRIES) {

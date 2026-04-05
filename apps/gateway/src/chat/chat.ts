@@ -142,7 +142,7 @@ import {
 import {
 	type RoutingAttempt,
 	getErrorType,
-	isRetryableError,
+	isRetryableErrorType,
 	MAX_RETRIES,
 	providerRetryKey,
 	selectNextProvider,
@@ -4032,7 +4032,7 @@ chat.openapi(completions, async (c) => {
 							const willRetryTimeout = shouldRetryRequest({
 								requestedProvider,
 								noFallback,
-								statusCode: 0,
+								errorType: "upstream_timeout",
 								retryCount: retryAttempt,
 								remainingProviders:
 									(routingMetadata?.providerScores.length ?? 0) -
@@ -4321,7 +4321,7 @@ chat.openapi(completions, async (c) => {
 							let sameProviderRetryContext: Awaited<
 								ReturnType<typeof resolveProviderContext>
 							> | null = null;
-							if (isRetryableError(0)) {
+							if (isRetryableErrorType("network_error")) {
 								rememberFailedKey(usedProvider, usedRegion, {
 									envVarName,
 									configIndex,
@@ -4335,7 +4335,7 @@ chat.openapi(completions, async (c) => {
 							const willRetryFetch = shouldRetryRequest({
 								requestedProvider,
 								noFallback,
-								statusCode: 0,
+								errorType: "network_error",
 								retryCount: retryAttempt,
 								remainingProviders:
 									(routingMetadata?.providerScores.length ?? 0) -
@@ -4532,7 +4532,7 @@ chat.openapi(completions, async (c) => {
 						let sameProviderRetryContext: Awaited<
 							ReturnType<typeof resolveProviderContext>
 						> | null = null;
-						if (isRetryableError(res.status)) {
+						if (isRetryableErrorType(finishReason)) {
 							rememberFailedKey(usedProvider, usedRegion, {
 								envVarName,
 								configIndex,
@@ -4546,7 +4546,7 @@ chat.openapi(completions, async (c) => {
 						const willRetryHttpError = shouldRetryRequest({
 							requestedProvider,
 							noFallback,
-							statusCode: res.status,
+							errorType: finishReason,
 							retryCount: retryAttempt,
 							remainingProviders:
 								(routingMetadata?.providerScores.length ?? 0) -
@@ -7215,7 +7215,7 @@ chat.openapi(completions, async (c) => {
 			let sameProviderRetryContext: Awaited<
 				ReturnType<typeof resolveProviderContext>
 			> | null = null;
-			if (isRetryableError(0)) {
+			if (isRetryableErrorType("network_error")) {
 				rememberFailedKey(usedProvider, usedRegion, {
 					envVarName,
 					configIndex,
@@ -7228,7 +7228,7 @@ chat.openapi(completions, async (c) => {
 			const willRetryFetchNonStreaming = shouldRetryRequest({
 				requestedProvider,
 				noFallback,
-				statusCode: 0,
+				errorType: "network_error",
 				retryCount: retryAttempt,
 				remainingProviders:
 					(routingMetadata?.providerScores.length ?? 0) -
@@ -7674,7 +7674,7 @@ chat.openapi(completions, async (c) => {
 			let sameProviderRetryContext: Awaited<
 				ReturnType<typeof resolveProviderContext>
 			> | null = null;
-			if (isRetryableError(res.status)) {
+			if (isRetryableErrorType(finishReason)) {
 				rememberFailedKey(usedProvider, usedRegion, {
 					envVarName,
 					configIndex,
@@ -7688,7 +7688,7 @@ chat.openapi(completions, async (c) => {
 			const willRetryHttpNonStreaming = shouldRetryRequest({
 				requestedProvider,
 				noFallback,
-				statusCode: res.status,
+				errorType: finishReason,
 				retryCount: retryAttempt,
 				remainingProviders:
 					(routingMetadata?.providerScores.length ?? 0) -

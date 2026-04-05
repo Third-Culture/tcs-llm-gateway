@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 
+import { getFinishReasonFromError } from "@/chat/tools/get-finish-reason-from-error.js";
 import { getProviderEnv } from "@/chat/tools/get-provider-env.js";
 import {
 	getErrorType,
@@ -3422,6 +3423,10 @@ videos.openapi(createVideo, async (c) => {
 			break;
 		} catch (error) {
 			const statusCode = error instanceof HTTPException ? error.status : 0;
+			const retryErrorType =
+				statusCode === 0
+					? "network_error"
+					: getFinishReasonFromError(statusCode);
 			routingAttempts.push({
 				provider: selectedProviderContext.providerId,
 				model: modelInfo.id,
@@ -3438,7 +3443,7 @@ videos.openapi(createVideo, async (c) => {
 				!shouldRetryRequest({
 					requestedProvider,
 					noFallback,
-					statusCode,
+					errorType: retryErrorType,
 					retryCount,
 					remainingProviders,
 					usedProvider: selectedProviderContext.providerId,
