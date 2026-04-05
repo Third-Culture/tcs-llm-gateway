@@ -2200,6 +2200,59 @@ describe("fallback and error status code handling", () => {
 			expect(failedLog!.retriedByLogId).toBe(successLog!.id);
 		});
 
+		test("streaming: retries when provider sends immediate 404 SSE error", async () => {
+			await setupMultiProviderKeys();
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token",
+				},
+				body: JSON.stringify({
+					model: "glm-4.7",
+					messages: [
+						{ role: "user", content: "TRIGGER_STREAM_FAIL_ONCE_404 hello" },
+					],
+					stream: true,
+				}),
+			});
+
+			expect(res.status).toBe(200);
+
+			const streamResult = await readAll(res.body);
+			expect(streamResult.hasError).toBe(false);
+			expect(streamResult.hasContent).toBe(true);
+
+			const logs = await waitForLogs(2);
+			expect(logs.length).toBeGreaterThanOrEqual(2);
+
+			const failedLog = logs.find(
+				(log: Log) =>
+					log.hasError === true && log.errorDetails?.statusCode === 404,
+			);
+			expect(failedLog).toBeDefined();
+			expect(failedLog!.retried).toBe(true);
+
+			const successLog = logs.find(
+				(log: Log) =>
+					log.hasError === false &&
+					log.routingMetadata?.routing &&
+					log.content?.includes("mock response from the test server"),
+			);
+			expect(successLog).toBeDefined();
+			expect(successLog!.routingMetadata!.routing).toHaveLength(2);
+			expect(successLog!.routingMetadata!.routing![0]).toMatchObject({
+				status_code: 404,
+				error_type: "upstream_error",
+				succeeded: false,
+			});
+			expect(successLog!.routingMetadata!.routing![1]).toMatchObject({
+				succeeded: true,
+			});
+			expect(failedLog!.retriedByLogId).toBe(successLog!.id);
+		});
+
 		test("non-streaming: IAM allow_providers prevents retry fallback to a different provider", async () => {
 			await setupMultiProviderKeys();
 			await insertIamRules([

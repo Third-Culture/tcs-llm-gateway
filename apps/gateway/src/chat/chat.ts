@@ -505,6 +505,179 @@ function isGoogleCompatibleProvider(provider: string): boolean {
 
 // Pre-compiled regex pattern to avoid recompilation per request
 const SSE_FIELD_PATTERN = /^[a-zA-Z_-]+:\s*/;
+const IMMEDIATE_STREAM_ERROR_PEEK_LIMIT = 64 * 1024;
+
+function extractFirstSseEventData(buffer: string): string | null {
+	const dataLines: string[] = [];
+	let sawEventLine = false;
+
+	for (const rawLine of buffer.split("\n")) {
+		const line = rawLine.replace(/\r$/, "");
+		if (line === "") {
+			if (!sawEventLine) {
+				continue;
+			}
+			return dataLines.length > 0 ? dataLines.join("\n").trim() : null;
+		}
+
+		sawEventLine = true;
+		if (line.startsWith("data:")) {
+			dataLines.push(line.slice(5).trimStart());
+		}
+	}
+
+	return null;
+}
+
+async function inspectImmediateStreamingProviderError(
+	response: Response,
+	provider: Provider,
+): Promise<
+	| {
+			response: Response;
+			immediateError: null;
+	  }
+	| {
+			response: Response;
+			immediateError: {
+				errorCode: string;
+				errorMessage: string;
+				errorResponseText: string;
+				errorType: string;
+				inferredStatusCode: number;
+				statusText: string;
+			};
+	  }
+> {
+	if (!response.body || provider === "aws-bedrock") {
+		return {
+			response,
+			immediateError: null,
+		};
+	}
+
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	const replayChunks: Uint8Array[] = [];
+	let peekBuffer = "";
+
+	while (peekBuffer.length < IMMEDIATE_STREAM_ERROR_PEEK_LIMIT) {
+		const { done, value } = await reader.read();
+		if (done) {
+			break;
+		}
+
+		replayChunks.push(value);
+		peekBuffer += decoder.decode(value, { stream: true });
+
+		const firstEventData = extractFirstSseEventData(peekBuffer);
+		if (!firstEventData) {
+			continue;
+		}
+
+		let parsedEvent: unknown;
+		try {
+			parsedEvent = JSON.parse(firstEventData);
+		} catch {
+			break;
+		}
+
+		const openAiCompatibleStreamError =
+			parsedEvent &&
+			typeof parsedEvent === "object" &&
+			"error" in parsedEvent &&
+			parsedEvent.error &&
+			typeof parsedEvent.error === "object"
+				? (parsedEvent.error as Record<string, unknown>)
+				: null;
+
+		if (!openAiCompatibleStreamError) {
+			break;
+		}
+
+		const errorResponseText = JSON.stringify(parsedEvent);
+		const inferredStatusCode =
+			typeof openAiCompatibleStreamError.status_code === "number"
+				? openAiCompatibleStreamError.status_code
+				: typeof openAiCompatibleStreamError.status === "number"
+					? openAiCompatibleStreamError.status
+					: 400;
+		const errorType = getFinishReasonFromError(
+			inferredStatusCode,
+			errorResponseText,
+		);
+		const errorMessage =
+			typeof openAiCompatibleStreamError.message === "string"
+				? openAiCompatibleStreamError.message
+				: "Upstream provider returned a streaming error";
+		const errorCode =
+			typeof openAiCompatibleStreamError.code === "string"
+				? openAiCompatibleStreamError.code
+				: typeof openAiCompatibleStreamError.type === "string"
+					? openAiCompatibleStreamError.type
+					: errorType;
+		const statusText =
+			typeof openAiCompatibleStreamError.type === "string"
+				? openAiCompatibleStreamError.type
+				: "stream_error";
+
+		try {
+			await reader.cancel();
+		} catch {
+			// Ignore cancellation errors - the response body is no longer needed.
+		}
+
+		return {
+			response,
+			immediateError: {
+				errorCode,
+				errorMessage,
+				errorResponseText,
+				errorType,
+				inferredStatusCode,
+				statusText,
+			},
+		};
+	}
+
+	const replayStream = new ReadableStream<Uint8Array>({
+		async start(controller) {
+			try {
+				for (const chunk of replayChunks) {
+					controller.enqueue(chunk);
+				}
+
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) {
+						break;
+					}
+					controller.enqueue(value);
+				}
+
+				controller.close();
+			} catch (error) {
+				controller.error(error);
+			}
+		},
+		async cancel(reason) {
+			try {
+				await reader.cancel(reason);
+			} catch {
+				// Ignore cancellation errors when the replay stream is closed early.
+			}
+		},
+	});
+
+	return {
+		response: new Response(replayStream, {
+			status: response.status,
+			statusText: response.statusText,
+			headers: new Headers(response.headers),
+		}),
+		immediateError: null,
+	};
+}
 
 // Reusable TextDecoder to avoid per-chunk allocation in the streaming hot path
 const sharedTextDecoder = new TextDecoder();
@@ -4759,6 +4932,216 @@ chat.openapi(completions, async (c) => {
 							});
 						}
 
+						clearKeepalive();
+						return;
+					}
+
+					const inspectedStreamingResponse =
+						await inspectImmediateStreamingProviderError(res, usedProvider);
+					res = inspectedStreamingResponse.response;
+					if (inspectedStreamingResponse.immediateError) {
+						const {
+							errorCode,
+							errorMessage,
+							errorResponseText,
+							errorType,
+							inferredStatusCode,
+							statusText,
+						} = inspectedStreamingResponse.immediateError;
+
+						logger.warn("Immediate streaming provider error", {
+							status: inferredStatusCode,
+							errorText: errorResponseText,
+							usedProvider,
+							requestedProvider,
+							usedModel,
+							initialRequestedModel,
+							organizationId: project.organizationId,
+							projectId: apiKey.projectId,
+							apiKeyId: apiKey.id,
+							unifiedFinishReason: getUnifiedFinishReason(
+								errorType,
+								usedProvider,
+							),
+						});
+
+						const streamingErrorPluginIds = plugins?.map((p) => p.id) ?? [];
+
+						let sameProviderRetryContext: Awaited<
+							ReturnType<typeof resolveProviderContext>
+						> | null = null;
+						if (isRetryableErrorType(errorType)) {
+							rememberFailedKey(usedProvider, usedRegion, {
+								envVarName,
+								configIndex,
+								providerKeyId: providerKey?.id,
+							});
+							sameProviderRetryContext =
+								await tryResolveAlternateKeyForCurrentProvider(true);
+						}
+
+						const willRetryStreamingError = shouldRetryRequest({
+							requestedProvider,
+							noFallback,
+							errorType,
+							retryCount: retryAttempt,
+							remainingProviders:
+								(routingMetadata?.providerScores.length ?? 0) -
+								failedProviderIds.size -
+								1,
+							usedProvider,
+						});
+						const willRetrySameProvider = sameProviderRetryContext !== null;
+						const willRetryRequest =
+							willRetrySameProvider || willRetryStreamingError;
+
+						const baseLogEntry = createLogEntry(
+							requestId,
+							project,
+							apiKey,
+							providerKey?.id,
+							usedModelFormatted,
+							usedModelMapping,
+							usedProvider,
+							initialRequestedModel,
+							requestedProvider,
+							messages,
+							temperature,
+							max_tokens,
+							top_p,
+							frequency_penalty,
+							presence_penalty,
+							reasoning_effort,
+							reasoning_max_tokens,
+							effort,
+							response_format,
+							tools,
+							tool_choice,
+							source,
+							customHeaders,
+							debugMode,
+							userAgent,
+							image_config,
+							routingMetadata,
+							rawBody,
+							null,
+							requestBody,
+							null,
+							streamingErrorPluginIds,
+							undefined,
+						);
+
+						await insertLogEntry({
+							...baseLogEntry,
+							duration: Date.now() - perAttemptStartTime,
+							timeToFirstToken: null,
+							timeToFirstReasoningToken: null,
+							responseSize: errorResponseText.length,
+							content: null,
+							reasoningContent: null,
+							finishReason: errorType,
+							promptTokens: null,
+							completionTokens: null,
+							totalTokens: null,
+							reasoningTokens: null,
+							cachedTokens: null,
+							hasError: errorType !== "content_filter",
+							streamed: true,
+							canceled: false,
+							errorDetails:
+								errorType === "content_filter"
+									? null
+									: {
+											statusCode: inferredStatusCode,
+											statusText,
+											responseText: errorResponseText,
+										},
+							cachedInputCost: null,
+							requestCost: null,
+							webSearchCost: null,
+							imageInputTokens: null,
+							imageOutputTokens: null,
+							imageInputCost: null,
+							imageOutputCost: null,
+							discount: null,
+							dataStorageCost: "0",
+							cached: false,
+							toolResults: null,
+							retried: willRetryRequest,
+							retriedByLogId: willRetryRequest ? finalLogId : null,
+						});
+
+						if (envVarName !== undefined && errorType !== "content_filter") {
+							reportKeyError(
+								envVarName,
+								configIndex,
+								inferredStatusCode,
+								errorResponseText,
+							);
+						}
+						if (providerKey?.id && errorType !== "content_filter") {
+							reportTrackedKeyError(
+								providerKey.id,
+								inferredStatusCode,
+								errorResponseText,
+							);
+						}
+
+						if (willRetrySameProvider && sameProviderRetryContext) {
+							routingAttempts.push(
+								buildRoutingAttempt(
+									usedProvider,
+									baseModelName,
+									inferredStatusCode,
+									getErrorType(inferredStatusCode),
+									false,
+									{
+										region: usedRegion,
+										apiKeyHash: usedApiKeyHash,
+									},
+								),
+							);
+							applyResolvedProviderContext(sameProviderRetryContext);
+							retryAttempt--;
+							continue;
+						}
+
+						if (willRetryStreamingError) {
+							routingAttempts.push(
+								buildRoutingAttempt(
+									usedProvider,
+									baseModelName,
+									inferredStatusCode,
+									getErrorType(inferredStatusCode),
+									false,
+									{
+										region: usedRegion,
+										apiKeyHash: usedApiKeyHash,
+									},
+								),
+							);
+							failedProviderIds.add(providerRetryKey(usedProvider, usedRegion));
+							continue;
+						}
+
+						await writeSSEAndCache({
+							event: "error",
+							data: JSON.stringify({
+								error: {
+									message: errorMessage,
+									type: errorType,
+									code: errorCode,
+									param: null,
+									responseText: errorResponseText,
+								},
+							}),
+							id: String(eventId++),
+						});
+						await writeSSEAndCache({
+							event: "done",
+							data: "[DONE]",
+							id: String(eventId++),
+						});
 						clearKeepalive();
 						return;
 					}

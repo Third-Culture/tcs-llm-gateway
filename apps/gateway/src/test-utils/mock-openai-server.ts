@@ -804,12 +804,36 @@ mockOpenAIServer.post("/v1/chat/completions", async (c) => {
 		chatMessages,
 		"TRIGGER_STREAM_PROVIDER_ERROR",
 	);
+	const shouldFailOnceWithImmediateStream404 = hasUserMessageTrigger(
+		chatMessages,
+		"TRIGGER_STREAM_FAIL_ONCE_404",
+	);
 
 	const assistantContent = `Hello! I received your message: "${userMessage}". This is a mock response from the test server.`;
 
 	if (body.stream === true) {
 		return streamSSE(c, async (stream) => {
 			let eventId = 0;
+
+			if (shouldFailOnceWithImmediateStream404) {
+				failOnceCounter++;
+				if (failOnceCounter === 1) {
+					await stream.writeSSE({
+						data: JSON.stringify({
+							id: "chatcmpl-err-404",
+							error: {
+								code: "model_not_found",
+								message: "The model 'nonexistent-model' does not exist.",
+								param: "model",
+								type: "invalid_request_error",
+								status_code: 404,
+							},
+						}),
+						id: String(eventId++),
+					});
+					return;
+				}
+			}
 
 			await stream.writeSSE({
 				data: JSON.stringify({
