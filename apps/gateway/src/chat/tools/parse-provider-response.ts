@@ -261,6 +261,11 @@ export function parseProviderResponse(
 				}),
 			);
 
+			// Set content label for image generation when no text content is present
+			if (!content && images.length > 0) {
+				content = imageLabel;
+			}
+
 			// Debug logging to identify parsing issues
 			if (!content && !reasoningContent && parts.length > 0 && !images.length) {
 				logger.warn(
