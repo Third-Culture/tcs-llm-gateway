@@ -1,10 +1,14 @@
 import { publishToQueue, LOG_QUEUE } from "@llmgateway/cache";
-import { UnifiedFinishReason, type LogInsertData } from "@llmgateway/db";
+import {
+	db,
+	log,
+	UnifiedFinishReason,
+	type LogInsertData,
+} from "@llmgateway/db";
 import { recordChatCompletionMetrics } from "@llmgateway/instrumentation";
 import { logger } from "@llmgateway/logger";
 
 import type { InferInsertModel } from "@llmgateway/db";
-import type { log } from "@llmgateway/db";
 
 /**
  * Check if a finish reason is expected to map to UNKNOWN
@@ -20,6 +24,7 @@ export function isExpectedUnknownFinishReason(
 	// Google's "OTHER" finish reason is expected and maps to UNKNOWN
 	if (
 		(provider === "google-ai-studio" ||
+			provider === "glacier" ||
 			provider === "google-vertex" ||
 			provider === "quartz" ||
 			provider === "obsidian") &&
@@ -76,6 +81,7 @@ export function getUnifiedFinishReason(
 			}
 			break;
 		case "google-ai-studio":
+		case "glacier":
 		case "google-vertex":
 		case "quartz":
 		case "obsidian":
@@ -184,7 +190,10 @@ export function calculateDataStorageCost(
 
 export type LogData = InferInsertModel<typeof log>;
 
-export async function insertLog(logData: LogInsertData): Promise<unknown> {
+export async function insertLog(
+	logData: LogInsertData,
+	options?: { syncInsert?: boolean },
+): Promise<unknown> {
 	if (logData.unifiedFinishReason === undefined) {
 		if (logData.canceled) {
 			logData.unifiedFinishReason = UnifiedFinishReason.CANCELED;
@@ -238,6 +247,11 @@ export async function insertLog(logData: LogInsertData): Promise<unknown> {
 			: undefined,
 		errorType,
 	});
+
+	if (options?.syncInsert) {
+		await db.insert(log).values(logData as LogData);
+		return 1;
+	}
 
 	await publishToQueue(LOG_QUEUE, logData);
 	return 1; // Return 1 to match test expectations

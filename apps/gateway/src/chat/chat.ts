@@ -29,6 +29,7 @@ import {
 	peekProviderRateLimit,
 	providerRateLimitWindows,
 } from "@/lib/provider-rate-limit.js";
+import { getResponsesContext } from "@/lib/responses-context.js";
 import {
 	createCombinedSignal,
 	createStreamingCombinedSignal,
@@ -93,6 +94,7 @@ import {
 	finishStreamCompletion,
 	registerStreamCompletion,
 	updateBaseLogOptions,
+	updateLogInsertOptions,
 } from "./tools/chat-log-context.js";
 import {
 	checkContentFilter,
@@ -116,6 +118,7 @@ import { extractTokenUsage } from "./tools/extract-token-usage.js";
 import { extractToolCalls } from "./tools/extract-tool-calls.js";
 import { getFinishReasonFromError } from "./tools/get-finish-reason-from-error.js";
 import { getProviderEnv } from "./tools/get-provider-env.js";
+import { hasMeaningfulAssistantOutput } from "./tools/has-meaningful-assistant-output.js";
 import { healJsonResponse } from "./tools/heal-json-response.js";
 import { isModelTrulyFree } from "./tools/is-model-truly-free.js";
 import { messagesContainImages } from "./tools/messages-contain-images.js";
@@ -125,6 +128,11 @@ import { checkOpenAIContentFilter } from "./tools/openai-content-filter.js";
 import { convertAwsEventStreamToSSE } from "./tools/parse-aws-eventstream.js";
 import { parseModelInput } from "./tools/parse-model-input.js";
 import { parseProviderResponse } from "./tools/parse-provider-response.js";
+import {
+	flushTaggedStreamingRemainder,
+	splitTaggedStreamingContentChunk,
+	splitReasoningFromTaggedContent,
+} from "./tools/reasoning-details.js";
 import { resolveModelInfo } from "./tools/resolve-model-info.js";
 import {
 	formatUsedModelForDisplay,
@@ -443,6 +451,7 @@ function addContentFilterRoutingMetadata(
 function usesGoogleQueryToken(provider: string): boolean {
 	return (
 		provider === "google-ai-studio" ||
+		provider === "glacier" ||
 		provider === "google-vertex" ||
 		provider === "quartz"
 	);
@@ -767,6 +776,16 @@ chat.openapi(completions, async (c) => {
 	// Extract custom X-LLMGateway-* headers
 	const customHeaders = extractCustomHeaders(c);
 	const requestPluginIds = plugins?.map((plugin) => plugin.id) ?? [];
+	const responsesContextKey = c.req.header("x-responses-context-key");
+	const responsesContext = responsesContextKey
+		? getResponsesContext(responsesContextKey)
+		: undefined;
+	const logIdOverride = responsesContext?.logId;
+	updateLogInsertOptions(c, {
+		syncInsert: responsesContext?.syncInsert ?? false,
+		logIdOverride,
+		responsesApiData: responsesContext?.responsesApiData ?? null,
+	});
 
 	// Check for X-No-Fallback header to disable provider fallback on low uptime
 	const noFallback =
@@ -2799,6 +2818,8 @@ chat.openapi(completions, async (c) => {
 			p.region === usedRegion,
 	);
 	let supportsReasoning = selectedProviderMapping?.reasoning === true;
+	let splitTaggedReasoning =
+		selectedProviderMapping?.splitTaggedReasoning === true;
 
 	// Check if messages contain existing tool calls or tool results
 	// If so, use Chat Completions API instead of Responses API
@@ -3663,7 +3684,7 @@ chat.openapi(completions, async (c) => {
 					const routingAttempts: RoutingAttempt[] = [];
 					const failedProviderIds = new Set<string>();
 					let res: Response | undefined;
-					const finalLogId = shortid();
+					const finalLogId = logIdOverride ?? shortid();
 					for (
 						let retryAttempt = 0;
 						retryAttempt <= MAX_RETRIES;
@@ -3774,6 +3795,7 @@ chat.openapi(completions, async (c) => {
 								requestCanBeCanceled = ctx.requestCanBeCanceled;
 								isImageGeneration = ctx.isImageGeneration;
 								supportsReasoning = ctx.supportsReasoning;
+								splitTaggedReasoning = ctx.splitTaggedReasoning ?? false;
 								temperature = ctx.temperature;
 								max_tokens = ctx.max_tokens;
 								top_p = ctx.top_p;
@@ -4594,11 +4616,17 @@ chat.openapi(completions, async (c) => {
 					const serverToolUseIndices = new Set<number>(); // Track Anthropic server_tool_use block indices
 					let sawUpstreamDoneSentinel = false;
 					let sawProviderTerminalEvent = false;
+					let sawOpenAiResponsesDoneEvent = false;
+					let sawOpenAiResponsesCompletedStatus = false;
 					let handledTerminalProviderEvent = false;
 					let buffer = ""; // Buffer for accumulating partial data across chunks (string for SSE)
 					let binaryBuffer = new Uint8Array(0); // Buffer for binary event streams (AWS Bedrock)
 					let rawUpstreamData = ""; // Raw data received from upstream provider
 					const isAwsBedrock = usedProvider === "aws-bedrock";
+					const taggedReasoningStreamState = {
+						inReasoning: false,
+						pending: "",
+					};
 					let shouldTerminateStream = false;
 
 					// Response healing for streaming mode
@@ -4612,7 +4640,7 @@ chat.openapi(completions, async (c) => {
 						streamingIsJsonResponseFormat &&
 						(streamingResponseHealingEnabled === true ||
 							usedProvider === "novita" ||
-							usedProvider === "minimax");
+							splitTaggedReasoning);
 
 					// Buffer for storing chunks when healing is enabled
 					// We need to buffer content, track last chunk info, and replay healed content at the end
@@ -5053,6 +5081,39 @@ chat.openapi(completions, async (c) => {
 									}
 
 									if (!shouldBufferForHealing) {
+										if (splitTaggedReasoning) {
+											const flushedRemainder = flushTaggedStreamingRemainder(
+												taggedReasoningStreamState,
+											);
+											if (
+												flushedRemainder.content ||
+												flushedRemainder.reasoning
+											) {
+												await writeSSEAndCache({
+													data: JSON.stringify({
+														id: `chatcmpl-${Date.now()}`,
+														object: "chat.completion.chunk",
+														created: Math.floor(Date.now() / 1000),
+														model: usedModel,
+														choices: [
+															{
+																index: 0,
+																delta: {
+																	...(flushedRemainder.content && {
+																		content: flushedRemainder.content,
+																	}),
+																	...(flushedRemainder.reasoning && {
+																		reasoning: flushedRemainder.reasoning,
+																	}),
+																},
+															},
+														],
+													}),
+													id: String(eventId++),
+												});
+											}
+										}
+
 										await writeSSEAndCache({
 											event: "done",
 											data: "[DONE]",
@@ -5268,6 +5329,7 @@ chat.openapi(completions, async (c) => {
 										data,
 										messages,
 										serverToolUseIndices,
+										supportsReasoning,
 									);
 
 									// Skip null events (some providers have non-data events)
@@ -5275,6 +5337,57 @@ chat.openapi(completions, async (c) => {
 										processedLength = eventEnd;
 										searchStart = eventEnd;
 										continue;
+									}
+
+									if (
+										data &&
+										typeof data === "object" &&
+										"response" in data &&
+										data.response &&
+										typeof data.response === "object" &&
+										"status" in data.response &&
+										data.response.status === "completed"
+									) {
+										sawOpenAiResponsesCompletedStatus = true;
+									}
+									if (
+										data &&
+										typeof data === "object" &&
+										"type" in data &&
+										typeof data.type === "string" &&
+										(data.type === "response.content_part.done" ||
+											data.type === "response.output_item.done" ||
+											data.type === "response.output_text.done")
+									) {
+										sawOpenAiResponsesDoneEvent = true;
+									}
+
+									if (splitTaggedReasoning) {
+										const deltaContent =
+											transformedData.choices?.[0]?.delta?.content;
+
+										if (
+											typeof deltaContent === "string" &&
+											deltaContent.length > 0
+										) {
+											const splitChunk = splitTaggedStreamingContentChunk(
+												deltaContent,
+												taggedReasoningStreamState,
+											);
+
+											if (splitChunk.content) {
+												transformedData.choices[0].delta.content =
+													splitChunk.content;
+											} else {
+												delete transformedData.choices[0].delta.content;
+											}
+
+											if (splitChunk.reasoning) {
+												transformedData.choices[0].delta.reasoning =
+													(transformedData.choices[0].delta.reasoning ?? "") +
+													splitChunk.reasoning;
+											}
+										}
 									}
 
 									// For Anthropic, if we have partial usage data, complete it
@@ -5611,6 +5724,7 @@ chat.openapi(completions, async (c) => {
 									// Handle provider-specific finish reason extraction
 									switch (usedProvider) {
 										case "google-ai-studio":
+										case "glacier":
 										case "google-vertex":
 										case "quartz":
 										case "obsidian":
@@ -5919,6 +6033,20 @@ chat.openapi(completions, async (c) => {
 								calculatedReasoningTokens =
 									estimateTokensFromContent(fullReasoningContent);
 							}
+						}
+
+						if (
+							!streamingError &&
+							!canceled &&
+							finishReason === null &&
+							sawOpenAiResponsesDoneEvent &&
+							sawOpenAiResponsesCompletedStatus
+						) {
+							sawProviderTerminalEvent = true;
+							finishReason =
+								streamingToolCalls && streamingToolCalls.length > 0
+									? "tool_calls"
+									: "stop";
 						}
 
 						const streamHasVerifiedTerminalEvent =
@@ -6326,6 +6454,14 @@ chat.openapi(completions, async (c) => {
 						// clearInterval is idempotent so calling it multiple times is safe
 						clearKeepalive();
 
+						if (splitTaggedReasoning && !fullReasoningContent) {
+							const splitContent = splitReasoningFromTaggedContent(fullContent);
+							if (splitContent.reasoningContent) {
+								fullContent = splitContent.content ?? "";
+								fullReasoningContent = splitContent.reasoningContent;
+							}
+						}
+
 						// Reuse costs calculated earlier (before usage chunk was sent)
 						// If we came through the error path (hasEmptyResponse), calculate now
 						const billCancelledRequests = shouldBillCancelledRequests();
@@ -6628,7 +6764,7 @@ chat.openapi(completions, async (c) => {
 	let isTimeoutFetchError = false;
 	let res: Response | undefined;
 	let duration = 0;
-	const finalLogId = shortid();
+	const finalLogId = logIdOverride ?? shortid();
 	for (let retryAttempt = 0; retryAttempt <= MAX_RETRIES; retryAttempt++) {
 		const perAttemptStartTime = Date.now();
 
@@ -6730,6 +6866,7 @@ chat.openapi(completions, async (c) => {
 				requestCanBeCanceled = ctx.requestCanBeCanceled;
 				isImageGeneration = ctx.isImageGeneration;
 				supportsReasoning = ctx.supportsReasoning;
+				splitTaggedReasoning = ctx.splitTaggedReasoning ?? false;
 				temperature = ctx.temperature;
 				max_tokens = ctx.max_tokens;
 				top_p = ctx.top_p;
@@ -7601,6 +7738,8 @@ chat.openapi(completions, async (c) => {
 		usedModel,
 		json,
 		messages,
+		supportsReasoning,
+		splitTaggedReasoning,
 	);
 	let { content, totalTokens } = parsedResponse;
 	const {
@@ -7635,7 +7774,7 @@ chat.openapi(completions, async (c) => {
 		isJsonResponseFormat &&
 		(responseHealingEnabled === true ||
 			usedProvider === "novita" ||
-			usedProvider === "minimax");
+			splitTaggedReasoning);
 
 	if (shouldHealNonStreaming && content) {
 		const healingResult = healJsonResponse(content);
@@ -7805,10 +7944,13 @@ chat.openapi(completions, async (c) => {
 		finishReason !== "content_filter" &&
 		finishReason !== "incomplete" &&
 		!isGoogleContentFilter &&
-		(!calculatedCompletionTokens || calculatedCompletionTokens === 0) &&
-		(!calculatedReasoningTokens || calculatedReasoningTokens === 0) &&
-		(!content || content.trim() === "") &&
-		(!toolResults || toolResults.length === 0);
+		!hasMeaningfulAssistantOutput({
+			completionTokens: calculatedCompletionTokens,
+			reasoningTokens: calculatedReasoningTokens,
+			content,
+			toolResults,
+			images: convertedImages,
+		});
 
 	if (hasEmptyNonStreamingResponse) {
 		logger.debug("Empty non-streaming response detected", {
@@ -7818,6 +7960,7 @@ chat.openapi(completions, async (c) => {
 			calculatedCompletionTokens,
 			contentLength: content?.length ?? 0,
 			toolResultsLength: toolResults?.length ?? 0,
+			imageCount: convertedImages?.length ?? 0,
 		});
 	}
 

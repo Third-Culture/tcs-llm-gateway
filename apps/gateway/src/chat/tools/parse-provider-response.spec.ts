@@ -16,6 +16,45 @@ vi.mock("@llmgateway/logger", () => ({
 }));
 
 describe("parseProviderResponse", () => {
+	describe("google reasoning output", () => {
+		it("treats missing thought text as null when only thought signatures are returned", () => {
+			const json = {
+				candidates: [
+					{
+						content: {
+							role: "model",
+							parts: [
+								{
+									text: "OK",
+									thoughtSignature: "sig-123",
+								},
+							],
+						},
+						finishReason: "STOP",
+					},
+				],
+				usageMetadata: {
+					promptTokenCount: 5,
+					candidatesTokenCount: 1,
+					totalTokenCount: 50,
+					thoughtsTokenCount: 44,
+				},
+			};
+
+			const result = parseProviderResponse(
+				"google-vertex",
+				"gemini-3-flash-preview",
+				json,
+			);
+
+			expect(result.content).toBe("OK");
+			expect(result.reasoningContent).toBeNull();
+			expect(result.reasoningTokens).toBe(44);
+			expect(result.completionTokens).toBe(45);
+			expect(result.finishReason).toBe("STOP");
+		});
+	});
+
 	describe("aws-bedrock cachedTokens", () => {
 		it("returns cachedTokens as 0 when cacheReadInputTokens is 0", () => {
 			const json = {
@@ -203,6 +242,103 @@ describe("parseProviderResponse", () => {
 			);
 
 			expect(result.cachedTokens).toBe(0);
+		});
+	});
+
+	describe("minimax reasoning extraction", () => {
+		it("extracts reasoning from reasoning_details", () => {
+			const json = {
+				choices: [
+					{
+						message: {
+							role: "assistant",
+							content: "Final answer",
+							reasoning_details: [{ text: "step 1" }, { text: " step 2" }],
+						},
+						finish_reason: "stop",
+					},
+				],
+				usage: {
+					prompt_tokens: 10,
+					completion_tokens: 5,
+					total_tokens: 15,
+				},
+			};
+
+			const result = parseProviderResponse(
+				"minimax",
+				"MiniMax-M2",
+				json,
+				[],
+				true,
+				true,
+			);
+
+			expect(result.content).toBe("Final answer");
+			expect(result.reasoningContent).toBe("step 1 step 2");
+		});
+
+		it("falls back to splitting reasoning tags from content", () => {
+			const json = {
+				choices: [
+					{
+						message: {
+							role: "assistant",
+							content: "<think>step 1\nstep 2</think>\nFinal answer",
+						},
+						finish_reason: "stop",
+					},
+				],
+				usage: {
+					prompt_tokens: 10,
+					completion_tokens: 5,
+					total_tokens: 15,
+				},
+			};
+
+			const result = parseProviderResponse(
+				"minimax",
+				"MiniMax-M2",
+				json,
+				[],
+				true,
+				true,
+			);
+
+			expect(result.content).toBe("Final answer");
+			expect(result.reasoningContent).toBe("step 1\nstep 2");
+		});
+
+		it("strips reasoning tags from content even when reasoning_details are present", () => {
+			const json = {
+				choices: [
+					{
+						message: {
+							role: "assistant",
+							content: "<think>tagged reasoning</think>\nFinal answer",
+							reasoning_details: [{ text: "structured reasoning" }],
+						},
+						finish_reason: "stop",
+					},
+				],
+				usage: {
+					prompt_tokens: 10,
+					completion_tokens: 5,
+					total_tokens: 15,
+				},
+			};
+
+			const result = parseProviderResponse(
+				"minimax",
+				"MiniMax-M2",
+				json,
+				[],
+				true,
+				true,
+			);
+
+			expect(result.content).toBe("Final answer");
+			expect(result.reasoningContent).toBe("structured reasoning");
 		});
 	});
 });

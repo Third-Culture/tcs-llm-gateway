@@ -7,7 +7,6 @@ import {
 	Check,
 	ChevronDown,
 	ChevronUp,
-	ArrowRight,
 	Globe,
 	Linkedin,
 	Share2,
@@ -15,6 +14,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { ModelCodeExampleDialog } from "@/components/models/model-code-example-dialog";
+import { ModelCtaButton } from "@/components/models/model-cta-button";
 import { ModelStatusBadge } from "@/components/models/model-status-badge";
 import { Badge } from "@/lib/components/badge";
 import { Button } from "@/lib/components/button";
@@ -31,7 +31,6 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/lib/components/tooltip";
-import { useAppConfig } from "@/lib/config";
 import { XIcon } from "@/lib/icons/XIcon";
 import { formatContextSize, formatDeprecationDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -135,7 +134,6 @@ export function ModelCard({
 		discount?: string | null,
 	) => string | React.JSX.Element;
 }) {
-	const config = useAppConfig();
 	const [copiedModel, setCopiedModel] = useState<string | null>(null);
 	const [showAllProviders, setShowAllProviders] = useState(false);
 
@@ -391,18 +389,10 @@ export function ModelCard({
 
 					{/* CTA */}
 					<div className="mt-4 pt-4 border-t border-border/30">
-						<Button
-							variant="default"
-							size="default"
-							className="w-full gap-2 font-semibold group/cta"
+						<ModelCtaButton
+							modelId={`${groupedByProvider[0]?.providerId}/${model.id}`}
 							onClick={(e) => e.stopPropagation()}
-							asChild
-						>
-							<a href={`${config.appUrl}/signup`}>
-								Get Started
-								<ArrowRight className="h-4 w-4 transition-transform group-hover/cta:translate-x-0.5" />
-							</a>
-						</Button>
+						/>
 					</div>
 				</div>
 			</Card>
@@ -715,15 +705,148 @@ export function ProviderSection({
 					</div>
 				)}
 
-				{/* Per-request price (if applicable) */}
-				{activeMapping.requestPrice !== null &&
-					activeMapping.requestPrice !== undefined &&
-					parseFloat(activeMapping.requestPrice) > 0 && (
-						<div className="text-xs text-muted-foreground text-center">
-							+ ${parseFloat(activeMapping.requestPrice).toFixed(3)}
-							<span className="text-muted-foreground/60"> per request</span>
+				{/* Image pricing (if applicable) */}
+				{(activeMapping.imageInputTokensByResolution ??
+					activeMapping.imageOutputTokensByResolution) && (
+					<div className="rounded-md bg-muted/40 border border-border/30 p-2.5">
+						<div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-2">
+							Image Pricing (est. per image)
 						</div>
-					)}
+						{activeMapping.imageInputPrice &&
+							activeMapping.imageInputTokensByResolution &&
+							(() => {
+								const imageInputPriceNum = parseFloat(
+									activeMapping.imageInputPrice!,
+								);
+								const named = Object.entries(
+									activeMapping.imageInputTokensByResolution!,
+								).filter(([k]) => k !== "default");
+								const defaultTokens =
+									activeMapping.imageInputTokensByResolution!["default"];
+								const entries: Array<[string, number]> =
+									named.length > 0
+										? named
+										: defaultTokens !== undefined
+											? [["any size", defaultTokens]]
+											: [];
+								if (entries.length === 0) {
+									return null;
+								}
+								const discountNum = activeMapping.discount
+									? parseFloat(activeMapping.discount)
+									: 0;
+								return (
+									<div className="mb-1.5">
+										<div className="text-[10px] text-muted-foreground mb-0.5">
+											Input
+										</div>
+										{entries.map(([res, tokensPerImage]) => {
+											const raw = tokensPerImage * imageInputPriceNum;
+											const discounted = raw * (1 - discountNum);
+											return (
+												<div
+													key={res}
+													className="flex justify-between items-center text-xs py-0.5"
+												>
+													<span className="text-muted-foreground">{res}</span>
+													<span className="font-mono tabular-nums">
+														{discountNum > 0 ? (
+															<>
+																<span className="line-through text-muted-foreground mr-1">
+																	~${raw.toFixed(4)}
+																</span>
+																<span className="text-green-600 font-semibold">
+																	~${discounted.toFixed(4)}
+																</span>
+															</>
+														) : (
+															`~$${raw.toFixed(4)}`
+														)}
+													</span>
+												</div>
+											);
+										})}
+									</div>
+								);
+							})()}
+						{activeMapping.imageOutputPrice &&
+							activeMapping.imageOutputTokensByResolution &&
+							(() => {
+								const imageOutputPriceNum = parseFloat(
+									activeMapping.imageOutputPrice!,
+								);
+								const entries = Object.entries(
+									activeMapping.imageOutputTokensByResolution!,
+								).filter(([k]) => k !== "default");
+								if (entries.length === 0) {
+									return null;
+								}
+								const discountNum = activeMapping.discount
+									? parseFloat(activeMapping.discount)
+									: 0;
+								return (
+									<div>
+										<div className="text-[10px] text-muted-foreground mb-0.5">
+											Output
+										</div>
+										{entries.map(([res, tokensPerImage]) => {
+											const raw = tokensPerImage * imageOutputPriceNum;
+											const discounted = raw * (1 - discountNum);
+											return (
+												<div
+													key={res}
+													className="flex justify-between items-center text-xs py-0.5"
+												>
+													<span className="text-muted-foreground">{res}</span>
+													<span className="font-mono tabular-nums">
+														{discountNum > 0 ? (
+															<>
+																<span className="line-through text-muted-foreground mr-1">
+																	~${raw.toFixed(4)}
+																</span>
+																<span className="text-green-600 font-semibold">
+																	~${discounted.toFixed(4)}
+																</span>
+															</>
+														) : (
+															`~$${raw.toFixed(4)}`
+														)}
+													</span>
+												</div>
+											);
+										})}
+									</div>
+								);
+							})()}
+					</div>
+				)}
+
+				{/* Per-request / per-search price (if applicable) */}
+				{(activeMapping.requestPrice !== null &&
+					activeMapping.requestPrice !== undefined &&
+					parseFloat(activeMapping.requestPrice) > 0) ||
+				(activeMapping.webSearchPrice !== null &&
+					activeMapping.webSearchPrice !== undefined &&
+					parseFloat(activeMapping.webSearchPrice) > 0) ? (
+					<div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+						{activeMapping.requestPrice !== null &&
+							activeMapping.requestPrice !== undefined &&
+							parseFloat(activeMapping.requestPrice) > 0 && (
+								<span>
+									+ ${parseFloat(activeMapping.requestPrice).toFixed(3)}
+									<span className="text-muted-foreground/60"> per request</span>
+								</span>
+							)}
+						{activeMapping.webSearchPrice !== null &&
+							activeMapping.webSearchPrice !== undefined &&
+							parseFloat(activeMapping.webSearchPrice) > 0 && (
+								<span>
+									+ ${parseFloat(activeMapping.webSearchPrice).toFixed(3)}
+									<span className="text-muted-foreground/60"> per search</span>
+								</span>
+							)}
+					</div>
+				) : null}
 			</div>
 		</div>
 	);

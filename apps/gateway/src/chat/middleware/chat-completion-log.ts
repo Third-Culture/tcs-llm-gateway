@@ -119,10 +119,15 @@ async function flushChatCompletionLogs(
 		try {
 			await insertLog({
 				...logData,
+				...(state.logIdOverride && !logData.retried
+					? { id: state.logIdOverride }
+					: {}),
+				responsesApiData:
+					logData.responsesApiData ?? state.responsesApiData ?? null,
 				internalContentFilter: state.internalContentFilter
 					? true
 					: logData.internalContentFilter,
-			});
+			}, { syncInsert: state.syncInsert });
 		} catch (error) {
 			logger.error(
 				"Failed to flush queued chat completion log",

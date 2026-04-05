@@ -17,6 +17,9 @@ export interface ChatCompletionLogState {
 	caughtError?: unknown;
 	internalContentFilter?: boolean;
 	clientErrorSynthesized?: boolean;
+	syncInsert?: boolean;
+	logIdOverride?: string;
+	responsesApiData?: unknown;
 }
 
 function getOrCreateChatCompletionLogState(
@@ -50,6 +53,19 @@ export function updateBaseLogOptions(
 		...state.baseLogOptions,
 		...patch,
 	};
+}
+
+export function updateLogInsertOptions(
+	c: Context<ServerTypes>,
+	patch: Pick<
+		ChatCompletionLogState,
+		"syncInsert" | "logIdOverride" | "responsesApiData"
+	>,
+) {
+	const state = getOrCreateChatCompletionLogState(c);
+	state.syncInsert = patch.syncInsert;
+	state.logIdOverride = patch.logIdOverride;
+	state.responsesApiData = patch.responsesApiData;
 }
 
 function hasCompleteBaseLogOptions(

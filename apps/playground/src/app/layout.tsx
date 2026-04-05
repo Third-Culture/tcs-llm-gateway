@@ -20,8 +20,6 @@ const geistMono = Geist_Mono({
 	display: "swap",
 });
 
-export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = {
 	metadataBase: new URL("https://chat.llmgateway.io"),
 	title: {
@@ -74,13 +72,14 @@ const webAppSchema = {
 	name: "LLM Gateway Playground",
 	url: "https://chat.llmgateway.io",
 	applicationCategory: "DeveloperApplication",
-	operatingSystem: "All",
+	browserRequirements: "Requires JavaScript. Requires HTML5.",
 	description:
 		"Test and compare 210+ AI models in one playground. Chat, generate images and videos, and run multi-model group chats.",
 	offers: {
 		"@type": "Offer",
 		price: "0",
 		priceCurrency: "USD",
+		availability: "https://schema.org/InStock",
 	},
 };
 

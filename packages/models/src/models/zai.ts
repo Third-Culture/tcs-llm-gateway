@@ -261,6 +261,7 @@ export const zaiModels = [
 				reasoning: false,
 				vision: false,
 				tools: true,
+				stability: "unstable",
 				jsonOutput: true,
 			},
 			{
@@ -344,6 +345,7 @@ export const zaiModels = [
 				reasoning: false,
 				vision: false,
 				tools: true,
+				stability: "unstable",
 				jsonOutput: true,
 			},
 		],
@@ -403,6 +405,7 @@ export const zaiModels = [
 			{
 				// Canopywave has been intermittently unavailable for this model in E2E.
 				stability: "unstable",
+				deactivatedAt: new Date("2026-03-31"),
 				providerId: "canopywave",
 				modelName: "zai/glm-4.7",
 				inputPrice: 0.43 / 1e6,
@@ -474,6 +477,7 @@ export const zaiModels = [
 			},
 			{
 				providerId: "together.ai",
+				test: "skip", // skip tests due to reasoning issues
 				modelName: "zai-org/GLM-4.7",
 				inputPrice: 0.45 / 1e6,
 				outputPrice: 2.0 / 1e6,

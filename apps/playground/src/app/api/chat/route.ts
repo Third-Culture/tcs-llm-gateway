@@ -6,9 +6,9 @@ import {
 	tool,
 	type UIMessage,
 	convertToModelMessages,
+	JsonToSseTransformStream,
 	createUIMessageStream,
 	createUIMessageStreamResponse,
-	JsonToSseTransformStream,
 } from "ai";
 import { cookies } from "next/headers";
 import { z } from "zod";
@@ -426,38 +426,20 @@ export async function POST(req: Request) {
 					: {}),
 			});
 
-			const uiStream = createUIMessageStream({
+			const stream = createUIMessageStream({
 				execute: async ({ writer }) => {
-					const messageId = crypto.randomUUID();
-					writer.write({
-						type: "start",
-						messageId,
-					});
-					writer.write({ type: "start-step" });
 					for (const image of result.images) {
-						const mt = image.mediaType || "image/png";
+						const mediaType = image.mediaType || "image/png";
 						writer.write({
 							type: "file",
-							url: `data:${mt};base64,${image.base64}`,
-							mediaType: mt,
+							url: `data:${mediaType};base64,${image.base64}`,
+							mediaType,
 						});
 					}
-					writer.write({ type: "finish-step" });
-					writer.write({
-						type: "finish",
-						finishReason: "stop",
-					});
 				},
 			});
 
-			return createUIMessageStreamResponse({
-				stream: uiStream,
-				headers: {
-					"cache-control": "no-cache",
-					connection: "keep-alive",
-					"x-accel-buffering": "no",
-				},
-			});
+			return createUIMessageStreamResponse({ stream });
 		} catch (error: unknown) {
 			const status =
 				typeof error === "object" &&

@@ -3,6 +3,10 @@ import { logger } from "@llmgateway/logger";
 
 import { estimateTokens } from "./estimate-tokens.js";
 import { adjustGoogleCandidateTokens } from "./extract-token-usage.js";
+import {
+	extractReasoningDetailsText,
+	splitReasoningFromTaggedContent,
+} from "./reasoning-details.js";
 
 import type { Annotation, ImageObject } from "./types.js";
 import type { Provider } from "@llmgateway/models";
@@ -15,6 +19,8 @@ export function parseProviderResponse(
 	usedModel: string,
 	json: any,
 	messages: any[] = [],
+	supportsReasoning = true,
+	splitTaggedReasoning = false,
 ) {
 	let content = null;
 	let reasoningContent = null;
@@ -188,6 +194,7 @@ export function parseProviderResponse(
 			break;
 		}
 		case "google-ai-studio":
+		case "glacier":
 		case "google-vertex":
 		case "quartz":
 		case "obsidian": {
@@ -212,9 +219,13 @@ export function parseProviderResponse(
 			const contentParts = parts.filter((part: any) => !part.thought);
 			const reasoningParts = parts.filter((part: any) => part.thought);
 
-			content = contentParts.map((part: any) => part.text).join("") ?? null;
-			reasoningContent =
-				reasoningParts.map((part: any) => part.text).join("") ?? null;
+			const textContent = contentParts.map((part: any) => part.text).join("");
+			const thoughtContent = reasoningParts
+				.map((part: any) => part.text)
+				.join("");
+
+			content = textContent.length > 0 ? textContent : null;
+			reasoningContent = thoughtContent.length > 0 ? thoughtContent : null;
 
 			// Extract images from Google response parts
 			const imageParts = parts.filter((part: any) => part.inlineData);
@@ -381,6 +392,9 @@ export function parseProviderResponse(
 			reasoningContent =
 				json.choices?.[0]?.message?.reasoning ??
 				json.choices?.[0]?.message?.reasoning_content ??
+				extractReasoningDetailsText(
+					json.choices?.[0]?.message?.reasoning_details,
+				) ??
 				null;
 			finishReason = json.choices?.[0]?.finish_reason ?? null;
 			promptTokens = json.usage?.prompt_tokens ?? null;
@@ -461,6 +475,9 @@ export function parseProviderResponse(
 				reasoningContent =
 					json.choices?.[0]?.message?.reasoning ??
 					json.choices?.[0]?.message?.reasoning_content ??
+					extractReasoningDetailsText(
+						json.choices?.[0]?.message?.reasoning_details,
+					) ??
 					null;
 				finishReason = json.choices?.[0]?.finish_reason ?? null;
 				promptTokens = json.usage?.prompt_tokens ?? null;
@@ -647,6 +664,9 @@ export function parseProviderResponse(
 				reasoningContent =
 					json.choices?.[0]?.message?.reasoning ??
 					json.choices?.[0]?.message?.reasoning_content ??
+					extractReasoningDetailsText(
+						json.choices?.[0]?.message?.reasoning_details,
+					) ??
 					null;
 				finishReason = json.choices?.[0]?.finish_reason ?? null;
 
@@ -744,6 +764,14 @@ export function parseProviderResponse(
 			break;
 	}
 
+	if (splitTaggedReasoning && typeof content === "string") {
+		const splitContent = splitReasoningFromTaggedContent(content);
+		if (splitContent.reasoningContent) {
+			content = splitContent.content;
+			reasoningContent ??= splitContent.reasoningContent;
+		}
+	}
+
 	// Cache reasoning_content for Moonshot thinking models when tool_calls are present
 	// This is needed for multi-turn tool call conversations because Moonshot requires
 	// reasoning_content to be included in assistant messages with tool_calls
@@ -767,6 +795,13 @@ export function parseProviderResponse(
 					});
 			}
 		}
+	}
+
+	// For non-reasoning models that return their answer in reasoning_content
+	// (e.g. CanopyWave Mimo), move reasoning to content so the response is visible.
+	if (!supportsReasoning && !content && reasoningContent) {
+		content = reasoningContent;
+		reasoningContent = null;
 	}
 
 	return {
