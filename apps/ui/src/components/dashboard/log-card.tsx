@@ -101,8 +101,13 @@ export function LogCard({
 	let StatusIcon = CheckCircle2;
 	let color = "text-green-500";
 	let bgColor = "bg-green-100";
+	const isClientError = log.unifiedFinishReason === "client_error";
 
-	if (log.hasError || log.unifiedFinishReason === "error") {
+	if (isClientError) {
+		StatusIcon = AlertCircle;
+		color = "text-orange-500";
+		bgColor = "bg-orange-100";
+	} else if (log.hasError || log.unifiedFinishReason === "error") {
 		StatusIcon = AlertCircle;
 		color = "text-red-500";
 		bgColor = "bg-red-100";
@@ -190,11 +195,18 @@ export function LogCard({
 							)}
 							<Badge
 								variant={
-									log.hasError
-										? "destructive"
-										: log.unifiedFinishReason === "content_filter"
+									isClientError
+										? "outline"
+										: log.hasError
 											? "destructive"
-											: "default"
+											: log.unifiedFinishReason === "content_filter"
+												? "destructive"
+												: "default"
+								}
+								className={
+									isClientError
+										? "border-orange-300 bg-orange-50 text-orange-600"
+										: undefined
 								}
 							>
 								{log.unifiedFinishReason}
@@ -1061,15 +1073,31 @@ export function LogCard({
 					)}
 					{log.hasError && !!log.errorDetails && (
 						<div className="space-y-2">
-							<h4 className="text-sm font-medium text-red-600">
+							<h4
+								className={`text-sm font-medium ${isClientError ? "text-orange-600" : "text-red-600"}`}
+							>
 								Error Details
 							</h4>
-							<div className="grid grid-cols-2 gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm">
-								<div className="text-red-600">Status Code</div>
+							<div
+								className={`grid grid-cols-2 gap-2 rounded-md p-3 text-sm ${isClientError ? "border border-orange-200 bg-orange-50" : "border border-red-200 bg-red-50"}`}
+							>
+								<div
+									className={isClientError ? "text-orange-600" : "text-red-600"}
+								>
+									Status Code
+								</div>
 								<div className="font-medium">{log.errorDetails.statusCode}</div>
-								<div className="text-red-600">Status Text</div>
+								<div
+									className={isClientError ? "text-orange-600" : "text-red-600"}
+								>
+									Status Text
+								</div>
 								<div className="font-medium">{log.errorDetails.statusText}</div>
-								<div className="text-red-600 col-span-2">Error Message</div>
+								<div
+									className={`col-span-2 ${isClientError ? "text-orange-600" : "text-red-600"}`}
+								>
+									Error Message
+								</div>
 								<div className="col-span-2 rounded bg-white text-black p-2 text-xs">
 									{log.errorDetails.responseText}
 								</div>
