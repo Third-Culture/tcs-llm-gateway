@@ -2013,6 +2013,80 @@ describe("fallback and error status code handling", () => {
 			expect(failedLog?.retriedByLogId).toBe(successLog?.id);
 		});
 
+		test("non-streaming: retries after random exploration selects a bad provider", async () => {
+			await setupMultiProviderKeys();
+
+			const randomSpy = vi
+				.spyOn(Math, "random")
+				.mockReturnValueOnce(0)
+				.mockReturnValue(0);
+			const originalArgv = process.argv;
+			const originalNodeEnv = process.env.NODE_ENV;
+			const originalVitest = process.env.VITEST;
+			delete process.env.NODE_ENV;
+			delete process.env.VITEST;
+			process.argv = ["node", "/tmp/not-a-test-run.mjs"];
+
+			try {
+				const res = await app.request("/v1/chat/completions", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: "Bearer real-token",
+					},
+					body: JSON.stringify({
+						model: "glm-4.7",
+						messages: [
+							{ role: "user", content: "TRIGGER_FAIL_ONCE_404 hello" },
+						],
+					}),
+				});
+
+				expect(res.status).toBe(200);
+				const json = await res.json();
+
+				expect(json.metadata.routing).toBeDefined();
+				expect(json.metadata.routing.length).toBeGreaterThanOrEqual(2);
+				expect(json.metadata.routing[0]).toMatchObject({
+					status_code: 404,
+					error_type: "upstream_error",
+					succeeded: false,
+				});
+				expect(
+					json.metadata.routing[json.metadata.routing.length - 1],
+				).toMatchObject({
+					succeeded: true,
+				});
+
+				const logs = await waitForLogs(2);
+				const successLog = logs.find(
+					(l: Log) => l.finishReason === "stop" || !l.hasError,
+				);
+				const failedLog = logs.find((l: Log) => l.hasError);
+
+				expect(successLog?.routingMetadata?.selectionReason).toBe(
+					"random-exploration",
+				);
+				expect(
+					successLog?.routingMetadata?.providerScores?.length,
+				).toBeGreaterThan(1);
+				expect(failedLog?.retried).toBe(true);
+			} finally {
+				randomSpy.mockRestore();
+				process.argv = originalArgv;
+				if (originalNodeEnv !== undefined) {
+					process.env.NODE_ENV = originalNodeEnv;
+				} else {
+					delete process.env.NODE_ENV;
+				}
+				if (originalVitest !== undefined) {
+					process.env.VITEST = originalVitest;
+				} else {
+					delete process.env.VITEST;
+				}
+			}
+		});
+
 		test("non-streaming: does not retry when specific provider is requested", async () => {
 			await setupMultiProviderKeys();
 

@@ -55,7 +55,7 @@ const DEFAULT_LATENCY = 1000; // Assume 1000ms latency if no data
 const DEFAULT_THROUGHPUT = 50; // Assume 50 tokens/second if no data
 
 // Epsilon-greedy exploration: 1% chance to randomly explore
-const EXPLORATION_RATE = process.env.EXPLORATION_RATE ?? 0.01;
+const EXPLORATION_RATE = parseFloat(process.env.EXPLORATION_RATE ?? "0.01");
 
 function isTestProcess(): boolean {
 	if (process.env.NODE_ENV === "test" || Boolean(process.env.VITEST)) {
@@ -265,7 +265,33 @@ export function getCheapestFromAvailableProviders<
 				availableProviders: stableProviders.map((p) => p.providerId),
 				selectedProvider: randomProvider.providerId,
 				selectionReason: "random-exploration",
-				providerScores: [],
+				providerScores: stableProviders.map((provider) => {
+					const providerInfo = modelWithPricing.providers.find(
+						(p) =>
+							p.providerId === provider.providerId &&
+							p.region === provider.region,
+					);
+					const providerDef = getProviderDefinition(provider.providerId);
+					const priority = providerDef?.priority ?? 1;
+					const metrics = metricsMap?.get(
+						metricsKey(
+							modelWithPricing.id,
+							provider.providerId,
+							provider.region,
+						),
+					);
+
+					return {
+						providerId: provider.providerId,
+						region: provider.region,
+						score: 0,
+						uptime: metrics?.uptime,
+						latency: metrics?.averageLatency,
+						throughput: metrics?.throughput,
+						price: getProviderSelectionPrice(providerInfo, videoPricing),
+						priority,
+					};
+				}),
 			},
 		};
 	}
