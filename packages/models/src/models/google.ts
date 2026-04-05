@@ -1207,6 +1207,8 @@ export const googleModels = [
 				tools: false,
 				jsonOutput: true,
 				jsonOutputSchema: true,
+				deprecatedAt: new Date("2025-12-04"),
+				deactivatedAt: new Date("2026-01-15"),
 			},
 			{
 				test: "skip",
