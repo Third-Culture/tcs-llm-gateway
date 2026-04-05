@@ -477,6 +477,7 @@ function buildRoutingAttempt(
 	options?: {
 		region?: string;
 		apiKeyHash?: string;
+		logId?: string;
 	},
 ): RoutingAttempt {
 	return {
@@ -487,6 +488,7 @@ function buildRoutingAttempt(
 		error_type: errorType,
 		succeeded,
 		...(options?.apiKeyHash && { apiKeyHash: options.apiKeyHash }),
+		...(options?.logId && { logId: options.logId }),
 	};
 }
 
@@ -4250,9 +4252,11 @@ chat.openapi(completions, async (c) => {
 								timeoutPluginIds,
 								undefined, // No plugin results for error case
 							);
+							const attemptLogId = shortid();
 
 							await insertLogEntry({
 								...baseLogEntry,
+								id: attemptLogId,
 								duration: Date.now() - perAttemptStartTime,
 								timeToFirstToken: null,
 								timeToFirstReasoningToken: null,
@@ -4300,6 +4304,7 @@ chat.openapi(completions, async (c) => {
 										{
 											region: usedRegion,
 											apiKeyHash: usedApiKeyHash,
+											logId: attemptLogId,
 										},
 									),
 								);
@@ -4555,9 +4560,11 @@ chat.openapi(completions, async (c) => {
 								fetchErrorPluginIds,
 								undefined, // No plugin results for error case
 							);
+							const attemptLogId = shortid();
 
 							await insertLogEntry({
 								...baseLogEntry,
+								id: attemptLogId,
 								duration: Date.now() - perAttemptStartTime,
 								timeToFirstToken: null, // Not applicable for error case
 								timeToFirstReasoningToken: null, // Not applicable for error case
@@ -4613,6 +4620,7 @@ chat.openapi(completions, async (c) => {
 										{
 											region: usedRegion,
 											apiKeyHash: usedApiKeyHash,
+											logId: attemptLogId,
 										},
 									),
 								);
@@ -4632,6 +4640,7 @@ chat.openapi(completions, async (c) => {
 										{
 											region: usedRegion,
 											apiKeyHash: usedApiKeyHash,
+											logId: attemptLogId,
 										},
 									),
 								);
@@ -4767,9 +4776,11 @@ chat.openapi(completions, async (c) => {
 							streamingErrorPluginIds,
 							undefined, // No plugin results for error case
 						);
+						const attemptLogId = shortid();
 
 						await insertLogEntry({
 							...baseLogEntry,
+							id: attemptLogId,
 							duration: Date.now() - perAttemptStartTime,
 							timeToFirstToken: null,
 							timeToFirstReasoningToken: null,
@@ -4849,6 +4860,7 @@ chat.openapi(completions, async (c) => {
 									{
 										region: usedRegion,
 										apiKeyHash: usedApiKeyHash,
+										logId: attemptLogId,
 									},
 								),
 							);
@@ -4868,6 +4880,7 @@ chat.openapi(completions, async (c) => {
 									{
 										region: usedRegion,
 										apiKeyHash: usedApiKeyHash,
+										logId: attemptLogId,
 									},
 								),
 							);
@@ -5031,9 +5044,11 @@ chat.openapi(completions, async (c) => {
 							streamingErrorPluginIds,
 							undefined,
 						);
+						const attemptLogId = shortid();
 
 						await insertLogEntry({
 							...baseLogEntry,
+							id: attemptLogId,
 							duration: Date.now() - perAttemptStartTime,
 							timeToFirstToken: null,
 							timeToFirstReasoningToken: null,
@@ -5099,6 +5114,7 @@ chat.openapi(completions, async (c) => {
 									{
 										region: usedRegion,
 										apiKeyHash: usedApiKeyHash,
+										logId: attemptLogId,
 									},
 								),
 							);
@@ -5118,6 +5134,7 @@ chat.openapi(completions, async (c) => {
 									{
 										region: usedRegion,
 										apiKeyHash: usedApiKeyHash,
+										logId: attemptLogId,
 									},
 								),
 							);
@@ -5162,6 +5179,7 @@ chat.openapi(completions, async (c) => {
 							{
 								region: usedRegion,
 								apiKeyHash: usedApiKeyHash,
+								logId: finalLogId,
 							},
 						),
 					);
@@ -7659,9 +7677,11 @@ chat.openapi(completions, async (c) => {
 				nonStreamingFetchErrorPluginIds,
 				undefined, // No plugin results for error case
 			);
+			const attemptLogId = shortid();
 
 			await insertLogEntry({
 				...baseLogEntry,
+				id: attemptLogId,
 				duration: perAttemptDuration,
 				timeToFirstToken: null, // Not applicable for error case
 				timeToFirstReasoningToken: null, // Not applicable for error case
@@ -7718,6 +7738,7 @@ chat.openapi(completions, async (c) => {
 						{
 							region: usedRegion,
 							apiKeyHash: usedApiKeyHash,
+							logId: attemptLogId,
 						},
 					),
 				);
@@ -7737,6 +7758,7 @@ chat.openapi(completions, async (c) => {
 						{
 							region: usedRegion,
 							apiKeyHash: usedApiKeyHash,
+							logId: attemptLogId,
 						},
 					),
 				);
@@ -8119,9 +8141,11 @@ chat.openapi(completions, async (c) => {
 				providerErrorPluginIds,
 				undefined, // No plugin results for error case
 			);
+			const attemptLogId = shortid();
 
 			await insertLogEntry({
 				...baseLogEntry,
+				id: attemptLogId,
 				duration: perAttemptDuration,
 				timeToFirstToken: null, // Not applicable for error case
 				timeToFirstReasoningToken: null, // Not applicable for error case
@@ -8198,6 +8222,7 @@ chat.openapi(completions, async (c) => {
 						{
 							region: usedRegion,
 							apiKeyHash: usedApiKeyHash,
+							logId: attemptLogId,
 						},
 					),
 				);
@@ -8217,6 +8242,7 @@ chat.openapi(completions, async (c) => {
 						{
 							region: usedRegion,
 							apiKeyHash: usedApiKeyHash,
+							logId: attemptLogId,
 						},
 					),
 				);
@@ -8303,6 +8329,7 @@ chat.openapi(completions, async (c) => {
 				{
 					region: usedRegion,
 					apiKeyHash: usedApiKeyHash,
+					logId: finalLogId,
 				},
 			),
 		);

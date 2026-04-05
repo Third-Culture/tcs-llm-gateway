@@ -14,6 +14,7 @@ export interface RoutingAttempt {
 	error_type: string;
 	succeeded: boolean;
 	apiKeyHash?: string;
+	logId?: string;
 }
 
 /**

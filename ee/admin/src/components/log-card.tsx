@@ -64,6 +64,7 @@ interface RoutingMetadata {
 		succeeded: boolean;
 		status_code?: number;
 		error_type?: string;
+		logId?: string;
 	}>;
 }
 
@@ -472,6 +473,11 @@ export function LogCard({ log }: { log: ProjectLogEntry }) {
 																		<AlertCircle className="h-3 w-3" />
 																	)}
 																	{attempt.provider}/{attempt.model}
+																	{attempt.logId && (
+																		<span className="text-muted-foreground">
+																			log {attempt.logId}
+																		</span>
+																	)}
 																</span>
 																<span>
 																	{attempt.status_code}{" "}

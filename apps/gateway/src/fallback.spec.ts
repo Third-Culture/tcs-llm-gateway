@@ -2006,9 +2006,11 @@ describe("fallback and error status code handling", () => {
 				error_type: "upstream_error",
 				succeeded: false,
 			});
+			expect(successRouting?.[0]?.logId).toBe(failedLog?.id);
 			expect(lastSuccessAttempt).toMatchObject({
 				succeeded: true,
 			});
+			expect(lastSuccessAttempt?.logId).toBe(successLog?.id);
 			expect(failedLog?.retried).toBe(true);
 			expect(failedLog?.retriedByLogId).toBe(successLog?.id);
 		});
@@ -2070,6 +2072,12 @@ describe("fallback and error status code handling", () => {
 				expect(
 					successLog?.routingMetadata?.providerScores?.length,
 				).toBeGreaterThan(1);
+				expect(successLog?.routingMetadata?.routing?.[0]?.logId).toBe(
+					failedLog?.id,
+				);
+				expect(successLog?.routingMetadata?.routing?.at(-1)?.logId).toBe(
+					successLog?.id,
+				);
 				expect(failedLog?.retried).toBe(true);
 			} finally {
 				randomSpy.mockRestore();

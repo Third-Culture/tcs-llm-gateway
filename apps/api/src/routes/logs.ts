@@ -147,6 +147,7 @@ const logSchema = z.object({
 						error_type: z.string(),
 						succeeded: z.boolean(),
 						apiKeyHash: z.string().optional(),
+						logId: z.string().optional(),
 					}),
 				)
 				.optional(),

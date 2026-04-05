@@ -990,6 +990,7 @@ export interface paths {
                                         error_type: string;
                                         succeeded: boolean;
                                         apiKeyHash?: string;
+                                        logId?: string;
                                     }[];
                                 } | null;
                                 retried?: boolean | null;
@@ -1233,6 +1234,7 @@ export interface paths {
                                         error_type: string;
                                         succeeded: boolean;
                                         apiKeyHash?: string;
+                                        logId?: string;
                                     }[];
                                 } | null;
                                 retried?: boolean | null;

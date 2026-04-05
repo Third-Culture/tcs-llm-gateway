@@ -575,6 +575,7 @@ export const log = pgTable(
 				error_type: string;
 				succeeded: boolean;
 				apiKeyHash?: string;
+				logId?: string;
 			}>;
 		}>(),
 		processedAt: timestamp(),
@@ -738,6 +739,7 @@ export const videoJob = pgTable(
 				error_type: string;
 				succeeded: boolean;
 				apiKeyHash?: string;
+				logId?: string;
 			}>;
 		}>(),
 		upstreamCreateResponse: jsonb(),

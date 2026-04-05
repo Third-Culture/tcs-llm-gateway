@@ -208,7 +208,7 @@ function ImageContentRenderer({ content }: { content: string }) {
 }
 
 function formatApiKeyHash(hash: string) {
-	return hash.length <= 18 ? hash : `${hash.slice(0, 12)}...${hash.slice(-6)}`;
+	return hash.slice(0, 7);
 }
 
 export function LogDetailClient({
@@ -574,6 +574,14 @@ export function LogDetailClient({
 																	<span className="text-muted-foreground">
 																		key {formatApiKeyHash(attempt.apiKeyHash)}
 																	</span>
+																)}
+																{attempt.logId && (
+																	<Link
+																		href={`/dashboard/${orgId}/${projectId}/activity/${attempt.logId}`}
+																		className="text-muted-foreground hover:underline"
+																	>
+																		log {attempt.logId}
+																	</Link>
 																)}
 															</span>
 															<span>

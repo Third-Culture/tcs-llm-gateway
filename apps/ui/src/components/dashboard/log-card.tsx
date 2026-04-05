@@ -68,8 +68,7 @@ export function LogCard({
 		return `${(ms / 1000).toFixed(2)}s`;
 	};
 
-	const formatApiKeyHash = (hash: string) =>
-		hash.length <= 18 ? hash : `${hash.slice(0, 12)}...${hash.slice(-6)}`;
+	const formatApiKeyHash = (hash: string) => hash.slice(0, 7);
 
 	// Recursively render params object
 	const renderParams = (
@@ -481,6 +480,19 @@ export function LogCard({
 																			key {formatApiKeyHash(attempt.apiKeyHash)}
 																		</span>
 																	)}
+																	{attempt.logId &&
+																		(orgId && projectId ? (
+																			<Link
+																				href={`/dashboard/${orgId}/${projectId}/activity/${attempt.logId}`}
+																				className="text-muted-foreground hover:underline"
+																			>
+																				log {attempt.logId}
+																			</Link>
+																		) : (
+																			<span className="text-muted-foreground">
+																				log {attempt.logId}
+																			</span>
+																		))}
 																</span>
 																<span>
 																	{attempt.status_code}{" "}
