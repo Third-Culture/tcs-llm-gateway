@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getApiKeyFingerprint } from "./api-key-fingerprint.js";
 
 const originalNodeEnv = process.env.NODE_ENV;
-const originalApiKeyHashSecret = process.env.LLM_GATEWAY_API_KEY_HASH_SECRET;
+const originalApiKeyHashSecret = process.env.GATEWAY_API_KEY_HASH_SECRET;
 
 describe("api-key-fingerprint", () => {
 	afterEach(() => {
@@ -14,15 +14,15 @@ describe("api-key-fingerprint", () => {
 		}
 
 		if (originalApiKeyHashSecret === undefined) {
-			delete process.env.LLM_GATEWAY_API_KEY_HASH_SECRET;
+			delete process.env.GATEWAY_API_KEY_HASH_SECRET;
 		} else {
-			process.env.LLM_GATEWAY_API_KEY_HASH_SECRET = originalApiKeyHashSecret;
+			process.env.GATEWAY_API_KEY_HASH_SECRET = originalApiKeyHashSecret;
 		}
 	});
 
 	it("uses a stable development fallback secret outside production", () => {
 		process.env.NODE_ENV = "development";
-		delete process.env.LLM_GATEWAY_API_KEY_HASH_SECRET;
+		delete process.env.GATEWAY_API_KEY_HASH_SECRET;
 
 		const firstHash = getApiKeyFingerprint("provider-token");
 		const secondHash = getApiKeyFingerprint("provider-token");
@@ -33,10 +33,10 @@ describe("api-key-fingerprint", () => {
 
 	it("changes fingerprints when the configured secret changes", () => {
 		process.env.NODE_ENV = "test";
-		process.env.LLM_GATEWAY_API_KEY_HASH_SECRET = "first-secret";
+		process.env.GATEWAY_API_KEY_HASH_SECRET = "first-secret";
 		const firstHash = getApiKeyFingerprint("provider-token");
 
-		process.env.LLM_GATEWAY_API_KEY_HASH_SECRET = "second-secret";
+		process.env.GATEWAY_API_KEY_HASH_SECRET = "second-secret";
 		const secondHash = getApiKeyFingerprint("provider-token");
 
 		expect(firstHash).not.toBe(secondHash);
@@ -44,10 +44,10 @@ describe("api-key-fingerprint", () => {
 
 	it("throws in production when the hash secret is missing", () => {
 		process.env.NODE_ENV = "production";
-		delete process.env.LLM_GATEWAY_API_KEY_HASH_SECRET;
+		delete process.env.GATEWAY_API_KEY_HASH_SECRET;
 
 		expect(() => getApiKeyFingerprint("provider-token")).toThrow(
-			"LLM_GATEWAY_API_KEY_HASH_SECRET is required in production",
+			"GATEWAY_API_KEY_HASH_SECRET is required in production",
 		);
 	});
 });

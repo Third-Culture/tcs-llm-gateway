@@ -16,10 +16,10 @@ if [ -z "${LLM_GATEWAY_SECRET:-}" ]; then
     exit 1
 fi
 
-if [ -z "${LLM_GATEWAY_API_KEY_HASH_SECRET:-}" ]; then
-    echo "LLM_GATEWAY_API_KEY_HASH_SECRET is not set." >&2
+if [ -z "${GATEWAY_API_KEY_HASH_SECRET:-}" ]; then
+    echo "GATEWAY_API_KEY_HASH_SECRET is not set." >&2
     echo "Export a strong secret first, for example:" >&2
-    echo "  export LLM_GATEWAY_API_KEY_HASH_SECRET=\"$(openssl rand -base64 32 | tr -d '\n')\"" >&2
+    echo "  export GATEWAY_API_KEY_HASH_SECRET=\"$(openssl rand -base64 32 | tr -d '\n')\"" >&2
     exit 1
 fi
 
@@ -44,7 +44,7 @@ docker run -d \
     -v "$POSTGRES_VOLUME:/var/lib/postgresql/data" \
     -v "$REDIS_VOLUME:/var/lib/redis" \
     -e AUTH_SECRET="$LLM_GATEWAY_SECRET" \
-    -e LLM_GATEWAY_API_KEY_HASH_SECRET="$LLM_GATEWAY_API_KEY_HASH_SECRET" \
+    -e GATEWAY_API_KEY_HASH_SECRET="$GATEWAY_API_KEY_HASH_SECRET" \
     ghcr.io/theopenco/llmgateway-unified:latest
 
 echo "Container started. Follow logs with:"

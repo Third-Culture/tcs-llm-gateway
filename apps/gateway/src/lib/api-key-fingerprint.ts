@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 
-const API_KEY_HASH_SECRET_ENV = "LLM_GATEWAY_API_KEY_HASH_SECRET";
+const API_KEY_HASH_SECRET_ENV = "GATEWAY_API_KEY_HASH_SECRET";
 const DEV_API_KEY_HASH_SECRET = "llmgateway-dev-api-key-hash-secret";
 
 function getApiKeyHashSecret(): string {
