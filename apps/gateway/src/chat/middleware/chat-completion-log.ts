@@ -80,6 +80,13 @@ function getSynthesizedClientErrorLog(
 	};
 }
 
+export function shouldSynthesizeClientError(
+	status: number,
+	pendingLogs: LogInsertData[],
+): boolean {
+	return status >= 400 && status < 500 && pendingLogs.length === 0;
+}
+
 async function flushChatCompletionLogs(
 	c: Context<ServerTypes>,
 	state: ChatCompletionLogState,
@@ -97,13 +104,8 @@ async function flushChatCompletionLogs(
 		state.caughtError instanceof HTTPException
 			? state.caughtError.status
 			: c.res.status;
-	const hasQueuedClientError = state.pendingLogs.some(
-		(log) =>
-			log.finishReason === "client_error" ||
-			log.unifiedFinishReason === "client_error",
-	);
 
-	if (status >= 400 && status < 500 && !hasQueuedClientError) {
+	if (shouldSynthesizeClientError(status, state.pendingLogs)) {
 		const synthesizedLog = getSynthesizedClientErrorLog(
 			buildBaseLogEntry(c),
 			status,
