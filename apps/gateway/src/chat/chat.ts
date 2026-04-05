@@ -764,6 +764,7 @@ const completions = createRoute({
 							cost_usd_request: z.number().nullable().optional(),
 						}),
 						metadata: z.object({
+							request_id: z.string(),
 							requested_model: z.string(),
 							requested_provider: z.string().nullable(),
 							used_model: z.string(),
@@ -8247,6 +8248,7 @@ chat.openapi(completions, async (c) => {
 						total_tokens: 0,
 					},
 					metadata: {
+						request_id: requestId,
 						requested_model: initialRequestedModel,
 						requested_provider: requestedProvider,
 						used_model: baseModelName,
@@ -8745,6 +8747,7 @@ chat.openapi(completions, async (c) => {
 		false, // showUpgradeMessage - never show since Pro plan is removed
 		annotations,
 		routingAttempts.length > 0 ? routingAttempts : null,
+		requestId,
 		usedRegion,
 	);
 

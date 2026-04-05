@@ -522,10 +522,13 @@ describe("fallback and error status code handling", () => {
 			});
 
 			expect(res.status).toBe(200);
+			const responseRequestId = res.headers.get("x-request-id");
+			expect(responseRequestId).toBeTruthy();
 			const json = await res.json();
 
 			// Verify response metadata
 			expect(json).toHaveProperty("metadata");
+			expect(json.metadata).toHaveProperty("request_id", responseRequestId);
 			expect(json.metadata).toHaveProperty(
 				"requested_model",
 				"openai/gpt-4o-mini",
