@@ -128,6 +128,16 @@ describe("shouldRetryAlternateKey", () => {
 		expect(shouldRetryAlternateKey("gateway_error", 403)).toBe(true);
 	});
 
+	it("retries alternate keys for invalid API key payloads without 401/403", () => {
+		expect(
+			shouldRetryAlternateKey(
+				"gateway_error",
+				400,
+				"API key not valid. Please pass a valid API key.",
+			),
+		).toBe(true);
+	});
+
 	it("does not retry alternate keys for other non-retryable failures", () => {
 		expect(shouldRetryAlternateKey("gateway_error", 500)).toBe(false);
 		expect(shouldRetryAlternateKey("client_error", 400)).toBe(false);

@@ -1,3 +1,5 @@
+import { hasInvalidProviderCredentialError } from "@/lib/provider-auth-errors.js";
+
 export const MAX_RETRIES = 2;
 
 export type RetryableErrorType =
@@ -42,12 +44,14 @@ export function isRetryableErrorType(errorType: string): boolean {
 export function shouldRetryAlternateKey(
 	errorType: string,
 	statusCode?: number,
+	errorText?: string,
 ): boolean {
 	return (
 		isRetryableErrorType(errorType) ||
 		(errorType === "gateway_error" &&
-			statusCode !== undefined &&
-			(statusCode === 401 || statusCode === 403))
+			((statusCode !== undefined &&
+				(statusCode === 401 || statusCode === 403)) ||
+				hasInvalidProviderCredentialError(errorText)))
 	);
 }
 
