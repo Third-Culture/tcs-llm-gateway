@@ -148,6 +148,7 @@ import {
 	MAX_RETRIES,
 	providerRetryKey,
 	selectNextProvider,
+	shouldRetryAlternateKey,
 	shouldRetryRequest,
 } from "./tools/retry-with-fallback.js";
 import {
@@ -4843,7 +4844,7 @@ chat.openapi(completions, async (c) => {
 						let sameProviderRetryContext: Awaited<
 							ReturnType<typeof resolveProviderContext>
 						> | null = null;
-						if (isRetryableErrorType(finishReason)) {
+						if (shouldRetryAlternateKey(finishReason, res.status)) {
 							rememberFailedKey(usedProvider, usedRegion, {
 								envVarName,
 								configIndex,
@@ -5112,7 +5113,7 @@ chat.openapi(completions, async (c) => {
 						let sameProviderRetryContext: Awaited<
 							ReturnType<typeof resolveProviderContext>
 						> | null = null;
-						if (isRetryableErrorType(errorType)) {
+						if (shouldRetryAlternateKey(errorType, inferredStatusCode)) {
 							rememberFailedKey(usedProvider, usedRegion, {
 								envVarName,
 								configIndex,
@@ -8201,7 +8202,7 @@ chat.openapi(completions, async (c) => {
 			let sameProviderRetryContext: Awaited<
 				ReturnType<typeof resolveProviderContext>
 			> | null = null;
-			if (isRetryableErrorType(finishReason)) {
+			if (shouldRetryAlternateKey(finishReason, res.status)) {
 				rememberFailedKey(usedProvider, usedRegion, {
 					envVarName,
 					configIndex,

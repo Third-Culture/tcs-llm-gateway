@@ -32,6 +32,26 @@ export function isRetryableErrorType(errorType: string): boolean {
 }
 
 /**
+ * Determines whether a failed request should be retried against another key
+ * for the same provider.
+ *
+ * Auth failures (401/403) are not eligible for cross-provider fallback, but
+ * they should still rotate to another configured key for the current provider
+ * because the failure is often isolated to a single credential.
+ */
+export function shouldRetryAlternateKey(
+	errorType: string,
+	statusCode?: number,
+): boolean {
+	return (
+		isRetryableErrorType(errorType) ||
+		(errorType === "gateway_error" &&
+			statusCode !== undefined &&
+			(statusCode === 401 || statusCode === 403))
+	);
+}
+
+/**
  * Determines whether a failed request should be retried with a different provider.
  * Only retries when no specific provider was requested, the error is retryable,
  * retry count hasn't been exceeded, and alternative providers are available.

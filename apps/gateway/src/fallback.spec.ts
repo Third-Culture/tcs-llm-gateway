@@ -14,6 +14,7 @@ import { getProviderDefinition } from "@llmgateway/models";
 
 import { app } from "./app.js";
 import { getApiKeyFingerprint } from "./lib/api-key-fingerprint.js";
+import { isTrackedKeyHealthy, resetKeyHealth } from "./lib/api-key-health.js";
 import {
 	startMockServer,
 	stopMockServer,
@@ -88,6 +89,7 @@ describe("fallback and error status code handling", () => {
 	}
 
 	async function resetTestState() {
+		resetKeyHealth();
 		resetFailOnceCounter();
 		await clearCache();
 		await db.update(tables.modelProviderMapping).set({
@@ -2225,6 +2227,35 @@ describe("fallback and error status code handling", () => {
 			expect(successLog?.routingMetadata?.routing?.[1]).toMatchObject({
 				provider: "together.ai",
 			});
+		});
+
+		test("non-streaming: retries another key for auth failures on the same explicit provider", async () => {
+			await setupSingleProviderWithMultipleKeys("together.ai");
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token",
+				},
+				body: JSON.stringify({
+					model: "together.ai/glm-4.7",
+					messages: [{ role: "user", content: "TRIGGER_STATUS_401" }],
+				}),
+			});
+
+			expect(res.status).toBe(500);
+			const json = await res.json();
+			expect(json.error.type).toBe("gateway_error");
+
+			const logs = await waitForLogs(2);
+			const authLogs = logs.filter(
+				(log: Log) => log.errorDetails?.statusCode === 401,
+			);
+			expect(authLogs).toHaveLength(2);
+			expect(authLogs.some((log: Log) => log.retried)).toBe(true);
+			expect(isTrackedKeyHealthy("together.ai-key-primary")).toBe(false);
+			expect(isTrackedKeyHealthy("together.ai-key-secondary")).toBe(false);
 		});
 
 		test("streaming: retries on 500 and delivers response on fallback provider", async () => {
