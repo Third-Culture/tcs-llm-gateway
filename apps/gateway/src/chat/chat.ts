@@ -7384,6 +7384,17 @@ chat.openapi(completions, async (c) => {
 					const shouldIncludeTokensForBilling =
 						!canceled || (canceled && billCancelledRequests);
 
+					const streamingErrorStatusCode =
+						typeof streamingError === "object" &&
+						streamingError !== null &&
+						"details" in streamingError &&
+						typeof streamingError.details === "object" &&
+						streamingError.details !== null &&
+						"statusCode" in streamingError.details &&
+						typeof streamingError.details.statusCode === "number"
+							? streamingError.details.statusCode
+							: 500;
+
 					await insertLogEntry({
 						...baseLogEntry,
 						id: routingAttempts.length > 0 ? finalLogId : undefined,
@@ -7412,16 +7423,7 @@ chat.openapi(completions, async (c) => {
 						hasError: streamingError !== null,
 						errorDetails: streamingError
 							? {
-									statusCode:
-										typeof streamingError === "object" &&
-										streamingError !== null &&
-										"details" in streamingError &&
-										typeof streamingError.details === "object" &&
-										streamingError.details !== null &&
-										"statusCode" in streamingError.details &&
-										typeof streamingError.details.statusCode === "number"
-											? streamingError.details.statusCode
-											: 500,
+									statusCode: streamingErrorStatusCode,
 									statusText:
 										typeof streamingError === "object" &&
 										streamingError !== null &&
@@ -7483,14 +7485,14 @@ chat.openapi(completions, async (c) => {
 					// Report key health for the selected token source
 					if (envVarName !== undefined) {
 						if (streamingError !== null) {
-							reportKeyError(envVarName, configIndex, 500);
+							reportKeyError(envVarName, configIndex, streamingErrorStatusCode);
 						} else {
 							reportKeySuccess(envVarName, configIndex);
 						}
 					}
 					if (providerKey?.id) {
 						if (streamingError !== null) {
-							reportTrackedKeyError(providerKey.id, 500);
+							reportTrackedKeyError(providerKey.id, streamingErrorStatusCode);
 						} else {
 							reportTrackedKeySuccess(providerKey.id);
 						}

@@ -4,6 +4,11 @@ import { db, tables } from "@llmgateway/db";
 import { logger } from "@llmgateway/logger";
 
 import { app } from "./app.js";
+import {
+	getTrackedKeyMetrics,
+	isTrackedKeyHealthy,
+	resetKeyHealth,
+} from "./lib/api-key-health.js";
 import { createGatewayApiTestHarness } from "./test-utils/gateway-api-test-harness.js";
 import { readAll, waitForLogs } from "./test-utils/test-helpers.js";
 
@@ -2539,6 +2544,69 @@ describe("api", () => {
 			expect(logs[0].rawResponse).toContain('"finish_reason":"content_filter"');
 			expect(typeof logs[0].upstreamResponse).toBe("string");
 			expect(logs[0].upstreamResponse).toContain("data_inspection_failed");
+		});
+
+		test("streaming auth SSE errors blacklist tracked provider keys", async () => {
+			resetKeyHealth();
+
+			await db.insert(tables.apiKey).values({
+				id: "token-id-stream-auth-error",
+				token: "real-token-stream-auth-error",
+				projectId: "project-id",
+				description: "Test API Key",
+				createdBy: "user-id",
+			});
+
+			await db.insert(tables.providerKey).values({
+				id: "provider-key-id-stream-auth-error",
+				token: "sk-test-key-stream-auth-error",
+				provider: "llmgateway",
+				organizationId: "org-id",
+				baseUrl: mockServerUrl,
+			});
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token-stream-auth-error",
+				},
+				body: JSON.stringify({
+					model: "llmgateway/custom",
+					messages: [
+						{
+							role: "user",
+							content: "TRIGGER_STREAM_AUTH_ERROR",
+						},
+					],
+					stream: true,
+				}),
+			});
+
+			expect(res.status).toBe(200);
+
+			const streamResult = await readAll(res.body);
+
+			expect(streamResult.hasError).toBe(true);
+			expect(streamResult.errorEvents).toHaveLength(1);
+			expect(streamResult.errorEvents[0].error.type).toBe("gateway_error");
+			expect(streamResult.errorEvents[0].error.code).toBe("invalid_api_key");
+
+			const logs = await waitForLogs(1);
+			expect(logs.length).toBe(1);
+			expect(logs[0].hasError).toBe(true);
+			expect(logs[0].errorDetails?.statusCode).toBe(401);
+
+			expect(isTrackedKeyHealthy("provider-key-id-stream-auth-error")).toBe(
+				false,
+			);
+			expect(
+				getTrackedKeyMetrics("provider-key-id-stream-auth-error"),
+			).toMatchObject({
+				permanentlyBlacklisted: true,
+				totalRequests: 1,
+				uptime: 0,
+			});
 		});
 
 		test("request with short delay under timeout succeeds", async () => {

@@ -814,6 +814,10 @@ mockOpenAIServer.post("/v1/chat/completions", async (c) => {
 		chatMessages,
 		"TRIGGER_STREAM_PROVIDER_ERROR",
 	);
+	const shouldReturnStreamedAuthError = hasUserMessageTrigger(
+		chatMessages,
+		"TRIGGER_STREAM_AUTH_ERROR",
+	);
 	const shouldFailOnceWithImmediateStream404 = hasUserMessageTrigger(
 		chatMessages,
 		"TRIGGER_STREAM_FAIL_ONCE_404",
@@ -895,6 +899,22 @@ mockOpenAIServer.post("/v1/chat/completions", async (c) => {
 								"Input data may contain inappropriate content. Please ensure that your input complies with the usage policy of DashScope LLM.",
 							param: null,
 							type: "data_inspection_failed",
+						},
+					}),
+					id: String(eventId++),
+				});
+				return;
+			}
+
+			if (shouldReturnStreamedAuthError) {
+				await stream.writeSSE({
+					data: JSON.stringify({
+						id: "chatcmpl-auth-err-123",
+						error: {
+							code: "invalid_api_key",
+							message: "Incorrect API key provided.",
+							param: null,
+							type: "authentication_error",
 						},
 					}),
 					id: String(eventId++),
