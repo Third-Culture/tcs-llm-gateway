@@ -164,14 +164,14 @@ export async function resolveProviderContext(
 			providerKey = await findCustomProviderKey(
 				project.organizationId,
 				options.customProviderName,
-				options.requestId,
+				baseModelName,
 				options.excludedProviderKeyIds,
 			);
 		} else {
 			providerKey = await findProviderKey(
 				project.organizationId,
 				usedProvider,
-				options.requestId,
+				baseModelName,
 				options.excludedProviderKeyIds,
 			);
 		}
@@ -186,6 +186,7 @@ export async function resolveProviderContext(
 	} else if (project.mode === "credits") {
 		const envResult = getProviderEnv(usedProvider as Provider, {
 			excludedIndices: options.excludedEnvKeyIndices,
+			selectionScope: baseModelName,
 		});
 		usedToken = envResult.token;
 		configIndex = envResult.configIndex;
@@ -195,14 +196,14 @@ export async function resolveProviderContext(
 			providerKey = await findCustomProviderKey(
 				project.organizationId,
 				options.customProviderName,
-				options.requestId,
+				baseModelName,
 				options.excludedProviderKeyIds,
 			);
 		} else {
 			providerKey = await findProviderKey(
 				project.organizationId,
 				usedProvider,
-				options.requestId,
+				baseModelName,
 				options.excludedProviderKeyIds,
 			);
 		}
@@ -212,6 +213,7 @@ export async function resolveProviderContext(
 		} else {
 			const envResult = getProviderEnv(usedProvider as Provider, {
 				excludedIndices: options.excludedEnvKeyIndices,
+				selectionScope: baseModelName,
 			});
 			usedToken = envResult.token;
 			configIndex = envResult.configIndex;

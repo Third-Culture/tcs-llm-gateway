@@ -54,6 +54,7 @@ type UserOrganization = InferSelectModel<typeof userOrganization>;
 
 function selectProviderKeyWithFailover<T extends { id: string }>(
 	items: T[],
+	selectionScope?: string,
 	excludedKeyIds: ReadonlySet<string> = new Set(),
 ): T | undefined {
 	const availableItems = items.filter((item) => !excludedKeyIds.has(item.id));
@@ -70,9 +71,9 @@ function selectProviderKeyWithFailover<T extends { id: string }>(
 		.map((item, index) => ({
 			item,
 			index,
-			metrics: getTrackedKeyMetrics(item.id),
+			metrics: getTrackedKeyMetrics(item.id, selectionScope),
 		}))
-		.filter(({ item }) => isTrackedKeyHealthy(item.id));
+		.filter(({ item }) => isTrackedKeyHealthy(item.id, selectionScope));
 
 	if (healthyItems.length === 0) {
 		return availableItems[0];
@@ -184,7 +185,7 @@ export async function findOrganizationById(
 export async function findCustomProviderKey(
 	organizationId: string,
 	customProviderName: string,
-	_selectionKey?: string,
+	selectionScope?: string,
 	excludedKeyIds?: ReadonlySet<string>,
 ): Promise<ProviderKey | undefined> {
 	const results = await db
@@ -199,7 +200,7 @@ export async function findCustomProviderKey(
 			),
 		)
 		.orderBy(asc(providerKeyTable.createdAt), asc(providerKeyTable.id));
-	return selectProviderKeyWithFailover(results, excludedKeyIds);
+	return selectProviderKeyWithFailover(results, selectionScope, excludedKeyIds);
 }
 
 /**
@@ -208,7 +209,7 @@ export async function findCustomProviderKey(
 export async function findProviderKey(
 	organizationId: string,
 	provider: string,
-	_selectionKey?: string,
+	selectionScope?: string,
 	excludedKeyIds?: ReadonlySet<string>,
 ): Promise<ProviderKey | undefined> {
 	const results = await db
@@ -222,7 +223,7 @@ export async function findProviderKey(
 			),
 		)
 		.orderBy(asc(providerKeyTable.createdAt), asc(providerKeyTable.id));
-	return selectProviderKeyWithFailover(results, excludedKeyIds);
+	return selectProviderKeyWithFailover(results, selectionScope, excludedKeyIds);
 }
 
 /**

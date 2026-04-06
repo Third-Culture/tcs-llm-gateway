@@ -1437,7 +1437,6 @@ chat.openapi(completions, async (c) => {
 		const customProviderKey = await findCustomProviderKey(
 			project.organizationId,
 			customProviderName,
-			requestId,
 		);
 		if (!customProviderKey) {
 			throw new HTTPException(400, {
@@ -1807,7 +1806,6 @@ chat.openapi(completions, async (c) => {
 				const providerKey = await findProviderKey(
 					project.organizationId,
 					usedProvider,
-					requestId,
 				);
 				lockedRegion = providerKey
 					? resolveExplicitRegionFromProviderKey(providerKey)
@@ -2459,7 +2457,6 @@ chat.openapi(completions, async (c) => {
 				const providerKey = await findProviderKey(
 					project.organizationId,
 					requestedProvider,
-					requestId,
 				);
 				explicitDirectRegion = providerKey
 					? resolveExplicitRegionFromProviderKey(providerKey)
@@ -2697,13 +2694,13 @@ chat.openapi(completions, async (c) => {
 			providerKey = await findCustomProviderKey(
 				project.organizationId,
 				customProviderName,
-				requestId,
+				baseModelName,
 			);
 		} else {
 			providerKey = await findProviderKey(
 				project.organizationId,
 				usedProvider,
-				requestId,
+				baseModelName,
 			);
 		}
 
@@ -2761,7 +2758,9 @@ chat.openapi(completions, async (c) => {
 			});
 		}
 
-		const envResult = getProviderEnv(usedProvider);
+		const envResult = getProviderEnv(usedProvider, {
+			selectionScope: baseModelName,
+		});
 		usedToken = envResult.token;
 		configIndex = envResult.configIndex;
 		envVarName = envResult.envVarName;
@@ -2779,13 +2778,13 @@ chat.openapi(completions, async (c) => {
 			providerKey = await findCustomProviderKey(
 				project.organizationId,
 				customProviderName,
-				requestId,
+				baseModelName,
 			);
 		} else {
 			providerKey = await findProviderKey(
 				project.organizationId,
 				usedProvider,
-				requestId,
+				baseModelName,
 			);
 		}
 
@@ -2836,7 +2835,9 @@ chat.openapi(completions, async (c) => {
 				});
 			}
 
-			const envResult = getProviderEnv(usedProvider);
+			const envResult = getProviderEnv(usedProvider, {
+				selectionScope: baseModelName,
+			});
 			usedToken = envResult.token;
 			configIndex = envResult.configIndex;
 			envVarName = envResult.envVarName;
@@ -4719,10 +4720,21 @@ chat.openapi(completions, async (c) => {
 
 							// Report key health for the selected token source
 							if (envVarName !== undefined) {
-								reportKeyError(envVarName, configIndex, 0);
+								reportKeyError(
+									envVarName,
+									configIndex,
+									0,
+									undefined,
+									baseModelName,
+								);
 							}
 							if (providerKey?.id) {
-								reportTrackedKeyError(providerKey.id, 0);
+								reportTrackedKeyError(
+									providerKey.id,
+									0,
+									undefined,
+									baseModelName,
+								);
 							}
 
 							if (willRetrySameProvider && sameProviderRetryContext) {
@@ -4961,6 +4973,7 @@ chat.openapi(completions, async (c) => {
 								configIndex,
 								res.status,
 								errorResponseText,
+								baseModelName,
 							);
 						}
 						if (providerKey?.id && finishReason !== "content_filter") {
@@ -4968,6 +4981,7 @@ chat.openapi(completions, async (c) => {
 								providerKey.id,
 								res.status,
 								errorResponseText,
+								baseModelName,
 							);
 						}
 
@@ -5221,6 +5235,7 @@ chat.openapi(completions, async (c) => {
 								configIndex,
 								inferredStatusCode,
 								errorResponseText,
+								baseModelName,
 							);
 						}
 						if (providerKey?.id && errorType !== "content_filter") {
@@ -5228,6 +5243,7 @@ chat.openapi(completions, async (c) => {
 								providerKey.id,
 								inferredStatusCode,
 								errorResponseText,
+								baseModelName,
 							);
 						}
 
@@ -7498,16 +7514,27 @@ chat.openapi(completions, async (c) => {
 					// Report key health for the selected token source
 					if (envVarName !== undefined) {
 						if (streamingError !== null) {
-							reportKeyError(envVarName, configIndex, streamingErrorStatusCode);
+							reportKeyError(
+								envVarName,
+								configIndex,
+								streamingErrorStatusCode,
+								undefined,
+								baseModelName,
+							);
 						} else {
-							reportKeySuccess(envVarName, configIndex);
+							reportKeySuccess(envVarName, configIndex, baseModelName);
 						}
 					}
 					if (providerKey?.id) {
 						if (streamingError !== null) {
-							reportTrackedKeyError(providerKey.id, streamingErrorStatusCode);
+							reportTrackedKeyError(
+								providerKey.id,
+								streamingErrorStatusCode,
+								undefined,
+								baseModelName,
+							);
 						} else {
-							reportTrackedKeySuccess(providerKey.id);
+							reportTrackedKeySuccess(providerKey.id, baseModelName);
 						}
 					}
 
@@ -7842,10 +7869,10 @@ chat.openapi(completions, async (c) => {
 
 			// Report key health for the selected token source
 			if (envVarName !== undefined) {
-				reportKeyError(envVarName, configIndex, 0);
+				reportKeyError(envVarName, configIndex, 0, undefined, baseModelName);
 			}
 			if (providerKey?.id) {
-				reportTrackedKeyError(providerKey.id, 0);
+				reportTrackedKeyError(providerKey.id, 0, undefined, baseModelName);
 			}
 
 			if (willRetrySameProvider && sameProviderRetryContext) {
@@ -8328,10 +8355,21 @@ chat.openapi(completions, async (c) => {
 			// Report key health for the selected token source
 			// Don't report content_filter as a key error - it's intentional provider behavior
 			if (envVarName !== undefined && finishReason !== "content_filter") {
-				reportKeyError(envVarName, configIndex, res.status, errorResponseText);
+				reportKeyError(
+					envVarName,
+					configIndex,
+					res.status,
+					errorResponseText,
+					baseModelName,
+				);
 			}
 			if (providerKey?.id && finishReason !== "content_filter") {
-				reportTrackedKeyError(providerKey.id, res.status, errorResponseText);
+				reportTrackedKeyError(
+					providerKey.id,
+					res.status,
+					errorResponseText,
+					baseModelName,
+				);
 			}
 
 			if (willRetrySameProvider && sameProviderRetryContext) {
@@ -9055,10 +9093,10 @@ chat.openapi(completions, async (c) => {
 	// Report key health for the selected token source
 	// Note: We don't report empty responses as key errors since they're not upstream errors
 	if (envVarName !== undefined) {
-		reportKeySuccess(envVarName, configIndex);
+		reportKeySuccess(envVarName, configIndex, baseModelName);
 	}
 	if (providerKey?.id) {
-		reportTrackedKeySuccess(providerKey.id);
+		reportTrackedKeySuccess(providerKey.id, baseModelName);
 	}
 
 	if (cachingEnabled && cacheKey && !stream && !hasEmptyNonStreamingResponse) {
