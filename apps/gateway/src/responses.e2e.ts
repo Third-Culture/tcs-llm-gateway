@@ -14,6 +14,25 @@ import {
 	validateLogByRequestId,
 } from "@/chat-helpers.e2e.js";
 
+// Pick one model per provider to keep CI cost manageable while still
+// validating the Responses API conversion layer across every provider.
+function oneModelPerProvider<T extends { model: string }>(list: T[]): T[] {
+	const seen = new Set<string>();
+	const out: T[] = [];
+	for (const item of list) {
+		const provider = item.model.split("/")[0];
+		if (seen.has(provider)) {
+			continue;
+		}
+		seen.add(provider);
+		out.push(item);
+	}
+	return out;
+}
+
+const responsesTestModels = oneModelPerProvider(testModels);
+const responsesToolCallModels = oneModelPerProvider(toolCallModels);
+
 interface ResponsesOutputItem {
 	type: string;
 	role?: string;
@@ -66,7 +85,7 @@ describe("e2e", getConcurrentTestOptions(), () => {
 		expect(true).toBe(true);
 	});
 
-	test.each(testModels)(
+	test.each(responsesTestModels)(
 		"responses single-turn $model",
 		getTestOptions(),
 		async ({ model }) => {
@@ -106,7 +125,7 @@ describe("e2e", getConcurrentTestOptions(), () => {
 		},
 	);
 
-	test.each(testModels)(
+	test.each(responsesTestModels)(
 		"responses multi-turn $model",
 		getTestOptions(),
 		async ({ model }) => {
@@ -151,7 +170,7 @@ describe("e2e", getConcurrentTestOptions(), () => {
 		},
 	);
 
-	test.each(toolCallModels)(
+	test.each(responsesToolCallModels)(
 		"responses tool calls $model",
 		getTestOptions(),
 		async ({ model }) => {
