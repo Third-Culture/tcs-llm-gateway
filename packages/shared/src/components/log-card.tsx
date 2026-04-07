@@ -66,9 +66,11 @@ interface RoutingMetadata {
 		rate_limited?: boolean;
 		contentFilterProvider?: boolean;
 		excludedByContentFilter?: boolean;
+		excludedByModerationFailure?: boolean;
 	}>;
 	contentFilterMatched?: boolean;
 	contentFilterRerouted?: boolean;
+	contentFilterUnavailable?: boolean;
 	contentFilterExcludedProviders?: string[];
 	routing?: Array<{
 		provider: string;
@@ -612,6 +614,12 @@ export function LogCard({
 																		<span className="inline-flex items-center gap-0.5 text-amber-500">
 																			<Ban className="h-3 w-3" />
 																			<span>content filter</span>
+																		</span>
+																	)}
+																	{score.excludedByModerationFailure && (
+																		<span className="inline-flex items-center gap-0.5 text-amber-500">
+																			<TriangleAlert className="h-3 w-3" />
+																			<span>moderation unavailable</span>
 																		</span>
 																	)}
 																</span>

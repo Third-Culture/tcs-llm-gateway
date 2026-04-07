@@ -582,6 +582,7 @@ describe("checkOpenAIContentFilter", () => {
 
 		expect(result).toEqual({
 			flagged: false,
+			unavailable: true,
 			model: "omni-moderation-latest",
 			upstreamRequestId: null,
 			results: [],
@@ -631,6 +632,7 @@ describe("checkOpenAIContentFilter", () => {
 
 		expect(result).toEqual({
 			flagged: false,
+			unavailable: true,
 			model: "omni-moderation-latest",
 			upstreamRequestId: null,
 			results: [],
@@ -715,6 +717,7 @@ describe("checkOpenAIContentFilter", () => {
 
 		expect(result).toEqual({
 			flagged: false,
+			unavailable: true,
 			model: "omni-moderation-latest",
 			upstreamRequestId: null,
 			results: [],

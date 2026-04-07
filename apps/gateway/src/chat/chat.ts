@@ -364,9 +364,9 @@ function isContentFilterProvider(providerId: string): boolean {
 
 function getContentFilterRoutingDecision(
 	availableModelProviders: ProviderModelMapping[],
-	contentFilterMatched: boolean,
+	shouldAvoidContentFilterProviders: boolean,
 ): ContentFilterRoutingDecision {
-	if (!contentFilterMatched) {
+	if (!shouldAvoidContentFilterProviders) {
 		return {
 			candidates: availableModelProviders,
 			excludedProviders: [],
@@ -408,11 +408,12 @@ function getContentFilterRoutingDecision(
 function addContentFilterRoutingMetadata(
 	routingMetadata: RoutingMetadata,
 	contentFilterMatched: boolean,
+	contentFilterUnavailable: boolean,
 	excludedProviders: ProviderModelMapping[],
 	modelId: string | undefined,
 	metricsMap: Map<string, ProviderMetrics>,
 ): RoutingMetadata {
-	if (!contentFilterMatched) {
+	if (!contentFilterMatched && !contentFilterUnavailable) {
 		return routingMetadata;
 	}
 
@@ -438,7 +439,9 @@ function addContentFilterRoutingMetadata(
 							throughput: metrics?.throughput ?? 0,
 							price: getProviderSelectionPrice(provider),
 							contentFilterProvider: true,
-							excludedByContentFilter: true,
+							...(contentFilterMatched
+								? { excludedByContentFilter: true }
+								: { excludedByModerationFailure: true }),
 						};
 					}),
 					...routingMetadata.providerScores,
@@ -446,7 +449,8 @@ function addContentFilterRoutingMetadata(
 
 	return {
 		...routingMetadata,
-		contentFilterMatched: true,
+		...(contentFilterMatched ? { contentFilterMatched: true } : {}),
+		...(contentFilterUnavailable ? { contentFilterUnavailable: true } : {}),
 		contentFilterRerouted: contentFilterExcludedProviders.length > 0,
 		contentFilterExcludedProviders:
 			contentFilterExcludedProviders.length > 0
@@ -1899,8 +1903,11 @@ chat.openapi(completions, async (c) => {
 	const contentFilterMatched =
 		keywordContentFilterMatch !== null ||
 		openAIContentFilterResult?.flagged === true;
-	const shouldRerouteContentFilter =
-		contentFilterMode === "enabled" && contentFilterMatched;
+	const contentFilterUnavailable =
+		openAIContentFilterResult?.unavailable === true;
+	const shouldAvoidContentFilterProviders =
+		contentFilterMode === "enabled" &&
+		(contentFilterMatched || contentFilterUnavailable);
 	let contentFilterRoutingExcludedProviders: ProviderModelMapping[] = [];
 	let contentFilterRoutingApplied = false;
 
@@ -2311,7 +2318,7 @@ chat.openapi(completions, async (c) => {
 
 			const contentFilterRoutingDecision = getContentFilterRoutingDecision(
 				availableModelProviders,
-				shouldRerouteContentFilter,
+				shouldAvoidContentFilterProviders,
 			);
 			const contentFilterPreferredProviders =
 				contentFilterRoutingDecision.candidates;
@@ -2382,6 +2389,7 @@ chat.openapi(completions, async (c) => {
 							...(noFallback ? { noFallback: true } : {}),
 						},
 						contentFilterMatched,
+						contentFilterUnavailable,
 						contentFilterRoutingExcludedProviders,
 						modelWithPricing.id,
 						metricsMap,
@@ -2569,6 +2577,7 @@ chat.openapi(completions, async (c) => {
 				...(noFallback ? { noFallback: true } : {}),
 			},
 			contentFilterMatched,
+			contentFilterUnavailable,
 			contentFilterRoutingExcludedProviders,
 			baseModelId,
 			metricsMap,
@@ -2984,6 +2993,10 @@ chat.openapi(completions, async (c) => {
 		contentFilterMode === "enabled" &&
 		contentFilterMatched &&
 		!contentFilterRoutingApplied;
+	const contentFilterSensitiveProviderBlocked =
+		contentFilterMode === "enabled" &&
+		contentFilterUnavailable &&
+		isContentFilterProvider(usedProvider);
 
 	// Preserve monitor tagging, and also tag successful reroutes triggered by a
 	// gateway content-filter match so the decision remains visible in logs.
@@ -3121,6 +3134,13 @@ chat.openapi(completions, async (c) => {
 				completion_tokens: 0,
 				total_tokens: 0,
 			},
+		});
+	}
+
+	if (contentFilterSensitiveProviderBlocked) {
+		throw new HTTPException(503, {
+			message:
+				"OpenAI moderation is unavailable and no eligible provider without provider-side content filtering is available.",
 		});
 	}
 

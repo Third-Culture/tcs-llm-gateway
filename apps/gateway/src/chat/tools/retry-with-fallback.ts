@@ -85,6 +85,7 @@ export function selectNextProvider(
 		score: number;
 		region?: string;
 		excludedByContentFilter?: boolean;
+		excludedByModerationFailure?: boolean;
 	}>,
 	failedProviders: Set<string>,
 	modelProviders: Array<{
@@ -95,7 +96,7 @@ export function selectNextProvider(
 ): { providerId: string; modelName: string; region?: string } | null {
 	const sorted = [...providerScores].sort((a, b) => a.score - b.score);
 	for (const score of sorted) {
-		if (score.excludedByContentFilter) {
+		if (score.excludedByContentFilter || score.excludedByModerationFailure) {
 			continue;
 		}
 

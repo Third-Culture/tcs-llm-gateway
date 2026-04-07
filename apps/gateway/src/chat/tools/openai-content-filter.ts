@@ -53,6 +53,7 @@ interface OpenAIModerationResult {
 
 export interface OpenAIContentFilterCheckResult {
 	flagged: boolean;
+	unavailable: boolean;
 	model: string;
 	upstreamRequestId: string | null;
 	results: OpenAIModerationResult[];
@@ -339,9 +340,11 @@ function buildModerationErrorDetails(error: unknown): Record<string, string> {
 
 function createFailedOpenAIContentFilterResult(
 	upstreamRequestId: string | null = null,
+	unavailable = true,
 ): OpenAIContentFilterCheckResult {
 	return {
 		flagged: false,
+		unavailable,
 		model: OPENAI_MODERATION_MODEL,
 		upstreamRequestId,
 		results: [],
@@ -446,6 +449,7 @@ async function runOpenAIContentFilterRequest(
 			flagged: (moderationResponse.results ?? []).some((result) =>
 				isOpenAIModerationResultFlagged(result),
 			),
+			unavailable: false,
 			model: moderationResponse.model ?? OPENAI_MODERATION_MODEL,
 			upstreamRequestId,
 			results: moderationResponse.results ?? [],
@@ -476,7 +480,7 @@ export async function checkOpenAIContentFilter(
 			results: [],
 		});
 
-		return createFailedOpenAIContentFilterResult();
+		return createFailedOpenAIContentFilterResult(null, false);
 	}
 
 	const signal = requestSignal
@@ -530,6 +534,7 @@ export async function checkOpenAIContentFilter(
 
 		return {
 			flagged,
+			unavailable: moderationResults.some((result) => !result.success),
 			model,
 			upstreamRequestId,
 			results,
