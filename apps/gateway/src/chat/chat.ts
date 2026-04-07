@@ -460,6 +460,71 @@ function addContentFilterRoutingMetadata(
 	};
 }
 
+function finalizeContentFilterRoutingMetadata(
+	routingMetadata: RoutingMetadata,
+	contentFilterMatched: boolean,
+	contentFilterUnavailable: boolean,
+	excludedProviders: ProviderModelMapping[],
+	modelId: string | undefined,
+	metricsMap: Map<string, ProviderMetrics>,
+	routingApplied: boolean,
+): RoutingMetadata {
+	const metadata = addContentFilterRoutingMetadata(
+		routingMetadata,
+		contentFilterMatched,
+		contentFilterUnavailable,
+		excludedProviders,
+		modelId,
+		metricsMap,
+	);
+
+	if (!routingApplied || metadata.contentFilterRerouted) {
+		return metadata;
+	}
+
+	const contentFilterExcludedProviders = [
+		...new Set(excludedProviders.map((provider) => provider.providerId)),
+	];
+
+	return {
+		...metadata,
+		contentFilterRerouted: true,
+		contentFilterExcludedProviders:
+			contentFilterExcludedProviders.length > 0
+				? contentFilterExcludedProviders
+				: undefined,
+	};
+}
+
+function mergeContentFilterRoutingDecision(
+	existingExcludedProviders: ProviderModelMapping[],
+	existingRoutingApplied: boolean,
+	decision: ContentFilterRoutingDecision,
+): {
+	excludedProviders: ProviderModelMapping[];
+	routingApplied: boolean;
+} {
+	const excludedProviders = [...existingExcludedProviders];
+
+	for (const provider of decision.excludedProviders) {
+		const alreadyExcluded = excludedProviders.some(
+			(existingProvider) =>
+				existingProvider.providerId === provider.providerId &&
+				existingProvider.modelName === provider.modelName &&
+				existingProvider.region === provider.region,
+		);
+
+		if (!alreadyExcluded) {
+			excludedProviders.push(provider);
+		}
+	}
+
+	return {
+		excludedProviders,
+		routingApplied: existingRoutingApplied || decision.rerouted,
+	};
+}
+
 function withUsedApiKeyHash(
 	routingMetadata: RoutingMetadata | undefined,
 	usedApiKeyHash: string | undefined,
@@ -1449,6 +1514,39 @@ chat.openapi(completions, async (c) => {
 		}
 	}
 
+	const contentFilterMode = getContentFilterMode();
+	const contentFilterMethod = getContentFilterMethod();
+	const shouldApplyGatewayContentFilter =
+		contentFilterMode !== "disabled" &&
+		shouldApplyContentFilterToModel(requestedModel);
+	const keywordContentFilterMatch =
+		shouldApplyGatewayContentFilter && contentFilterMethod === "keywords"
+			? checkContentFilter(messages as BaseMessage[])
+			: null;
+	const openAIContentFilterResult =
+		shouldApplyGatewayContentFilter && contentFilterMethod === "openai"
+			? await checkOpenAIContentFilter(
+					messages as BaseMessage[],
+					{
+						requestId,
+						organizationId: project.organizationId,
+						projectId: project.id,
+						apiKeyId: apiKey.id,
+					},
+					c.req.raw.signal,
+				)
+			: null;
+	const contentFilterMatched =
+		keywordContentFilterMatch !== null ||
+		openAIContentFilterResult?.flagged === true;
+	const contentFilterUnavailable =
+		openAIContentFilterResult?.unavailable === true;
+	const shouldAvoidContentFilterProviders =
+		contentFilterMode === "enabled" &&
+		(contentFilterMatched || contentFilterUnavailable);
+	let contentFilterRoutingExcludedProviders: ProviderModelMapping[] = [];
+	let contentFilterRoutingApplied = false;
+
 	// Apply routing logic after apiKey and project are available
 	if (
 		(usedProvider === "llmgateway" && usedModel === "auto") ||
@@ -1526,9 +1624,15 @@ chat.openapi(completions, async (c) => {
 		const allowedAutoModels = ["gpt-oss-120b", "gpt-5-nano", "gpt-4.1-nano"];
 
 		let selectedModel: ModelDefinition | undefined;
-		let selectedProviders: any[] = [];
+		let selectedProviders: ProviderModelMapping[] = [];
+		let selectedExcludedProviders: ProviderModelMapping[] = [];
 		let lowestPrice = Number.MAX_VALUE;
 		const now = new Date(); // Cache current time for deprecation checks
+		const autoRoutingCandidates: Array<{
+			model: ModelDefinition;
+			providers: ProviderModelMapping[];
+			excludedProviders: ProviderModelMapping[];
+		}> = [];
 
 		for (const modelDef of models) {
 			if (modelDef.id === "auto" || modelDef.id === "custom") {
@@ -1654,16 +1758,64 @@ chat.openapi(completions, async (c) => {
 			});
 
 			if (suitableProviders.length > 0) {
-				// Find the cheapest among the suitable providers for this model
-				for (const provider of suitableProviders) {
-					const totalPrice =
-						((provider.inputPrice ?? 0) + (provider.outputPrice ?? 0)) / 2;
+				autoRoutingCandidates.push({
+					model: modelDef,
+					providers: suitableProviders,
+					excludedProviders: [],
+				});
+			}
+		}
 
-					if (totalPrice < lowestPrice) {
-						lowestPrice = totalPrice;
-						selectedModel = modelDef;
-						selectedProviders = suitableProviders;
-					}
+		if (shouldAvoidContentFilterProviders) {
+			const hasNonSensitiveAutoCandidate = autoRoutingCandidates.some(
+				(candidate) =>
+					candidate.providers.some(
+						(provider) => !isContentFilterProvider(provider.providerId),
+					),
+			);
+
+			if (hasNonSensitiveAutoCandidate) {
+				for (const candidate of autoRoutingCandidates) {
+					const excludedProviders = candidate.providers.filter((provider) =>
+						isContentFilterProvider(provider.providerId),
+					);
+					candidate.excludedProviders = excludedProviders;
+					candidate.providers = candidate.providers.filter(
+						(provider) => !isContentFilterProvider(provider.providerId),
+					);
+				}
+
+				const mergedAutoRoutingDecision = mergeContentFilterRoutingDecision(
+					contentFilterRoutingExcludedProviders,
+					contentFilterRoutingApplied,
+					{
+						candidates: autoRoutingCandidates.flatMap(
+							(candidate) => candidate.providers,
+						),
+						excludedProviders: autoRoutingCandidates.flatMap(
+							(candidate) => candidate.excludedProviders,
+						),
+						rerouted: autoRoutingCandidates.some(
+							(candidate) => candidate.excludedProviders.length > 0,
+						),
+					},
+				);
+				contentFilterRoutingExcludedProviders =
+					mergedAutoRoutingDecision.excludedProviders;
+				contentFilterRoutingApplied = mergedAutoRoutingDecision.routingApplied;
+			}
+		}
+
+		for (const candidate of autoRoutingCandidates) {
+			for (const provider of candidate.providers) {
+				const totalPrice =
+					((provider.inputPrice ?? 0) + (provider.outputPrice ?? 0)) / 2;
+
+				if (totalPrice < lowestPrice) {
+					lowestPrice = totalPrice;
+					selectedModel = candidate.model;
+					selectedProviders = candidate.providers;
+					selectedExcludedProviders = candidate.excludedProviders;
 				}
 			}
 		}
@@ -1700,10 +1852,18 @@ chat.openapi(completions, async (c) => {
 				usedProvider = cheapestResult.provider.providerId;
 				usedModel = cheapestResult.provider.modelName;
 				usedRegion = cheapestResult.provider.region;
-				routingMetadata = {
-					...cheapestResult.metadata,
-					...(noFallback ? { noFallback: true } : {}),
-				};
+				routingMetadata = finalizeContentFilterRoutingMetadata(
+					{
+						...cheapestResult.metadata,
+						...(noFallback ? { noFallback: true } : {}),
+					},
+					contentFilterMatched,
+					contentFilterUnavailable,
+					selectedExcludedProviders,
+					selectedModel.id,
+					metricsMap,
+					contentFilterRoutingApplied,
+				);
 			} else {
 				// Fallback to first available provider if price comparison fails
 				usedProvider = selectedProviders[0].providerId;
@@ -1878,39 +2038,6 @@ chat.openapi(completions, async (c) => {
 		}
 	}
 
-	const contentFilterMode = getContentFilterMode();
-	const contentFilterMethod = getContentFilterMethod();
-	const shouldApplyGatewayContentFilter =
-		contentFilterMode !== "disabled" &&
-		shouldApplyContentFilterToModel(requestedModel);
-	const keywordContentFilterMatch =
-		shouldApplyGatewayContentFilter && contentFilterMethod === "keywords"
-			? checkContentFilter(messages as BaseMessage[])
-			: null;
-	const openAIContentFilterResult =
-		shouldApplyGatewayContentFilter && contentFilterMethod === "openai"
-			? await checkOpenAIContentFilter(
-					messages as BaseMessage[],
-					{
-						requestId,
-						organizationId: project.organizationId,
-						projectId: project.id,
-						apiKeyId: apiKey.id,
-					},
-					c.req.raw.signal,
-				)
-			: null;
-	const contentFilterMatched =
-		keywordContentFilterMatch !== null ||
-		openAIContentFilterResult?.flagged === true;
-	const contentFilterUnavailable =
-		openAIContentFilterResult?.unavailable === true;
-	const shouldAvoidContentFilterProviders =
-		contentFilterMode === "enabled" &&
-		(contentFilterMatched || contentFilterUnavailable);
-	let contentFilterRoutingExcludedProviders: ProviderModelMapping[] = [];
-	let contentFilterRoutingApplied = false;
-
 	// Check provider RPM caps for specifically requested providers
 	// If rate-limited, route to an alternative (or 429 if no-fallback)
 	if (
@@ -2009,10 +2136,35 @@ chat.openapi(completions, async (c) => {
 					(p) => !rateLimitedAlternatives.has(p.providerId),
 				);
 
+				const contentFilterRoutingDecision = getContentFilterRoutingDecision(
+					availableModelProviders,
+					shouldAvoidContentFilterProviders,
+				);
+				const mergedContentFilterRoutingDecision =
+					mergeContentFilterRoutingDecision(
+						contentFilterRoutingExcludedProviders,
+						contentFilterRoutingApplied,
+						contentFilterRoutingDecision,
+					);
+				contentFilterRoutingExcludedProviders =
+					mergedContentFilterRoutingDecision.excludedProviders;
+				contentFilterRoutingApplied =
+					mergedContentFilterRoutingDecision.routingApplied;
+				const contentFilterPreferredProviders =
+					contentFilterRoutingDecision.candidates;
+				const contentFilterPreferredNonRateLimitedAlternatives =
+					contentFilterPreferredProviders.filter(
+						(p) => !rateLimitedAlternatives.has(p.providerId),
+					);
+
 				const candidatesForRouting =
-					nonRateLimitedAlternatives.length > 0
-						? nonRateLimitedAlternatives
-						: availableModelProviders;
+					contentFilterPreferredNonRateLimitedAlternatives.length > 0
+						? contentFilterPreferredNonRateLimitedAlternatives
+						: contentFilterPreferredProviders.length > 0
+							? contentFilterPreferredProviders
+							: nonRateLimitedAlternatives.length > 0
+								? nonRateLimitedAlternatives
+								: availableModelProviders;
 
 				if (candidatesForRouting.length > 0) {
 					const rawModelForFallback = models.find((m) => m.id === baseModelId);
@@ -2062,16 +2214,24 @@ chat.openapi(completions, async (c) => {
 							usedProvider = cheapestResult.provider.providerId;
 							usedModel = cheapestResult.provider.modelName;
 							usedRegion = cheapestResult.provider.region;
-							routingMetadata = {
-								...cheapestResult.metadata,
-								selectionReason: "rate-limit-fallback",
-								originalProvider: requestedProvider,
-								originalProviderRateLimited: true,
-								providerScores: [
-									originalProviderScore,
-									...cheapestResult.metadata.providerScores,
-								],
-							};
+							routingMetadata = finalizeContentFilterRoutingMetadata(
+								{
+									...cheapestResult.metadata,
+									selectionReason: "rate-limit-fallback",
+									originalProvider: requestedProvider,
+									originalProviderRateLimited: true,
+									providerScores: [
+										originalProviderScore,
+										...cheapestResult.metadata.providerScores,
+									],
+								},
+								contentFilterMatched,
+								contentFilterUnavailable,
+								contentFilterRoutingExcludedProviders,
+								modelWithPricing.id,
+								allMetricsMap,
+								contentFilterRoutingApplied,
+							);
 						}
 					}
 				}
@@ -2195,8 +2355,24 @@ chat.openapi(completions, async (c) => {
 						// Only proceed with fallback if there are providers with better uptime
 						// Otherwise stick with the original provider
 						if (betterUptimeProviders.length > 0) {
+							const contentFilterRoutingDecision =
+								getContentFilterRoutingDecision(
+									betterUptimeProviders,
+									shouldAvoidContentFilterProviders,
+								);
+							const mergedContentFilterRoutingDecision =
+								mergeContentFilterRoutingDecision(
+									contentFilterRoutingExcludedProviders,
+									contentFilterRoutingApplied,
+									contentFilterRoutingDecision,
+								);
+							contentFilterRoutingExcludedProviders =
+								mergedContentFilterRoutingDecision.excludedProviders;
+							contentFilterRoutingApplied =
+								mergedContentFilterRoutingDecision.routingApplied;
+
 							const cheapestResult = getCheapestFromAvailableProviders(
-								betterUptimeProviders,
+								contentFilterRoutingDecision.candidates,
 								modelWithPricing,
 								{ metricsMap: allMetricsMap, isStreaming: stream },
 							);
@@ -2223,17 +2399,25 @@ chat.openapi(completions, async (c) => {
 							if (cheapestResult) {
 								usedProvider = cheapestResult.provider.providerId;
 								usedModel = cheapestResult.provider.modelName;
-								routingMetadata = {
-									...cheapestResult.metadata,
-									selectionReason: "low-uptime-fallback",
-									originalProvider: requestedProvider,
-									originalProviderUptime: currentUptime,
-									// Add the original provider's score to the scores array
-									providerScores: [
-										originalProviderScore,
-										...cheapestResult.metadata.providerScores,
-									],
-								};
+								routingMetadata = finalizeContentFilterRoutingMetadata(
+									{
+										...cheapestResult.metadata,
+										selectionReason: "low-uptime-fallback",
+										originalProvider: requestedProvider,
+										originalProviderUptime: currentUptime,
+										// Add the original provider's score to the scores array
+										providerScores: [
+											originalProviderScore,
+											...cheapestResult.metadata.providerScores,
+										],
+									},
+									contentFilterMatched,
+									contentFilterUnavailable,
+									contentFilterRoutingExcludedProviders,
+									modelWithPricing.id,
+									allMetricsMap,
+									contentFilterRoutingApplied,
+								);
 							}
 						}
 					}
@@ -2320,11 +2504,18 @@ chat.openapi(completions, async (c) => {
 				availableModelProviders,
 				shouldAvoidContentFilterProviders,
 			);
+			const mergedContentFilterRoutingDecision =
+				mergeContentFilterRoutingDecision(
+					contentFilterRoutingExcludedProviders,
+					contentFilterRoutingApplied,
+					contentFilterRoutingDecision,
+				);
+			contentFilterRoutingExcludedProviders =
+				mergedContentFilterRoutingDecision.excludedProviders;
+			contentFilterRoutingApplied =
+				mergedContentFilterRoutingDecision.routingApplied;
 			const contentFilterPreferredProviders =
 				contentFilterRoutingDecision.candidates;
-			contentFilterRoutingExcludedProviders =
-				contentFilterRoutingDecision.excludedProviders;
-			contentFilterRoutingApplied = contentFilterRoutingDecision.rerouted;
 
 			// Filter out rate-limited providers during routing
 			const rateLimitedProviderIds = await filterRateLimitedProviders(
@@ -2383,7 +2574,7 @@ chat.openapi(completions, async (c) => {
 					usedProvider = cheapestResult.provider.providerId;
 					usedModel = cheapestResult.provider.modelName;
 					usedRegion = cheapestResult.provider.region;
-					routingMetadata = addContentFilterRoutingMetadata(
+					routingMetadata = finalizeContentFilterRoutingMetadata(
 						{
 							...cheapestResult.metadata,
 							...(noFallback ? { noFallback: true } : {}),
@@ -2393,6 +2584,7 @@ chat.openapi(completions, async (c) => {
 						contentFilterRoutingExcludedProviders,
 						modelWithPricing.id,
 						metricsMap,
+						contentFilterRoutingApplied,
 					);
 					// Annotate rate-limited providers in routing metadata
 					if (rateLimitedProviderIds.size > 0) {
@@ -2568,7 +2760,7 @@ chat.openapi(completions, async (c) => {
 				};
 			});
 
-		routingMetadata = addContentFilterRoutingMetadata(
+		routingMetadata = finalizeContentFilterRoutingMetadata(
 			{
 				availableProviders: routingMetadataProviders.map((p) => p.providerId),
 				selectedProvider: usedProvider,
@@ -2581,6 +2773,7 @@ chat.openapi(completions, async (c) => {
 			contentFilterRoutingExcludedProviders,
 			baseModelId,
 			metricsMap,
+			contentFilterRoutingApplied,
 		);
 	}
 
