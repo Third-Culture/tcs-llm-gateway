@@ -10,6 +10,7 @@ import {
 } from "vitest";
 
 import { and, db, eq, tables, type Log } from "@llmgateway/db";
+import { logger } from "@llmgateway/logger";
 import { getProviderDefinition } from "@llmgateway/models";
 
 import { app } from "./app.js";
@@ -102,6 +103,7 @@ describe("fallback and error status code handling", () => {
 			db.delete(tables.apiKeyIamRule),
 			db.delete(tables.apiKey),
 			db.delete(tables.providerKey),
+			db.delete(tables.rateLimit),
 		]);
 
 		await Promise.all([
@@ -1763,6 +1765,13 @@ describe("fallback and error status code handling", () => {
 
 		test("openai moderation failure blocks when only content-filter providers are available", async () => {
 			await setupKeys("together.ai");
+			await db.insert(tables.rateLimit).values({
+				id: "moderation-outage-rate-limit",
+				organizationId: "org-id",
+				provider: "together.ai",
+				model: "glm-4.7",
+				maxRpm: 1,
+			});
 
 			const togetherProvider = getProviderDefinition("together.ai");
 			expect(togetherProvider).toBeDefined();
@@ -1776,6 +1785,7 @@ describe("fallback and error status code handling", () => {
 			const previousContentFilterModels = process.env.LLM_CONTENT_FILTER_MODELS;
 			const previousOpenAIKey = process.env.LLM_OPENAI_API_KEY;
 			const originalFetch = globalThis.fetch;
+			const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 			const fetchSpy = vi
 				.spyOn(globalThis, "fetch")
 				.mockImplementation(async (input, init) => {
@@ -1818,8 +1828,38 @@ describe("fallback and error status code handling", () => {
 					message:
 						"OpenAI moderation is unavailable and no eligible provider without provider-side content filtering is available.",
 				});
+				expect(res.headers.get("X-RateLimit-Limit-Provider")).toBeNull();
+				expect(res.headers.get("X-RateLimit-Limit-Provider-RPM")).toBeNull();
+				expect(warnSpy).toHaveBeenCalledWith(
+					"Blocking request because OpenAI moderation is unavailable and selected provider is content-filter-sensitive",
+					expect.objectContaining({
+						organizationId: "org-id",
+						projectId: "project-id",
+						apiKeyId: "token-id",
+						usedProvider: "together.ai",
+						requestedModel: "glm-4.7",
+					}),
+				);
+
+				const logs = await waitForLogs(1);
+				expect(logs).toHaveLength(1);
+				expect(logs[0]).toMatchObject({
+					usedProvider: "together.ai",
+					finishReason: "upstream_error",
+					unifiedFinishReason: "upstream_error",
+					hasError: true,
+				});
+				expect(logs[0]?.routingMetadata).toMatchObject({
+					selectedProvider: "together.ai",
+					contentFilterUnavailable: true,
+					contentFilterRerouted: false,
+				});
+				expect(logs[0]?.errorDetails).toMatchObject({
+					statusCode: 503,
+				});
 			} finally {
 				fetchSpy.mockRestore();
+				warnSpy.mockRestore();
 
 				if (originalContentFilterFlag === undefined) {
 					delete togetherProvider.contentFilter;

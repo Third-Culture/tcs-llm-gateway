@@ -2877,6 +2877,158 @@ chat.openapi(completions, async (c) => {
 		);
 	}
 
+	if (!usedToken) {
+		throw new HTTPException(500, {
+			message: `No token`,
+		});
+	}
+
+	usedApiKeyHash = getApiKeyFingerprint(usedToken);
+	routingMetadata = withUsedApiKeyHash(routingMetadata, usedApiKeyHash);
+
+	const contentFilterBlocked =
+		contentFilterMode === "enabled" &&
+		contentFilterMatched &&
+		!contentFilterRoutingApplied;
+	const contentFilterSensitiveProviderBlocked =
+		contentFilterMode === "enabled" &&
+		contentFilterUnavailable &&
+		isContentFilterProvider(usedProvider);
+
+	// Preserve monitor tagging, and also tag successful reroutes triggered by a
+	// gateway content-filter match so the decision remains visible in logs.
+	const shouldTagContentFilter =
+		(contentFilterMode === "monitor" && contentFilterMatched) ||
+		contentFilterRoutingApplied;
+	const gatewayContentFilterResponse = openAIContentFilterResult?.responses
+		.length
+		? openAIContentFilterResult.responses
+		: null;
+	const insertLog = (
+		logData: Parameters<typeof _insertLog>[0],
+		options?: Parameters<typeof _insertLog>[1],
+	) =>
+		_insertLog(
+			{
+				...logData,
+				internalContentFilter: shouldTagContentFilter
+					? true
+					: logData.internalContentFilter,
+				gatewayContentFilterResponse:
+					logData.gatewayContentFilterResponse ?? gatewayContentFilterResponse,
+			},
+			options,
+		);
+
+	if (contentFilterSensitiveProviderBlocked) {
+		const moderationOutageMessage =
+			"OpenAI moderation is unavailable and no eligible provider without provider-side content filtering is available.";
+		const baseLogEntry = createLogEntry(
+			requestId,
+			project,
+			apiKey,
+			providerKey?.id,
+			usedModelFormatted,
+			usedModelMapping,
+			usedProvider,
+			initialRequestedModel,
+			requestedProvider,
+			messages,
+			temperature,
+			max_tokens,
+			top_p,
+			frequency_penalty,
+			presence_penalty,
+			reasoning_effort,
+			reasoning_max_tokens,
+			effort,
+			response_format,
+			tools,
+			tool_choice,
+			source,
+			customHeaders,
+			debugMode,
+			userAgent,
+			image_config,
+			routingMetadata,
+			rawBody,
+			null,
+			null,
+			null,
+			undefined,
+			undefined,
+		);
+
+		logger.warn(
+			"Blocking request because OpenAI moderation is unavailable and selected provider is content-filter-sensitive",
+			{
+				requestId,
+				organizationId: project.organizationId,
+				projectId: project.id,
+				apiKeyId: apiKey.id,
+				usedProvider,
+				usedModel,
+				requestedModel: initialRequestedModel,
+				routingMetadata,
+			},
+		);
+
+		try {
+			await insertLogEntry({
+				...baseLogEntry,
+				duration: 0,
+				timeToFirstToken: null,
+				timeToFirstReasoningToken: null,
+				responseSize: 0,
+				content: null,
+				reasoningContent: null,
+				finishReason: "upstream_error",
+				promptTokens: null,
+				completionTokens: null,
+				totalTokens: null,
+				reasoningTokens: null,
+				cachedTokens: null,
+				hasError: true,
+				streamed: !!stream,
+				canceled: false,
+				errorDetails: {
+					statusCode: 503,
+					statusText: "Service Unavailable",
+					responseText: moderationOutageMessage,
+				},
+				cachedInputCost: null,
+				requestCost: null,
+				webSearchCost: null,
+				imageInputTokens: null,
+				imageOutputTokens: null,
+				imageInputCost: null,
+				imageOutputCost: null,
+				estimatedCost: false,
+				discount: null,
+				dataStorageCost: "0",
+				cached: false,
+				toolResults: null,
+				unifiedFinishReason: "upstream_error",
+			});
+		} catch (error) {
+			logger.error(
+				"Failed to persist moderation outage block log",
+				{
+					requestId,
+					organizationId: project.organizationId,
+					projectId: project.id,
+					apiKeyId: apiKey.id,
+					usedProvider,
+				},
+				error as Error,
+			);
+		}
+
+		throw new HTTPException(503, {
+			message: moderationOutageMessage,
+		});
+	}
+
 	// Consume a rate-limit slot for the chosen provider (routing already filtered rate-limited ones)
 	{
 		const providerRateLimitResult = await checkProviderRateLimit(
@@ -2980,56 +3132,13 @@ chat.openapi(completions, async (c) => {
 		}
 	}
 
-	if (!usedToken) {
-		throw new HTTPException(500, {
-			message: `No token`,
-		});
-	}
-
-	usedApiKeyHash = getApiKeyFingerprint(usedToken);
-	routingMetadata = withUsedApiKeyHash(routingMetadata, usedApiKeyHash);
-
-	const contentFilterBlocked =
-		contentFilterMode === "enabled" &&
-		contentFilterMatched &&
-		!contentFilterRoutingApplied;
-	const contentFilterSensitiveProviderBlocked =
-		contentFilterMode === "enabled" &&
-		contentFilterUnavailable &&
-		isContentFilterProvider(usedProvider);
-
-	// Preserve monitor tagging, and also tag successful reroutes triggered by a
-	// gateway content-filter match so the decision remains visible in logs.
-	const shouldTagContentFilter =
-		(contentFilterMode === "monitor" && contentFilterMatched) ||
-		contentFilterRoutingApplied;
-	const gatewayContentFilterResponse = openAIContentFilterResult?.responses
-		.length
-		? openAIContentFilterResult.responses
-		: null;
-	const insertLog = (
-		logData: Parameters<typeof _insertLog>[0],
-		options?: Parameters<typeof _insertLog>[1],
-	) =>
-		_insertLog(
-			{
-				...logData,
-				internalContentFilter: shouldTagContentFilter
-					? true
-					: logData.internalContentFilter,
-				gatewayContentFilterResponse:
-					logData.gatewayContentFilterResponse ?? gatewayContentFilterResponse,
-			},
-			options,
-		);
-
 	if (contentFilterBlocked) {
 		const contentFilterResponseId = `chatcmpl-${Date.now()}`;
 		const contentFilterCreated = Math.floor(Date.now() / 1000);
 
 		// Log the filtered request
 		try {
-			await insertLog({
+			await insertLogEntry({
 				...createLogEntry(
 					requestId,
 					project,
@@ -3134,13 +3243,6 @@ chat.openapi(completions, async (c) => {
 				completion_tokens: 0,
 				total_tokens: 0,
 			},
-		});
-	}
-
-	if (contentFilterSensitiveProviderBlocked) {
-		throw new HTTPException(503, {
-			message:
-				"OpenAI moderation is unavailable and no eligible provider without provider-side content filtering is available.",
 		});
 	}
 
