@@ -278,6 +278,25 @@ export async function validateProviderKey(
 				};
 			}
 
+			// Treat billing/quota errors as valid key — the key is authenticated
+			// but the account has insufficient credits or hit rate limits
+			const isBillingError =
+				response.status === 402 ||
+				response.status === 429 ||
+				errorMessage.toLowerCase().includes("credit balance") ||
+				errorMessage.toLowerCase().includes("billing") ||
+				errorMessage.toLowerCase().includes("quota") ||
+				errorMessage.toLowerCase().includes("rate limit");
+
+			if (isBillingError) {
+				logger.debug("Provider key is valid but has billing/quota issues", {
+					provider,
+					model: validationModel,
+					statusCode: response.status,
+				});
+				return { valid: true, model: validationModel };
+			}
+
 			return {
 				valid: false,
 				error: errorMessage,

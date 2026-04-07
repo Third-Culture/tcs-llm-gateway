@@ -196,12 +196,14 @@ export function CreateProviderKeyDialog({
 					void queryClient.invalidateQueries({ queryKey });
 					setOpen(false);
 				},
-				onError: () => {
+				onError: (error) => {
 					setIsValidating(false);
 					toast({
 						title: "Validation Failed",
 						description:
-							"Failed to validate the API key. Please check your key and region.",
+							error instanceof Error
+								? error.message
+								: "Failed to validate the API key. Please check your key and region.",
 						variant: "destructive",
 					});
 				},
