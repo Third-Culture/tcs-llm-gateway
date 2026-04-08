@@ -16,6 +16,45 @@ vi.mock("@llmgateway/logger", () => ({
 }));
 
 describe("parseProviderResponse", () => {
+	describe("google reasoning output", () => {
+		it("treats missing thought text as null when only thought signatures are returned", () => {
+			const json = {
+				candidates: [
+					{
+						content: {
+							role: "model",
+							parts: [
+								{
+									text: "OK",
+									thoughtSignature: "sig-123",
+								},
+							],
+						},
+						finishReason: "STOP",
+					},
+				],
+				usageMetadata: {
+					promptTokenCount: 5,
+					candidatesTokenCount: 1,
+					totalTokenCount: 50,
+					thoughtsTokenCount: 44,
+				},
+			};
+
+			const result = parseProviderResponse(
+				"google-vertex",
+				"gemini-3-flash-preview",
+				json,
+			);
+
+			expect(result.content).toBe("OK");
+			expect(result.reasoningContent).toBeNull();
+			expect(result.reasoningTokens).toBe(44);
+			expect(result.completionTokens).toBe(45);
+			expect(result.finishReason).toBe("STOP");
+		});
+	});
+
 	describe("aws-bedrock cachedTokens", () => {
 		it("returns cachedTokens as 0 when cacheReadInputTokens is 0", () => {
 			const json = {
@@ -96,6 +135,52 @@ describe("parseProviderResponse", () => {
 			);
 
 			expect(result.cachedTokens).toBe(0);
+		});
+
+		it("extracts reasoning content from Bedrock reasoning blocks", () => {
+			const json = {
+				output: {
+					message: {
+						content: [
+							{
+								reasoningContent: {
+									reasoningText: {
+										text: "First compare the sets. ",
+									},
+								},
+							},
+							{
+								reasoningContent: {
+									reasoningText: {
+										text: "Then derive the conclusion.",
+									},
+								},
+							},
+							{ text: "Some roses may be red, but it is not guaranteed." },
+						],
+						role: "assistant",
+					},
+				},
+				stopReason: "end_turn",
+				usage: {
+					inputTokens: 100,
+					outputTokens: 200,
+					totalTokens: 300,
+				},
+			};
+
+			const result = parseProviderResponse(
+				"aws-bedrock",
+				"anthropic.claude-sonnet-4-6",
+				json,
+			);
+
+			expect(result.content).toBe(
+				"Some roses may be red, but it is not guaranteed.",
+			);
+			expect(result.reasoningContent).toBe(
+				"First compare the sets. Then derive the conclusion.",
+			);
 		});
 	});
 

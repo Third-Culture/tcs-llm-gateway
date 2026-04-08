@@ -57,6 +57,29 @@ export function parseProviderResponse(
 					.map((block: any) => block.text)
 					.join("") ?? null;
 
+			// Bedrock reasoning-capable Anthropic models return reasoning in
+			// content blocks as reasoningContent.reasoningText.text.
+			reasoningContent =
+				contentBlocks
+					.map((block: any) => {
+						const reasoning = block.reasoningContent;
+						if (!reasoning) {
+							return null;
+						}
+						if (typeof reasoning === "string") {
+							return reasoning;
+						}
+						if (typeof reasoning.reasoningText?.text === "string") {
+							return reasoning.reasoningText.text;
+						}
+						if (typeof reasoning.text === "string") {
+							return reasoning.text;
+						}
+						return null;
+					})
+					.filter((value: string | null): value is string => value !== null)
+					.join("") ?? null;
+
 			// Map Bedrock stop reasons to OpenAI finish reasons
 			const stopReason = json.stopReason;
 			if (stopReason === "end_turn") {
@@ -194,6 +217,7 @@ export function parseProviderResponse(
 			break;
 		}
 		case "google-ai-studio":
+		case "glacier":
 		case "google-vertex":
 		case "quartz":
 		case "obsidian": {
@@ -218,9 +242,13 @@ export function parseProviderResponse(
 			const contentParts = parts.filter((part: any) => !part.thought);
 			const reasoningParts = parts.filter((part: any) => part.thought);
 
-			content = contentParts.map((part: any) => part.text).join("") ?? null;
-			reasoningContent =
-				reasoningParts.map((part: any) => part.text).join("") ?? null;
+			const textContent = contentParts.map((part: any) => part.text).join("");
+			const thoughtContent = reasoningParts
+				.map((part: any) => part.text)
+				.join("");
+
+			content = textContent.length > 0 ? textContent : null;
+			reasoningContent = thoughtContent.length > 0 ? thoughtContent : null;
 
 			// Extract images from Google response parts
 			const imageParts = parts.filter((part: any) => part.inlineData);
@@ -232,6 +260,11 @@ export function parseProviderResponse(
 					},
 				}),
 			);
+
+			// Set content label for image generation when no text content is present
+			if (!content && images.length > 0) {
+				content = imageLabel;
+			}
 
 			// Debug logging to identify parsing issues
 			if (!content && !reasoningContent && parts.length > 0 && !images.length) {
@@ -356,7 +389,7 @@ export function parseProviderResponse(
 
 			// If candidatesTokenCount is missing, estimate it from the content or set to 0
 			if (rawCandidates === null) {
-				if (content) {
+				if (content && images.length === 0) {
 					const estimation = estimateTokens(
 						usedProvider,
 						[],
@@ -366,7 +399,7 @@ export function parseProviderResponse(
 					);
 					rawCandidates = estimation.calculatedCompletionTokens ?? 0;
 				} else {
-					// No content means 0 completion tokens (e.g., MAX_TOKENS with only reasoning)
+					// No real text content (image-only or empty) means 0 completion tokens
 					rawCandidates = 0;
 				}
 			}

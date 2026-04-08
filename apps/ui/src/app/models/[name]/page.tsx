@@ -201,11 +201,11 @@ export default async function ModelPage({ params }: PageProps) {
 		],
 	};
 
-	const lowestInputPrice = Math.min(
-		...modelProviders
-			.filter((p) => p.inputPrice)
-			.map((p) => p.inputPrice! * 1e6 * (p.discount ? 1 - p.discount : 1)),
-	);
+	const providerPrices = modelProviders
+		.filter((p) => p.inputPrice)
+		.map((p) => p.inputPrice! * 1e6 * (p.discount ? 1 - p.discount : 1));
+	const lowestInputPrice = Math.min(...providerPrices);
+	const highestInputPrice = Math.max(...providerPrices);
 
 	const productSchema = {
 		"@context": "https://schema.org",
@@ -222,6 +222,7 @@ export default async function ModelPage({ params }: PageProps) {
 			"@type": "AggregateOffer",
 			priceCurrency: "USD",
 			lowPrice: isFinite(lowestInputPrice) ? lowestInputPrice : 0,
+			highPrice: isFinite(highestInputPrice) ? highestInputPrice : 0,
 			offerCount: modelProviders.length,
 			availability: "https://schema.org/InStock",
 		},

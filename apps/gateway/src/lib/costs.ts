@@ -354,6 +354,7 @@ export async function calculateCosts(
 	// (merged during extraction). For other providers, add reasoning separately.
 	const isGoogleProvider =
 		provider === "google-ai-studio" ||
+		provider === "glacier" ||
 		provider === "google-vertex" ||
 		provider === "quartz" ||
 		provider === "obsidian";
@@ -430,6 +431,7 @@ export async function calculateCosts(
 		promptTokens:
 			imageInputTokens &&
 			(provider === "google-ai-studio" ||
+				provider === "glacier" ||
 				provider === "google-vertex" ||
 				provider === "quartz" ||
 				provider === "obsidian")

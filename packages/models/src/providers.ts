@@ -109,11 +109,32 @@ export const providers = [
 			required: {
 				apiKey: "LLM_GOOGLE_AI_STUDIO_API_KEY",
 			},
+			optional: {
+				baseUrl: "LLM_GOOGLE_AI_STUDIO_BASE_URL",
+			},
 		},
 		streaming: true,
 		cancellation: true,
 		color: "#4285f4",
 		website: "https://ai.google.com",
+		announcement: null,
+		priority: 0.8,
+	},
+	{
+		id: "glacier",
+		name: "Glacier",
+		description:
+			"Glacier is a stealth provider with Google AI Studio-compatible Gemini endpoints.",
+		env: {
+			required: {
+				apiKey: "LLM_GLACIER_API_KEY",
+				baseUrl: "LLM_GLACIER_BASE_URL",
+			},
+		},
+		streaming: true,
+		cancellation: true,
+		color: "#4285f4",
+		website: null,
 		announcement: null,
 		priority: 0.8,
 	},
@@ -128,6 +149,7 @@ export const providers = [
 				project: "LLM_GOOGLE_CLOUD_PROJECT",
 			},
 			optional: {
+				baseUrl: "LLM_GOOGLE_VERTEX_BASE_URL",
 				region: "LLM_GOOGLE_VERTEX_REGION",
 			},
 		},
@@ -157,6 +179,7 @@ export const providers = [
 		color: "#4285f4",
 		website: null,
 		announcement: null,
+		priority: 0.9,
 	},
 	{
 		id: "obsidian",
