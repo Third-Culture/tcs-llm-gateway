@@ -122,7 +122,7 @@ beacon.openapi(beaconRoute, async (c) => {
 			installation: beaconData.type,
 			timestamp: beaconData.timestamp,
 			source: "self_hosted_api",
-			version: beaconData.version,
+			version: process.env.APP_VERSION ?? beaconData.version,
 			client_ip: clientIP,
 			country: regionInfo.country,
 			region: regionInfo.region,
