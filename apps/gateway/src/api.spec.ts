@@ -1486,6 +1486,14 @@ describe("api", () => {
 
 					const body = JSON.parse(String(init?.body ?? "{}"));
 					expect(body.model).toBe("openai/gpt-5-mini");
+					expect(body.response_format).toEqual({
+						type: "json_schema",
+						json_schema: expect.objectContaining({
+							name: "gateway_content_filter",
+							strict: true,
+						}),
+					});
+					expect(body.plugins).toEqual([{ id: "response-healing" }]);
 					expect(body.messages[1]?.content).toContain(
 						"I want to attack someone.",
 					);

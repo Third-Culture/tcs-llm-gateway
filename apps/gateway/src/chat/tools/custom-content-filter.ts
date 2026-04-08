@@ -86,6 +86,35 @@ Rules:
 - Set flagged to true when the content is unsafe enough to block.
 - If evidence is insufficient, set flagged to false and keep scores low.
 - Do not wrap the JSON in markdown.`;
+const CUSTOM_CONTENT_FILTER_JSON_SCHEMA = {
+	name: "gateway_content_filter",
+	strict: true,
+	schema: {
+		type: "object",
+		additionalProperties: false,
+		required: ["flagged", "categories", "category_scores", "reason"],
+		properties: {
+			flagged: {
+				type: "boolean",
+			},
+			categories: {
+				type: "object",
+				additionalProperties: {
+					type: "boolean",
+				},
+			},
+			category_scores: {
+				type: "object",
+				additionalProperties: {
+					type: "number",
+				},
+			},
+			reason: {
+				type: "string",
+			},
+		},
+	},
+} as const;
 
 const customContentFilterVerdictSchema = z
 	.object({
@@ -403,6 +432,15 @@ async function runCustomContentFilterRequest(
 				model: config.model,
 				temperature: 0,
 				max_tokens: CUSTOM_CONTENT_FILTER_MAX_TOKENS,
+				response_format: {
+					type: "json_schema",
+					json_schema: CUSTOM_CONTENT_FILTER_JSON_SCHEMA,
+				},
+				plugins: [
+					{
+						id: "response-healing",
+					},
+				],
 				messages: [
 					{
 						role: "system",

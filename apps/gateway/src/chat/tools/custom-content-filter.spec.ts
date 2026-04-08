@@ -55,6 +55,14 @@ describe("checkCustomContentFilter", () => {
 				expect(body.model).toBe("anthropic/claude-sonnet-4-5");
 				expect(body.temperature).toBe(0);
 				expect(body.max_tokens).toBe(300);
+				expect(body.response_format).toEqual({
+					type: "json_schema",
+					json_schema: expect.objectContaining({
+						name: "gateway_content_filter",
+						strict: true,
+					}),
+				});
+				expect(body.plugins).toEqual([{ id: "response-healing" }]);
 				expect(body.messages[0]?.role).toBe("system");
 				expect(body.messages[1]?.content).toContain(
 					"I want to attack someone.",
