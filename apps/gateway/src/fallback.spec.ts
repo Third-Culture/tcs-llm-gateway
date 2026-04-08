@@ -24,6 +24,53 @@ import { clearCache, waitForLogs, readAll } from "./test-utils/test-helpers.js";
 
 describe("fallback and error status code handling", () => {
 	let mockServerUrl: string;
+	type FetchCall = [
+		input: Parameters<typeof fetch>[0],
+		init?: Parameters<typeof fetch>[1],
+	];
+
+	function getFetchCallUrl(input: FetchCall[0]) {
+		if (typeof input === "string") {
+			return input;
+		}
+		if (input instanceof URL) {
+			return input.toString();
+		}
+		return input.url;
+	}
+
+	function getFetchCallHeaders(input: FetchCall[0], init?: FetchCall[1]) {
+		const headers = new Headers();
+		if (!(typeof input === "string" || input instanceof URL)) {
+			for (const [key, value] of input.headers.entries()) {
+				headers.set(key, value);
+			}
+		}
+		if (init?.headers) {
+			for (const [key, value] of new Headers(init.headers).entries()) {
+				headers.set(key, value);
+			}
+		}
+		return headers;
+	}
+
+	function getMockServerCalls(calls: FetchCall[]) {
+		return calls.filter(([input]) =>
+			getFetchCallUrl(input).startsWith(mockServerUrl),
+		);
+	}
+
+	function getMockServerTokens(calls: FetchCall[]) {
+		return getMockServerCalls(calls).map(([input, init]) =>
+			getFetchCallHeaders(input, init).get("authorization"),
+		);
+	}
+
+	function getMockServerBodies(calls: FetchCall[]) {
+		return getMockServerCalls(calls).map(([, init]) =>
+			typeof init?.body === "string" ? init.body : null,
+		);
+	}
 
 	async function ensureBaseFixtures() {
 		await db
@@ -1755,6 +1802,13 @@ describe("fallback and error status code handling", () => {
 
 				expect(res.status).not.toBe(503);
 				expect(fetchSpy).toHaveBeenCalled();
+				expect(getMockServerCalls(fetchSpy.mock.calls)).toHaveLength(1);
+				expect(getMockServerTokens(fetchSpy.mock.calls)).toContain(
+					"Bearer sk-cerebras-key",
+				);
+				expect(getMockServerTokens(fetchSpy.mock.calls)).not.toContain(
+					"Bearer sk-together-key",
+				);
 
 				const logs = await waitForLogs(1);
 				expect(logs.length).toBe(1);
@@ -1863,6 +1917,13 @@ describe("fallback and error status code handling", () => {
 
 				expect(res.status).toBe(200);
 				expect(fetchSpy).toHaveBeenCalled();
+				expect(getMockServerCalls(fetchSpy.mock.calls)).toHaveLength(1);
+				expect(getMockServerTokens(fetchSpy.mock.calls)).toContain(
+					"Bearer sk-groq-key",
+				);
+				expect(getMockServerTokens(fetchSpy.mock.calls)).not.toContain(
+					"Bearer sk-bytedance-key",
+				);
 
 				const logs = await waitForLogs(1);
 				expect(logs).toHaveLength(1);
@@ -2009,6 +2070,17 @@ describe("fallback and error status code handling", () => {
 
 				expect(res.status).toBe(200);
 				expect(fetchSpy).toHaveBeenCalled();
+				expect(getMockServerCalls(fetchSpy.mock.calls)).toHaveLength(1);
+				expect(getMockServerTokens(fetchSpy.mock.calls)).not.toContain(
+					"Bearer sk-novita-key",
+				);
+				const [lowUptimeBody] = getMockServerBodies(fetchSpy.mock.calls);
+				expect(lowUptimeBody).not.toBeNull();
+				if (lowUptimeBody === null) {
+					throw new Error("Expected an upstream request body");
+				}
+				expect(lowUptimeBody).toContain('"model":"glm-4.6"');
+				expect(lowUptimeBody).not.toContain("zai-org/glm-4.6");
 
 				const logs = await waitForLogs(1);
 				expect(logs).toHaveLength(1);
@@ -2131,6 +2203,7 @@ describe("fallback and error status code handling", () => {
 					message:
 						"OpenAI moderation is unavailable and no eligible provider without provider-side content filtering is available.",
 				});
+				expect(getMockServerCalls(fetchSpy.mock.calls)).toHaveLength(0);
 				expect(res.headers.get("X-RateLimit-Limit-Provider")).toBeNull();
 				expect(res.headers.get("X-RateLimit-Limit-Provider-RPM")).toBeNull();
 				expect(warnSpy).toHaveBeenCalledWith(
