@@ -2006,24 +2006,19 @@ describe("fallback and error status code handling", () => {
 		});
 
 		test("openai moderation failure reroutes auto routing away from content-filter providers", async () => {
-			await setupProviderKeys(["bytedance", "groq"]);
+			await setupProviderKeys(["anthropic", "aws-bedrock"]);
 
-			const bytedanceProvider = modelsModule.getProviderDefinition("bytedance");
-			expect(bytedanceProvider).toBeDefined();
-			if (!bytedanceProvider) {
-				throw new Error("Missing bytedance provider fixture");
+			const anthropicProvider = modelsModule.getProviderDefinition("anthropic");
+			expect(anthropicProvider).toBeDefined();
+			if (!anthropicProvider) {
+				throw new Error("Missing anthropic provider fixture");
 			}
 
-			const originalContentFilterFlag = bytedanceProvider.contentFilter;
+			const originalContentFilterFlag = anthropicProvider.contentFilter;
 			const previousContentFilterMode = process.env.LLM_CONTENT_FILTER_MODE;
 			const previousContentFilterMethod = process.env.LLM_CONTENT_FILTER_METHOD;
 			const previousContentFilterModels = process.env.LLM_CONTENT_FILTER_MODELS;
 			const previousOpenAIKey = process.env.LLM_OPENAI_API_KEY;
-			const hasProviderEnvironmentTokenSpy = vi
-				.spyOn(modelsModule, "hasProviderEnvironmentToken")
-				.mockImplementation(
-					(provider) => provider === "bytedance" || provider === "groq",
-				);
 			const originalFetch = globalThis.fetch;
 			const fetchSpy = vi
 				.spyOn(globalThis, "fetch")
@@ -2042,7 +2037,7 @@ describe("fallback and error status code handling", () => {
 					return await originalFetch(input as RequestInfo | URL, init);
 				});
 
-			bytedanceProvider.contentFilter = true;
+			anthropicProvider.contentFilter = true;
 			process.env.LLM_CONTENT_FILTER_MODE = "enabled";
 			process.env.LLM_CONTENT_FILTER_METHOD = "openai";
 			process.env.LLM_CONTENT_FILTER_MODELS = "auto";
@@ -2065,38 +2060,37 @@ describe("fallback and error status code handling", () => {
 				expect(fetchSpy).toHaveBeenCalled();
 				expect(getMockServerCalls(fetchSpy.mock.calls)).toHaveLength(1);
 				expect(getMockServerTokens(fetchSpy.mock.calls)).toContain(
-					"Bearer sk-groq-key",
+					"Bearer sk-aws-bedrock-key",
 				);
 				expect(getMockServerTokens(fetchSpy.mock.calls)).not.toContain(
-					"Bearer sk-bytedance-key",
+					"Bearer sk-anthropic-key",
 				);
 
 				const logs = await waitForLogs(1);
 				expect(logs).toHaveLength(1);
-				expect(logs[0]?.usedProvider).toBe("groq");
+				expect(logs[0]?.usedProvider).toBe("aws-bedrock");
 				expect(logs[0]?.routingMetadata).toMatchObject({
-					selectedProvider: "groq",
+					selectedProvider: "aws-bedrock",
 					contentFilterUnavailable: true,
 					contentFilterRerouted: true,
 				});
 				expect(
 					logs[0]?.routingMetadata?.contentFilterExcludedProviders,
-				).toContain("bytedance");
+				).toContain("anthropic");
 				expect(logs[0]?.routingMetadata?.providerScores).toContainEqual(
 					expect.objectContaining({
-						providerId: "bytedance",
+						providerId: "anthropic",
 						contentFilterProvider: true,
 						excludedByModerationFailure: true,
 					}),
 				);
 			} finally {
-				hasProviderEnvironmentTokenSpy.mockRestore();
 				fetchSpy.mockRestore();
 
 				if (originalContentFilterFlag === undefined) {
-					delete bytedanceProvider.contentFilter;
+					delete anthropicProvider.contentFilter;
 				} else {
-					bytedanceProvider.contentFilter = originalContentFilterFlag;
+					anthropicProvider.contentFilter = originalContentFilterFlag;
 				}
 
 				if (previousContentFilterMode === undefined) {

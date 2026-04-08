@@ -15,6 +15,10 @@ describe("beacon endpoint", () => {
 		vi.clearAllMocks();
 	});
 
+	function getExpectedVersion(clientVersion: string) {
+		return process.env.APP_VERSION ?? clientVersion;
+	}
+
 	it("should accept valid beacon data", async () => {
 		const beaconData = {
 			uuid: "123e4567-e89b-12d3-a456-426614174000",
@@ -46,7 +50,7 @@ describe("beacon endpoint", () => {
 				installation: beaconData.type,
 				timestamp: beaconData.timestamp,
 				source: "self_hosted_api",
-				version: beaconData.version,
+				version: getExpectedVersion(beaconData.version),
 				client_ip: null, // No IP headers provided
 				country: undefined,
 				region: undefined,
@@ -86,7 +90,7 @@ describe("beacon endpoint", () => {
 				installation: beaconData.type,
 				timestamp: beaconData.timestamp,
 				source: "self_hosted_api",
-				version: beaconData.version,
+				version: getExpectedVersion(beaconData.version),
 				client_ip: "203.0.113.42",
 				country: "US",
 				region: "California",
@@ -125,7 +129,7 @@ describe("beacon endpoint", () => {
 				installation: beaconData.type,
 				timestamp: beaconData.timestamp,
 				source: "self_hosted_api",
-				version: beaconData.version,
+				version: getExpectedVersion(beaconData.version),
 				client_ip: "198.51.100.25", // First IP from X-Forwarded-For
 				country: undefined, // GCP doesn't provide country in standard headers
 				region: "us-central1",
@@ -162,7 +166,7 @@ describe("beacon endpoint", () => {
 				installation: beaconData.type,
 				timestamp: beaconData.timestamp,
 				source: "self_hosted_api",
-				version: beaconData.version,
+				version: getExpectedVersion(beaconData.version),
 				client_ip: "192.0.2.123",
 				country: undefined,
 				region: undefined,
@@ -199,7 +203,7 @@ describe("beacon endpoint", () => {
 				installation: beaconData.type,
 				timestamp: beaconData.timestamp,
 				source: "self_hosted_api",
-				version: beaconData.version,
+				version: getExpectedVersion(beaconData.version),
 				client_ip: null,
 				country: undefined,
 				region: undefined,
