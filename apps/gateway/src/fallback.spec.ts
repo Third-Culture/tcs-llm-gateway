@@ -1866,6 +1866,145 @@ describe("fallback and error status code handling", () => {
 			}
 		});
 
+		test("openai moderation failure reroutes direct provider requests away from content-filter providers", async () => {
+			await setupMultiProviderKeys();
+
+			const togetherProvider =
+				modelsModule.getProviderDefinition("together.ai");
+			expect(togetherProvider).toBeDefined();
+			if (!togetherProvider) {
+				throw new Error("Missing together.ai provider fixture");
+			}
+
+			const originalContentFilterFlag = togetherProvider.contentFilter;
+			const previousContentFilterMode = process.env.LLM_CONTENT_FILTER_MODE;
+			const previousContentFilterMethod = process.env.LLM_CONTENT_FILTER_METHOD;
+			const previousContentFilterModels = process.env.LLM_CONTENT_FILTER_MODELS;
+			const previousOpenAIKey = process.env.LLM_OPENAI_API_KEY;
+			const fetchSpy = vi
+				.spyOn(globalThis, "fetch")
+				.mockImplementation(async (input, init) => {
+					const url =
+						typeof input === "string"
+							? input
+							: input instanceof URL
+								? input.toString()
+								: input.url;
+
+					if (url === "https://api.openai.com/v1/moderations") {
+						throw new Error("moderation fetch failed");
+					}
+
+					return new Response(
+						JSON.stringify({
+							id: "chatcmpl-direct-provider-fallback",
+							object: "chat.completion",
+							created: Math.floor(Date.now() / 1000),
+							model: "gpt-oss-120b",
+							choices: [
+								{
+									index: 0,
+									message: { role: "assistant", content: "ok" },
+									finish_reason: "stop",
+								},
+							],
+							usage: {
+								prompt_tokens: 1,
+								completion_tokens: 1,
+								total_tokens: 2,
+							},
+						}),
+						{
+							status: 200,
+							headers: {
+								"Content-Type": "application/json",
+							},
+						},
+					);
+				});
+
+			togetherProvider.contentFilter = true;
+			process.env.LLM_CONTENT_FILTER_MODE = "enabled";
+			process.env.LLM_CONTENT_FILTER_METHOD = "openai";
+			delete process.env.LLM_CONTENT_FILTER_MODELS;
+			process.env.LLM_OPENAI_API_KEY = "sk-openai-test";
+
+			try {
+				const res = await app.request("/v1/chat/completions", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: "Bearer real-token",
+					},
+					body: JSON.stringify({
+						model: "together.ai/glm-4.7",
+						messages: [{ role: "user", content: "hello" }],
+					}),
+				});
+
+				expect(res.status).toBe(200);
+				expect(fetchSpy).toHaveBeenCalled();
+				expect(getMockServerCalls(fetchSpy.mock.calls)).toHaveLength(1);
+				expect(getMockServerTokens(fetchSpy.mock.calls)).toContain(
+					"Bearer sk-cerebras-key",
+				);
+				expect(getMockServerTokens(fetchSpy.mock.calls)).not.toContain(
+					"Bearer sk-together-key",
+				);
+
+				const logs = await waitForLogs(1);
+				expect(logs).toHaveLength(1);
+				expect(logs[0]?.usedProvider).toBe("cerebras");
+				expect(logs[0]?.routingMetadata).toMatchObject({
+					selectedProvider: "cerebras",
+					selectionReason: "moderation-outage-fallback",
+					originalProvider: "together.ai",
+					contentFilterUnavailable: true,
+					contentFilterRerouted: true,
+					contentFilterExcludedProviders: ["together.ai"],
+				});
+				expect(logs[0]?.routingMetadata?.providerScores).toContainEqual(
+					expect.objectContaining({
+						providerId: "together.ai",
+						contentFilterProvider: true,
+						excludedByModerationFailure: true,
+					}),
+				);
+			} finally {
+				fetchSpy.mockRestore();
+
+				if (originalContentFilterFlag === undefined) {
+					delete togetherProvider.contentFilter;
+				} else {
+					togetherProvider.contentFilter = originalContentFilterFlag;
+				}
+
+				if (previousContentFilterMode === undefined) {
+					delete process.env.LLM_CONTENT_FILTER_MODE;
+				} else {
+					process.env.LLM_CONTENT_FILTER_MODE = previousContentFilterMode;
+				}
+
+				if (previousContentFilterMethod === undefined) {
+					delete process.env.LLM_CONTENT_FILTER_METHOD;
+				} else {
+					process.env.LLM_CONTENT_FILTER_METHOD = previousContentFilterMethod;
+				}
+
+				if (previousContentFilterModels === undefined) {
+					delete process.env.LLM_CONTENT_FILTER_MODELS;
+				} else {
+					process.env.LLM_CONTENT_FILTER_MODELS = previousContentFilterModels;
+				}
+
+				if (previousOpenAIKey === undefined) {
+					delete process.env.LLM_OPENAI_API_KEY;
+				} else {
+					process.env.LLM_OPENAI_API_KEY = previousOpenAIKey;
+				}
+			}
+		});
+
 		test("openai moderation failure reroutes auto routing away from content-filter providers", async () => {
 			await setupProviderKeys(["bytedance", "groq"]);
 

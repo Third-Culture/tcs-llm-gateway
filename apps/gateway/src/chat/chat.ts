@@ -2427,6 +2427,159 @@ chat.openapi(completions, async (c) => {
 		}
 	}
 
+	// When moderation is unavailable, reroute direct requests away from
+	// content-filter-sensitive providers before the outage block below.
+	if (
+		!noFallback &&
+		usedProvider &&
+		requestedProvider &&
+		requestedProvider !== "llmgateway" &&
+		requestedProvider !== "custom" &&
+		contentFilterMode === "enabled" &&
+		contentFilterUnavailable &&
+		isContentFilterProvider(usedProvider)
+	) {
+		const baseModelId = (modelInfo as ModelDefinition).id;
+		const providerIds = modelInfo.providers
+			.filter(
+				(provider) =>
+					!(
+						provider.providerId === usedProvider &&
+						provider.region === usedRegion
+					),
+			)
+			.map((provider) => provider.providerId);
+
+		if (providerIds.length > 0) {
+			const providerKeys = await findProviderKeysByProviders(
+				project.organizationId,
+				providerIds,
+			);
+
+			const availableProviders =
+				project.mode === "api-keys"
+					? providerKeys.map((key) => key.provider)
+					: providers
+							.filter(
+								(provider) =>
+									provider.id !== "llmgateway" && provider.id !== usedProvider,
+							)
+							.filter((provider) =>
+								hasProviderEnvironmentToken(provider.id as Provider),
+							)
+							.map((provider) => provider.id);
+
+			const availableModelProviders = filterEligibleModelProviders(
+				preferConcreteRegionalMappings(expandedIamFilteredModelProviders),
+				{
+					allProviderVariants: modelInfo.providers,
+					availableProviders,
+					webSearchTool,
+					responseFormatType: response_format?.type,
+					hasImages,
+					maxTokens: max_tokens,
+					reasoningEffort: reasoning_effort,
+				},
+			).filter(
+				(provider) =>
+					!(
+						provider.providerId === usedProvider &&
+						provider.region === usedRegion
+					),
+			);
+
+			const nonSensitiveAlternatives = availableModelProviders.filter(
+				(provider) => !isContentFilterProvider(provider.providerId),
+			);
+			if (nonSensitiveAlternatives.length > 0) {
+				const selectedProviderMapping =
+					preferConcreteRegionalMappings(
+						expandedIamFilteredModelProviders,
+					).find(
+						(provider) =>
+							provider.providerId === usedProvider &&
+							provider.modelName === usedModel &&
+							provider.region === usedRegion,
+					) ??
+					(modelInfo.providers.find(
+						(provider) =>
+							provider.providerId === usedProvider &&
+							provider.modelName === usedModel &&
+							(provider as ProviderModelMapping).region === usedRegion,
+					) as ProviderModelMapping | undefined);
+				const mergedContentFilterRoutingDecision =
+					mergeContentFilterRoutingDecision(
+						contentFilterRoutingExcludedProviders,
+						contentFilterRoutingApplied,
+						{
+							candidates: nonSensitiveAlternatives,
+							excludedProviders: selectedProviderMapping
+								? [selectedProviderMapping]
+								: [],
+							rerouted: true,
+						},
+					);
+				contentFilterRoutingExcludedProviders =
+					mergedContentFilterRoutingDecision.excludedProviders;
+				contentFilterRoutingApplied =
+					mergedContentFilterRoutingDecision.routingApplied;
+
+				const rawModelForFallback = models.find((m) => m.id === baseModelId);
+				const modelWithPricing = rawModelForFallback
+					? {
+							...rawModelForFallback,
+							providers: expandAllProviderRegions(
+								rawModelForFallback.providers as ProviderModelMapping[],
+							),
+						}
+					: undefined;
+
+				if (modelWithPricing) {
+					const metricsCombinations = [
+						...nonSensitiveAlternatives,
+						...contentFilterRoutingExcludedProviders,
+					].map((provider) => ({
+						modelId: modelWithPricing.id,
+						providerId: provider.providerId,
+						region: provider.region,
+					}));
+					const metricsMap =
+						await getProviderMetricsForCombinations(metricsCombinations);
+					const providerAgnosticCandidates =
+						collapseProvidersToBestRegionPerProvider(
+							nonSensitiveAlternatives,
+							modelWithPricing,
+							{ metricsMap, isStreaming: stream },
+						);
+					const cheapestResult = getCheapestFromAvailableProviders(
+						providerAgnosticCandidates,
+						modelWithPricing,
+						{ metricsMap, isStreaming: stream },
+					);
+
+					if (cheapestResult) {
+						usedProvider = cheapestResult.provider.providerId;
+						usedModel = cheapestResult.provider.modelName;
+						usedRegion = cheapestResult.provider.region;
+						routingMetadata = finalizeContentFilterRoutingMetadata(
+							{
+								...cheapestResult.metadata,
+								selectionReason: "moderation-outage-fallback",
+								originalProvider: requestedProvider,
+							},
+							contentFilterMatched,
+							contentFilterUnavailable,
+							contentFilterRoutingExcludedProviders,
+							modelWithPricing.id,
+							metricsMap,
+							contentFilterRoutingApplied,
+						);
+					}
+				}
+			}
+		}
+	}
+
 	if (!usedProvider) {
 		if (iamFilteredModelProviders.length === 0) {
 			throw new HTTPException(403, {
