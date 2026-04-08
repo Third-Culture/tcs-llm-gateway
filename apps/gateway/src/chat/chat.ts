@@ -658,7 +658,7 @@ function inferStreamingErrorStatusCode(
 	return 500;
 }
 
-async function inspectImmediateStreamingProviderError(
+export async function inspectImmediateStreamingProviderError(
 	response: Response,
 	provider: Provider,
 ): Promise<
@@ -781,9 +781,9 @@ async function inspectImmediateStreamingProviderError(
 				errorMessage:
 					error instanceof Error ? error.message : String(error ?? ""),
 				errorResponseText: "",
-				errorType: "stream",
-				inferredStatusCode: 0,
-				statusText: "",
+				errorType: "upstream_error",
+				inferredStatusCode: 502,
+				statusText: "stream_read_error",
 			},
 		};
 	}
@@ -1552,20 +1552,20 @@ chat.openapi(completions, async (c) => {
 		(usedProvider === "llmgateway" && usedModel === "auto") ||
 		usedModel === "auto"
 	) {
-		// Estimate the context size needed based on the request
-		let requiredContextSize = 0;
+		// Estimate prompt/input tokens first so auto-routing can react to large prompts
+		let estimatedInputTokens = 0;
 
 		// Estimate prompt tokens from messages
 		if (messages && messages.length > 0) {
 			try {
-				requiredContextSize = encodeChatMessages(messages);
+				estimatedInputTokens = encodeChatMessages(messages);
 			} catch {
 				// Fallback to simple estimation if encoding fails
 				const messageTokens = messages.reduce(
 					(acc, m) => acc + (m.content?.length ?? 0),
 					0,
 				);
-				requiredContextSize = Math.max(1, Math.round(messageTokens / 4));
+				estimatedInputTokens = Math.max(1, Math.round(messageTokens / 4));
 			}
 		}
 
@@ -1574,12 +1574,15 @@ chat.openapi(completions, async (c) => {
 			try {
 				const toolsString = JSON.stringify(tools);
 				const toolTokens = Math.round(toolsString.length / 4);
-				requiredContextSize += toolTokens;
+				estimatedInputTokens += toolTokens;
 			} catch {
 				// Fallback estimation for tools
-				requiredContextSize += tools.length * 100; // Rough estimate per tool
+				estimatedInputTokens += tools.length * 100; // Rough estimate per tool
 			}
 		}
+
+		// Estimate the full context needed based on the request
+		let requiredContextSize = estimatedInputTokens;
 
 		// Add max_tokens if specified
 		if (max_tokens) {
@@ -1621,7 +1624,11 @@ chat.openapi(completions, async (c) => {
 
 		// Find the cheapest model that meets our context size requirements
 		// Only consider hardcoded models for auto selection
-		const allowedAutoModels = ["gpt-oss-120b", "gpt-5-nano", "gpt-4.1-nano"];
+		const allowedAutoModels = [
+			"claude-opus-4-6",
+			"claude-sonnet-4-6",
+			"claude-haiku-4-5",
+		];
 
 		let selectedModel: ModelDefinition | undefined;
 		let selectedProviders: ProviderModelMapping[] = [];
@@ -1646,6 +1653,12 @@ chat.openapi(completions, async (c) => {
 					continue;
 				}
 			} else if (!allowedAutoModels.includes(modelDef.id)) {
+				continue;
+			} else if (
+				estimatedInputTokens > 10_000 &&
+				modelDef.id === "claude-haiku-4-5"
+			) {
+				// Prefer Sonnet over Haiku for larger prompts once the input crosses 10k tokens
 				continue;
 			}
 
@@ -1884,8 +1897,8 @@ chat.openapi(completions, async (c) => {
 				});
 			}
 			// Default fallback if no suitable model is found - use cheapest allowed model
-			usedModel = "gpt-5-nano";
-			usedProvider = "openai";
+			usedModel = "claude-haiku-4-5";
+			usedProvider = "anthropic";
 		}
 		// Update modelInfo to the selected model so retry/fallback logic can find
 		// alternative providers. Without this, modelInfo still points to the "auto"
@@ -1897,7 +1910,7 @@ chat.openapi(completions, async (c) => {
 			};
 		} else {
 			// Fallback case: look up the default model definition
-			const fallbackModelDef = models.find((m) => m.id === "gpt-5-nano");
+			const fallbackModelDef = models.find((m) => m.id === "claude-haiku-4-5");
 			if (fallbackModelDef) {
 				modelInfo = {
 					...fallbackModelDef,
