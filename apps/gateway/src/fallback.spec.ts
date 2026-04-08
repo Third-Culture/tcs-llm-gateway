@@ -11,7 +11,7 @@ import {
 
 import { and, db, eq, tables, type Log } from "@llmgateway/db";
 import { logger } from "@llmgateway/logger";
-import { getProviderDefinition } from "@llmgateway/models";
+import * as modelsModule from "@llmgateway/models";
 
 import { app } from "./app.js";
 import { getApiKeyFingerprint } from "./lib/api-key-fingerprint.js";
@@ -116,7 +116,7 @@ describe("fallback and error status code handling", () => {
 
 	async function ensureProviders(providerIds: string[]) {
 		for (const providerId of providerIds) {
-			const providerDefinition = getProviderDefinition(providerId);
+			const providerDefinition = modelsModule.getProviderDefinition(providerId);
 			await db
 				.insert(tables.provider)
 				.values({
@@ -1638,7 +1638,8 @@ describe("fallback and error status code handling", () => {
 		test("content filter hit reroutes away from content-filter providers and records it in routing metadata", async () => {
 			await setupMultiProviderKeys();
 
-			const togetherProvider = getProviderDefinition("together.ai");
+			const togetherProvider =
+				modelsModule.getProviderDefinition("together.ai");
 			expect(togetherProvider).toBeDefined();
 			if (!togetherProvider) {
 				throw new Error("Missing together.ai provider fixture");
@@ -1728,7 +1729,8 @@ describe("fallback and error status code handling", () => {
 		test("openai moderation failure reroutes away from content-filter providers", async () => {
 			await setupMultiProviderKeys();
 
-			const togetherProvider = getProviderDefinition("together.ai");
+			const togetherProvider =
+				modelsModule.getProviderDefinition("together.ai");
 			expect(togetherProvider).toBeDefined();
 			if (!togetherProvider) {
 				throw new Error("Missing together.ai provider fixture");
@@ -1867,7 +1869,7 @@ describe("fallback and error status code handling", () => {
 		test("openai moderation failure reroutes auto routing away from content-filter providers", async () => {
 			await setupProviderKeys(["bytedance", "groq"]);
 
-			const bytedanceProvider = getProviderDefinition("bytedance");
+			const bytedanceProvider = modelsModule.getProviderDefinition("bytedance");
 			expect(bytedanceProvider).toBeDefined();
 			if (!bytedanceProvider) {
 				throw new Error("Missing bytedance provider fixture");
@@ -1878,6 +1880,11 @@ describe("fallback and error status code handling", () => {
 			const previousContentFilterMethod = process.env.LLM_CONTENT_FILTER_METHOD;
 			const previousContentFilterModels = process.env.LLM_CONTENT_FILTER_MODELS;
 			const previousOpenAIKey = process.env.LLM_OPENAI_API_KEY;
+			const hasProviderEnvironmentTokenSpy = vi
+				.spyOn(modelsModule, "hasProviderEnvironmentToken")
+				.mockImplementation(
+					(provider) => provider === "bytedance" || provider === "groq",
+				);
 			const originalFetch = globalThis.fetch;
 			const fetchSpy = vi
 				.spyOn(globalThis, "fetch")
@@ -1944,6 +1951,7 @@ describe("fallback and error status code handling", () => {
 					}),
 				);
 			} finally {
+				hasProviderEnvironmentTokenSpy.mockRestore();
 				fetchSpy.mockRestore();
 
 				if (originalContentFilterFlag === undefined) {
@@ -1981,7 +1989,7 @@ describe("fallback and error status code handling", () => {
 		test("openai moderation failure avoids content-filter providers during low-uptime fallback", async () => {
 			await setupProviderKeys(["zai", "alibaba", "novita"]);
 
-			const novitaProvider = getProviderDefinition("novita");
+			const novitaProvider = modelsModule.getProviderDefinition("novita");
 			expect(novitaProvider).toBeDefined();
 			if (!novitaProvider) {
 				throw new Error("Missing novita provider fixture");
@@ -2148,7 +2156,8 @@ describe("fallback and error status code handling", () => {
 				maxRpm: 1,
 			});
 
-			const togetherProvider = getProviderDefinition("together.ai");
+			const togetherProvider =
+				modelsModule.getProviderDefinition("together.ai");
 			expect(togetherProvider).toBeDefined();
 			if (!togetherProvider) {
 				throw new Error("Missing together.ai provider fixture");
@@ -2272,7 +2281,8 @@ describe("fallback and error status code handling", () => {
 		test("content filter monitor mode does not reroute away from content-filter providers", async () => {
 			await setupMultiProviderKeys();
 
-			const togetherProvider = getProviderDefinition("together.ai");
+			const togetherProvider =
+				modelsModule.getProviderDefinition("together.ai");
 			expect(togetherProvider).toBeDefined();
 			if (!togetherProvider) {
 				throw new Error("Missing together.ai provider fixture");
