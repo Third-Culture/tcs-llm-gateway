@@ -219,6 +219,8 @@ describe("getContentFilterMethod", () => {
 describe("getCustomContentFilterConfig", () => {
 	const originalApiKey = process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY;
 	const originalModel = process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
+	const originalCustomBaseUrl = process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
+	const originalGatewayUrl = process.env.GATEWAY_URL;
 
 	afterEach(() => {
 		if (originalApiKey === undefined) {
@@ -232,15 +234,42 @@ describe("getCustomContentFilterConfig", () => {
 		} else {
 			process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL = originalModel;
 		}
+
+		if (originalCustomBaseUrl === undefined) {
+			delete process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
+		} else {
+			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = originalCustomBaseUrl;
+		}
+
+		if (originalGatewayUrl === undefined) {
+			delete process.env.GATEWAY_URL;
+		} else {
+			process.env.GATEWAY_URL = originalGatewayUrl;
+		}
 	});
 
 	it("returns the configured api key and model", () => {
 		process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY = "custom-key";
 		process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL = "openai/gpt-5-mini";
+		process.env.GATEWAY_URL = "https://gateway.example.com/v1";
 
 		expect(getCustomContentFilterConfig()).toEqual({
 			apiKey: "custom-key",
 			model: "openai/gpt-5-mini",
+			baseUrl: "https://gateway.example.com",
+		});
+	});
+
+	it("uses the custom base url override when configured", () => {
+		process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY = "custom-key";
+		process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL = "openai/gpt-5-mini";
+		process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL =
+			"https://moderation.example.com/internal/v1";
+
+		expect(getCustomContentFilterConfig()).toEqual({
+			apiKey: "custom-key",
+			model: "openai/gpt-5-mini",
+			baseUrl: "https://moderation.example.com/internal",
 		});
 	});
 

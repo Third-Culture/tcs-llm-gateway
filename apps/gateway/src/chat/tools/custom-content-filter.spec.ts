@@ -7,6 +7,7 @@ import { checkCustomContentFilter } from "./custom-content-filter.js";
 describe("checkCustomContentFilter", () => {
 	const originalApiKey = process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY;
 	const originalModel = process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
+	const originalCustomBaseUrl = process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
 	const originalGatewayUrl = process.env.GATEWAY_URL;
 
 	afterEach(() => {
@@ -22,6 +23,12 @@ describe("checkCustomContentFilter", () => {
 			delete process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 		} else {
 			process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL = originalModel;
+		}
+
+		if (originalCustomBaseUrl === undefined) {
+			delete process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
+		} else {
+			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = originalCustomBaseUrl;
 		}
 
 		if (originalGatewayUrl === undefined) {
@@ -136,6 +143,66 @@ describe("checkCustomContentFilter", () => {
 				],
 			},
 		]);
+	});
+
+	it("uses the custom base url override when configured", async () => {
+		process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY = "custom-api-key";
+		process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL = "anthropic/claude-sonnet-4-5";
+		process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL =
+			"https://moderation.example.com/internal/v1";
+		process.env.GATEWAY_URL = "https://gateway.example.com/v1";
+
+		const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					id: "chatcmpl-moderation",
+					model: "anthropic/claude-sonnet-4-5",
+					choices: [
+						{
+							message: {
+								content: JSON.stringify({
+									flagged: false,
+									categories: {
+										violence: false,
+									},
+									category_scores: {
+										violence: 0.02,
+									},
+									reason: "Safe.",
+								}),
+							},
+						},
+					],
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"x-request-id": "upstream-custom-request-id",
+					},
+				},
+			),
+		);
+
+		await checkCustomContentFilter(
+			[
+				{
+					role: "user",
+					content: "Hello!",
+				},
+			],
+			{
+				requestId: "request-id",
+				organizationId: "org-id",
+				projectId: "project-id",
+				apiKeyId: "api-key-id",
+			},
+		);
+
+		expect(fetchSpy).toHaveBeenCalledWith(
+			"https://moderation.example.com/internal/v1/chat/completions",
+			expect.any(Object),
+		);
 	});
 
 	it("parses JSON verdicts wrapped in code fences", async () => {

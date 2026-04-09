@@ -3,9 +3,9 @@ import { z } from "zod";
 import { isCancellationError, isTimeoutError } from "@/lib/timeout-config.js";
 
 import { logger } from "@llmgateway/logger";
-import { getGatewayPublicBaseUrl } from "@llmgateway/shared";
 
 import {
+	getCustomContentFilterBaseUrl,
 	getCustomContentFilterConfig,
 	type CustomContentFilterConfig,
 } from "./check-content-filter.js";
@@ -158,11 +158,8 @@ const gatewayChatCompletionResponseSchema = z
 	})
 	.passthrough();
 
-function getCustomContentFilterUrl(): string {
-	return new URL(
-		"/v1/chat/completions",
-		`${getGatewayPublicBaseUrl()}/`,
-	).toString();
+function getCustomContentFilterUrl(baseUrl: string): string {
+	return new URL("v1/chat/completions", `${baseUrl}/`).toString();
 }
 
 function getImageReference(part: MessageContent): string | null {
@@ -421,7 +418,7 @@ async function runCustomContentFilterRequest(
 	let upstreamText: string;
 
 	try {
-		upstreamResponse = await fetch(getCustomContentFilterUrl(), {
+		upstreamResponse = await fetch(getCustomContentFilterUrl(config.baseUrl), {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -464,7 +461,7 @@ async function runCustomContentFilterRequest(
 			context,
 			{
 				durationMs: Date.now() - startTime,
-				url: getCustomContentFilterUrl(),
+				url: getCustomContentFilterUrl(config.baseUrl),
 				timeout: isTimeoutError(error),
 			},
 			error,
@@ -607,7 +604,7 @@ export async function checkCustomContentFilter(
 			context,
 			{
 				durationMs: Date.now() - startTime,
-				url: getCustomContentFilterUrl(),
+				url: getCustomContentFilterUrl(getCustomContentFilterBaseUrl()),
 				timeout: false,
 			},
 			error,
@@ -639,7 +636,7 @@ export async function checkCustomContentFilter(
 			context,
 			{
 				durationMs: Date.now() - startTime,
-				url: getCustomContentFilterUrl(),
+				url: getCustomContentFilterUrl(getCustomContentFilterBaseUrl()),
 				timeout: isTimeoutError(error),
 			},
 			error,

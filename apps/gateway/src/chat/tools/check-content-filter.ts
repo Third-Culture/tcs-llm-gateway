@@ -1,3 +1,5 @@
+import { getGatewayPublicBaseUrl } from "@llmgateway/shared";
+
 import type { BaseMessage, MessageContent } from "@llmgateway/models";
 
 export type ContentFilterMode = "disabled" | "monitor" | "enabled";
@@ -6,6 +8,7 @@ export type ContentFilterMethod = "keywords" | "openai" | "custom";
 export interface CustomContentFilterConfig {
 	apiKey: string;
 	model: string;
+	baseUrl: string;
 }
 
 /**
@@ -67,10 +70,24 @@ function getRequiredEnvValue(envVarName: string): string {
 	);
 }
 
+function normalizeCustomContentFilterBaseUrl(url: string): string {
+	return url.replace(/\/v1\/?$/, "").replace(/\/$/, "");
+}
+
+export function getCustomContentFilterBaseUrl(): string {
+	const configuredBaseUrl =
+		process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL?.trim();
+
+	return configuredBaseUrl
+		? normalizeCustomContentFilterBaseUrl(configuredBaseUrl)
+		: getGatewayPublicBaseUrl();
+}
+
 export function getCustomContentFilterConfig(): CustomContentFilterConfig {
 	return {
 		apiKey: getRequiredEnvValue("LLM_CONTENT_FILTER_CUSTOM_API_KEY"),
 		model: getRequiredEnvValue("LLM_CONTENT_FILTER_CUSTOM_MODEL"),
+		baseUrl: getCustomContentFilterBaseUrl(),
 	};
 }
 
