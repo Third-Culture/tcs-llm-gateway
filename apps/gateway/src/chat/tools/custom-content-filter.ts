@@ -174,19 +174,24 @@ function getImageReference(part: MessageContent): string | null {
 	return null;
 }
 
-function buildCustomContentFilterInput(messages: BaseMessage[]): string {
+function buildCustomContentFilterInput(
+	messages: BaseMessage[],
+	includeImages: boolean,
+): string {
 	const textSummary = buildOpenAIContentFilterTextInput(messages);
 	const imageReferences: string[] = [];
 
-	for (const message of messages) {
-		if (!Array.isArray(message.content)) {
-			continue;
-		}
+	if (includeImages) {
+		for (const message of messages) {
+			if (!Array.isArray(message.content)) {
+				continue;
+			}
 
-		for (const part of message.content) {
-			const imageReference = getImageReference(part);
-			if (imageReference) {
-				imageReferences.push(imageReference);
+			for (const part of message.content) {
+				const imageReference = getImageReference(part);
+				if (imageReference) {
+					imageReferences.push(imageReference);
+				}
 			}
 		}
 	}
@@ -445,7 +450,10 @@ async function runCustomContentFilterRequest(
 					},
 					{
 						role: "user",
-						content: buildCustomContentFilterInput(messages),
+						content: buildCustomContentFilterInput(
+							messages,
+							config.includeImages,
+						),
 					},
 				],
 			}),

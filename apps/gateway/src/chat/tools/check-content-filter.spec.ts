@@ -220,6 +220,8 @@ describe("getCustomContentFilterConfig", () => {
 	const originalApiKey = process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY;
 	const originalModel = process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 	const originalCustomBaseUrl = process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
+	const originalIncludeImages =
+		process.env.LLM_CONTENT_FILTER_CUSTOM_INCLUDE_IMAGES;
 	const originalGatewayUrl = process.env.GATEWAY_URL;
 
 	afterEach(() => {
@@ -241,6 +243,13 @@ describe("getCustomContentFilterConfig", () => {
 			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = originalCustomBaseUrl;
 		}
 
+		if (originalIncludeImages === undefined) {
+			delete process.env.LLM_CONTENT_FILTER_CUSTOM_INCLUDE_IMAGES;
+		} else {
+			process.env.LLM_CONTENT_FILTER_CUSTOM_INCLUDE_IMAGES =
+				originalIncludeImages;
+		}
+
 		if (originalGatewayUrl === undefined) {
 			delete process.env.GATEWAY_URL;
 		} else {
@@ -257,6 +266,7 @@ describe("getCustomContentFilterConfig", () => {
 			apiKey: "custom-key",
 			model: "openai/gpt-5-mini",
 			baseUrl: "https://gateway.example.com",
+			includeImages: true,
 		});
 	});
 
@@ -270,6 +280,20 @@ describe("getCustomContentFilterConfig", () => {
 			apiKey: "custom-key",
 			model: "openai/gpt-5-mini",
 			baseUrl: "https://moderation.example.com/internal",
+			includeImages: true,
+		});
+	});
+
+	it("disables image inclusion when configured", () => {
+		process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY = "custom-key";
+		process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL = "openai/gpt-5-mini";
+		process.env.LLM_CONTENT_FILTER_CUSTOM_INCLUDE_IMAGES = "false";
+
+		expect(getCustomContentFilterConfig()).toEqual({
+			apiKey: "custom-key",
+			model: "openai/gpt-5-mini",
+			baseUrl: "http://localhost:4001",
+			includeImages: false,
 		});
 	});
 

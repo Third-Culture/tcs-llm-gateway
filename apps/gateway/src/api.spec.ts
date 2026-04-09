@@ -1462,6 +1462,8 @@ describe("api", () => {
 		const previousContentFilterMethod = process.env.LLM_CONTENT_FILTER_METHOD;
 		const previousContentFilterModels = process.env.LLM_CONTENT_FILTER_MODELS;
 		const previousCustomApiKey = process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY;
+		const previousCustomBaseUrl =
+			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
 		const previousCustomModel = process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 		const previousGatewayUrl = process.env.GATEWAY_URL;
 		const requestId = "chat-custom-content-filter-request-id";
@@ -1538,6 +1540,7 @@ describe("api", () => {
 			process.env.LLM_CONTENT_FILTER_MODELS = "custom";
 			process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY =
 				"llmgateway-moderation-key";
+			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = mockServerUrl;
 			process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL = "openai/gpt-5-mini";
 			process.env.GATEWAY_URL = mockServerUrl;
 
@@ -1627,6 +1630,11 @@ describe("api", () => {
 			} else {
 				process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY = previousCustomApiKey;
 			}
+			if (previousCustomBaseUrl === undefined) {
+				delete process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
+			} else {
+				process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = previousCustomBaseUrl;
+			}
 			if (previousCustomModel === undefined) {
 				delete process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 			} else {
@@ -1661,6 +1669,8 @@ describe("api", () => {
 		const previousContentFilterMethod = process.env.LLM_CONTENT_FILTER_METHOD;
 		const previousContentFilterModels = process.env.LLM_CONTENT_FILTER_MODELS;
 		const previousCustomApiKey = process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY;
+		const previousCustomBaseUrl =
+			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
 		const previousCustomModel = process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 		const previousGatewayUrl = process.env.GATEWAY_URL;
 		const requestId = "chat-custom-content-filter-monitor-request-id";
@@ -1721,6 +1731,7 @@ describe("api", () => {
 			process.env.LLM_CONTENT_FILTER_MODELS = "custom";
 			process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY =
 				"llmgateway-moderation-key";
+			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = mockServerUrl;
 			process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL = "openai/gpt-5-mini";
 			process.env.GATEWAY_URL = mockServerUrl;
 
@@ -1806,6 +1817,11 @@ describe("api", () => {
 			} else {
 				process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY = previousCustomApiKey;
 			}
+			if (previousCustomBaseUrl === undefined) {
+				delete process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
+			} else {
+				process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = previousCustomBaseUrl;
+			}
 			if (previousCustomModel === undefined) {
 				delete process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 			} else {
@@ -1840,6 +1856,8 @@ describe("api", () => {
 		const previousContentFilterMethod = process.env.LLM_CONTENT_FILTER_METHOD;
 		const previousContentFilterModels = process.env.LLM_CONTENT_FILTER_MODELS;
 		const previousCustomApiKey = process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY;
+		const previousCustomBaseUrl =
+			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
 		const previousCustomModel = process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 		const previousGatewayUrl = process.env.GATEWAY_URL;
 		const requestId = "chat-custom-content-filter-missing-config-request-id";
@@ -1850,6 +1868,7 @@ describe("api", () => {
 			process.env.LLM_CONTENT_FILTER_METHOD = "custom";
 			process.env.LLM_CONTENT_FILTER_MODELS = "custom";
 			delete process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY;
+			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = mockServerUrl;
 			delete process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 			process.env.GATEWAY_URL = mockServerUrl;
 
@@ -1918,6 +1937,11 @@ describe("api", () => {
 			} else {
 				process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY = previousCustomApiKey;
 			}
+			if (previousCustomBaseUrl === undefined) {
+				delete process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
+			} else {
+				process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = previousCustomBaseUrl;
+			}
 			if (previousCustomModel === undefined) {
 				delete process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 			} else {
@@ -1952,6 +1976,8 @@ describe("api", () => {
 		const previousContentFilterMethod = process.env.LLM_CONTENT_FILTER_METHOD;
 		const previousContentFilterModels = process.env.LLM_CONTENT_FILTER_MODELS;
 		const previousCustomApiKey = process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY;
+		const previousCustomBaseUrl =
+			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
 		const previousCustomModel = process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 		const previousGatewayUrl = process.env.GATEWAY_URL;
 		const requestId = "chat-custom-content-filter-model-skip-request-id";
@@ -1984,6 +2010,7 @@ describe("api", () => {
 			process.env.LLM_CONTENT_FILTER_MODELS = "gpt-4o-mini";
 			process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY =
 				"llmgateway-moderation-key";
+			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = mockServerUrl;
 			process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL = "openai/gpt-5-mini";
 			process.env.GATEWAY_URL = mockServerUrl;
 
@@ -2060,6 +2087,11 @@ describe("api", () => {
 				delete process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY;
 			} else {
 				process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY = previousCustomApiKey;
+			}
+			if (previousCustomBaseUrl === undefined) {
+				delete process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
+			} else {
+				process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = previousCustomBaseUrl;
 			}
 			if (previousCustomModel === undefined) {
 				delete process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;

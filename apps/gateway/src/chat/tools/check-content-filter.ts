@@ -9,6 +9,7 @@ export interface CustomContentFilterConfig {
 	apiKey: string;
 	model: string;
 	baseUrl: string;
+	includeImages: boolean;
 }
 
 /**
@@ -84,10 +85,14 @@ export function getCustomContentFilterBaseUrl(): string {
 }
 
 export function getCustomContentFilterConfig(): CustomContentFilterConfig {
+	const includeImagesEnvValue =
+		process.env.LLM_CONTENT_FILTER_CUSTOM_INCLUDE_IMAGES?.trim().toLowerCase();
+
 	return {
 		apiKey: getRequiredEnvValue("LLM_CONTENT_FILTER_CUSTOM_API_KEY"),
 		model: getRequiredEnvValue("LLM_CONTENT_FILTER_CUSTOM_MODEL"),
 		baseUrl: getCustomContentFilterBaseUrl(),
+		includeImages: includeImagesEnvValue !== "false",
 	};
 }
 

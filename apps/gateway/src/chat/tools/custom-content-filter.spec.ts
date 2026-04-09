@@ -8,6 +8,8 @@ describe("checkCustomContentFilter", () => {
 	const originalApiKey = process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY;
 	const originalModel = process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL;
 	const originalCustomBaseUrl = process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
+	const originalIncludeImages =
+		process.env.LLM_CONTENT_FILTER_CUSTOM_INCLUDE_IMAGES;
 	const originalGatewayUrl = process.env.GATEWAY_URL;
 
 	afterEach(() => {
@@ -29,6 +31,13 @@ describe("checkCustomContentFilter", () => {
 			delete process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL;
 		} else {
 			process.env.LLM_CONTENT_FILTER_CUSTOM_BASE_URL = originalCustomBaseUrl;
+		}
+
+		if (originalIncludeImages === undefined) {
+			delete process.env.LLM_CONTENT_FILTER_CUSTOM_INCLUDE_IMAGES;
+		} else {
+			process.env.LLM_CONTENT_FILTER_CUSTOM_INCLUDE_IMAGES =
+				originalIncludeImages;
 		}
 
 		if (originalGatewayUrl === undefined) {
@@ -74,6 +83,9 @@ describe("checkCustomContentFilter", () => {
 				expect(body.messages[1]?.content).toContain(
 					"I want to attack someone.",
 				);
+				expect(body.messages[1]?.content).toContain(
+					"Image references:\nremote-image: https://example.com/image.png",
+				);
 
 				return new Response(
 					JSON.stringify({
@@ -110,7 +122,18 @@ describe("checkCustomContentFilter", () => {
 			[
 				{
 					role: "user",
-					content: "I want to attack someone.",
+					content: [
+						{
+							type: "text",
+							text: "I want to attack someone.",
+						},
+						{
+							type: "image_url",
+							image_url: {
+								url: "https://example.com/image.png",
+							},
+						},
+					],
 				},
 			],
 			{
@@ -203,6 +226,82 @@ describe("checkCustomContentFilter", () => {
 			"https://moderation.example.com/internal/v1/chat/completions",
 			expect.any(Object),
 		);
+	});
+
+	it("omits image references when image inclusion is disabled", async () => {
+		process.env.LLM_CONTENT_FILTER_CUSTOM_API_KEY = "custom-api-key";
+		process.env.LLM_CONTENT_FILTER_CUSTOM_MODEL = "anthropic/claude-sonnet-4-5";
+		process.env.LLM_CONTENT_FILTER_CUSTOM_INCLUDE_IMAGES = "false";
+		process.env.GATEWAY_URL = "https://gateway.example.com/v1";
+
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockImplementation(async (_input, init) => {
+				const body = JSON.parse(String(init?.body ?? "{}"));
+				expect(body.messages[1]?.content).toContain("Hello!");
+				expect(body.messages[1]?.content).not.toContain("Image references:");
+				expect(body.messages[1]?.content).not.toContain(
+					"https://example.com/image.png",
+				);
+
+				return new Response(
+					JSON.stringify({
+						id: "chatcmpl-moderation",
+						model: "anthropic/claude-sonnet-4-5",
+						choices: [
+							{
+								message: {
+									content: JSON.stringify({
+										flagged: false,
+										categories: {
+											violence: false,
+										},
+										category_scores: {
+											violence: 0.01,
+										},
+										reason: "Safe.",
+									}),
+								},
+							},
+						],
+					}),
+					{
+						status: 200,
+						headers: {
+							"Content-Type": "application/json",
+							"x-request-id": "upstream-custom-request-id",
+						},
+					},
+				);
+			});
+
+		await checkCustomContentFilter(
+			[
+				{
+					role: "user",
+					content: [
+						{
+							type: "text",
+							text: "Hello!",
+						},
+						{
+							type: "image_url",
+							image_url: {
+								url: "https://example.com/image.png",
+							},
+						},
+					],
+				},
+			],
+			{
+				requestId: "request-id",
+				organizationId: "org-id",
+				projectId: "project-id",
+				apiKeyId: "api-key-id",
+			},
+		);
+
+		expect(fetchSpy).toHaveBeenCalledOnce();
 	});
 
 	it("parses JSON verdicts wrapped in code fences", async () => {
