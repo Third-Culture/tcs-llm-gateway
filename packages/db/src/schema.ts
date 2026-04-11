@@ -564,6 +564,7 @@ export const log = pgTable(
 			originalProviderUptime?: number;
 			originalProviderRateLimited?: boolean;
 			noFallback?: boolean;
+			xNoFallbackHeaderSet?: boolean;
 			contentFilterMatched?: boolean;
 			contentFilterRerouted?: boolean;
 			contentFilterExcludedProviders?: string[];
@@ -728,6 +729,7 @@ export const videoJob = pgTable(
 			originalProviderUptime?: number;
 			originalProviderRateLimited?: boolean;
 			noFallback?: boolean;
+			xNoFallbackHeaderSet?: boolean;
 			contentFilterMatched?: boolean;
 			contentFilterRerouted?: boolean;
 			contentFilterExcludedProviders?: string[];
@@ -956,6 +958,27 @@ export const chatSupportMessage = pgTable(
 	},
 	(table) => [
 		index("chat_support_message_conversation_id_idx").on(table.conversationId),
+	],
+);
+
+export const chatSupportReadStatus = pgTable(
+	"chat_support_read_status",
+	{
+		id: text().primaryKey().$defaultFn(shortid),
+		conversationId: text()
+			.notNull()
+			.references(() => chatSupportConversation.id, { onDelete: "cascade" }),
+		adminUserId: text()
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		lastReadMessageCount: integer().notNull().default(0),
+		readAt: timestamp().notNull().defaultNow(),
+	},
+	(table) => [
+		uniqueIndex("chat_support_read_status_conv_admin_idx").on(
+			table.conversationId,
+			table.adminUserId,
+		),
 	],
 );
 

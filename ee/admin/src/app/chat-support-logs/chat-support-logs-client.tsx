@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
+	ArrowLeft,
 	Clock,
 	Globe,
 	Mail,
@@ -133,6 +134,42 @@ export function ChatSupportLogsClient() {
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const replyInputRef = useRef<HTMLTextAreaElement>(null);
 
+	const { data: readStatusData } = useQuery({
+		queryKey: ["chat-support-read-statuses"],
+		queryFn: async () => {
+			const { data } = await $fetch.GET(
+				"/admin/chat-support-logs/read-statuses",
+			);
+			return data?.readStatuses ?? {};
+		},
+	});
+
+	const readMap = readStatusData ?? {};
+
+	const markReadMutation = useMutation({
+		mutationFn: async ({
+			id,
+			messageCount,
+		}: {
+			id: string;
+			messageCount: number;
+		}) => {
+			await $fetch.POST("/admin/chat-support-logs/{id}/read", {
+				params: { path: { id } },
+				body: { messageCount },
+			});
+		},
+		onSuccess: (_data, variables) => {
+			queryClient.setQueryData<Record<string, number>>(
+				["chat-support-read-statuses"],
+				(old) => ({
+					...old,
+					[variables.id]: variables.messageCount,
+				}),
+			);
+		},
+	});
+
 	useEffect(() => {
 		const timer = setTimeout(() => setDebouncedSearch(search), 300);
 		return () => clearTimeout(timer);
@@ -193,15 +230,27 @@ export function ChatSupportLogsClient() {
 	});
 
 	useEffect(() => {
-		if (detail?.messages) {
+		if (detail?.messages && selectedId) {
 			messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+			markReadMutation.mutate({
+				id: selectedId,
+				messageCount: detail.messages.length,
+			});
 		}
-	}, [detail?.messages]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- markReadMutation.mutate is stable from useMutation
+	}, [detail?.messages, selectedId]);
 
-	const handleSelectConversation = useCallback((id: string) => {
-		setSelectedId(id);
-		setReplyText("");
-	}, []);
+	const handleSelectConversation = useCallback(
+		(id: string) => {
+			setSelectedId(id);
+			setReplyText("");
+			const conv = conversations.find((c) => c.id === id);
+			if (conv) {
+				markReadMutation.mutate({ id, messageCount: conv.messageCount });
+			}
+		},
+		[conversations, markReadMutation.mutate],
+	);
 
 	const handleReplySubmit = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -224,7 +273,12 @@ export function ChatSupportLogsClient() {
 	return (
 		<div className="flex h-[calc(100vh-3.5rem)] overflow-hidden md:h-screen">
 			{/* Left panel — Conversation list */}
-			<div className="flex w-80 shrink-0 flex-col border-r border-border/60 bg-card">
+			<div
+				className={cn(
+					"flex min-h-0 flex-col border-r border-border/60 bg-card",
+					selectedId ? "hidden md:flex md:w-80" : "w-full md:w-80",
+				)}
+			>
 				{/* Search header */}
 				<div className="border-b border-border/60 px-4 py-3">
 					<h2 className="mb-3 text-sm font-semibold tracking-tight text-foreground">
@@ -243,7 +297,7 @@ export function ChatSupportLogsClient() {
 				</div>
 
 				{/* Conversation list */}
-				<ScrollArea className="flex-1">
+				<ScrollArea className="flex-1 overflow-hidden">
 					{listLoading ? (
 						<div className="flex flex-col gap-1 p-2">
 							{Array.from({ length: 8 }).map((_, i) => (
@@ -300,6 +354,9 @@ export function ChatSupportLogsClient() {
 												<AlertTriangle className="h-2 w-2 text-white" />
 											</span>
 										)}
+										{(readMap[conv.id] ?? 0) < conv.messageCount && (
+											<span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-blue-500" />
+										)}
 									</div>
 									<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 										<div className="flex items-center justify-between gap-2">
@@ -336,7 +393,12 @@ export function ChatSupportLogsClient() {
 			</div>
 
 			{/* Middle panel — Chat thread */}
-			<div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+			<div
+				className={cn(
+					"flex min-w-0 flex-1 flex-col overflow-hidden bg-background",
+					!selectedId && "hidden md:flex",
+				)}
+			>
 				{!selectedId ? (
 					<div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
 						<MessageCircle className="h-12 w-12 opacity-20" />
@@ -365,6 +427,13 @@ export function ChatSupportLogsClient() {
 					<>
 						{/* Chat header */}
 						<div className="flex items-center gap-3 border-b border-border/60 px-6 py-3">
+							<button
+								type="button"
+								onClick={() => setSelectedId(null)}
+								className="mr-1 flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted md:hidden"
+							>
+								<ArrowLeft className="h-4 w-4" />
+							</button>
 							<div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
 								{detail.name
 									? detail.name
@@ -403,7 +472,7 @@ export function ChatSupportLogsClient() {
 											key={message.id}
 											className={cn(
 												"flex",
-												isAssistant ? "justify-start" : "justify-end",
+												isAdmin ? "justify-end" : "justify-start",
 											)}
 										>
 											<div className="flex max-w-[70%] flex-col gap-1">
@@ -412,13 +481,22 @@ export function ChatSupportLogsClient() {
 														Admin
 													</span>
 												)}
+												{isUser && (
+													<span className="pl-1 text-[11px] font-medium text-muted-foreground">
+														Visitor
+													</span>
+												)}
+												{isAssistant && (
+													<span className="pl-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+														Bot
+													</span>
+												)}
 												<div
 													className={cn(
 														"rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
 														isAssistant &&
-															"rounded-bl-md bg-muted text-foreground",
-														isUser &&
-															"rounded-br-md bg-primary text-primary-foreground",
+															"rounded-bl-md bg-muted/70 text-foreground",
+														isUser && "rounded-bl-md bg-muted text-foreground",
 														isAdmin &&
 															"rounded-br-md bg-blue-600 text-white dark:bg-blue-700",
 													)}
@@ -430,7 +508,7 @@ export function ChatSupportLogsClient() {
 												<span
 													className={cn(
 														"text-[11px] text-muted-foreground",
-														isAssistant ? "pl-1" : "pr-1 text-right",
+														isAdmin ? "pr-1 text-right" : "pl-1",
 													)}
 												>
 													{formatMessageTime(message.createdAt)}
