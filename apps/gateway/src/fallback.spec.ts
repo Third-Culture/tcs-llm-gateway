@@ -14,7 +14,11 @@ import { getProviderDefinition } from "@llmgateway/models";
 
 import { app } from "./app.js";
 import { getApiKeyFingerprint } from "./lib/api-key-fingerprint.js";
-import { isTrackedKeyHealthy, resetKeyHealth } from "./lib/api-key-health.js";
+import {
+	isTrackedKeyHealthy,
+	reportTrackedKeyError,
+	resetKeyHealth,
+} from "./lib/api-key-health.js";
 import {
 	startMockServer,
 	stopMockServer,
@@ -236,6 +240,41 @@ describe("fallback and error status code handling", () => {
 				provider,
 				organizationId: "org-id",
 				baseUrl: mockServerUrl,
+			},
+		]);
+	}
+
+	async function setupSingleProviderWithRegionalKeys(provider = "alibaba") {
+		await ensureBaseFixtures();
+
+		await db.insert(tables.apiKey).values({
+			id: "token-id",
+			token: "real-token",
+			projectId: "project-id",
+			description: "Test API Key",
+			createdBy: "user-id",
+		});
+
+		await db.insert(tables.providerKey).values([
+			{
+				id: `${provider}-key-singapore`,
+				token: `${provider}-singapore-token`,
+				provider,
+				organizationId: "org-id",
+				baseUrl: mockServerUrl,
+				options: {
+					alibaba_region: "singapore",
+				},
+			},
+			{
+				id: `${provider}-key-beijing`,
+				token: `${provider}-beijing-token`,
+				provider,
+				organizationId: "org-id",
+				baseUrl: mockServerUrl,
+				options: {
+					alibaba_region: "cn-beijing",
+				},
 			},
 		]);
 	}
@@ -1430,6 +1469,57 @@ describe("fallback and error status code handling", () => {
 					providerId: "alibaba",
 					region: "singapore",
 					score: 1,
+				}),
+			]);
+		});
+
+		test("direct provider selection follows the scoped key region after failover", async () => {
+			await setupSingleProviderWithRegionalKeys("alibaba");
+			await ensureRegionalMapping("deepseek-v3.2", "alibaba", "singapore");
+			await ensureRegionalMapping("deepseek-v3.2", "alibaba", "cn-beijing");
+
+			reportTrackedKeyError(
+				"alibaba-key-singapore",
+				500,
+				undefined,
+				"deepseek-v3.2",
+			);
+			reportTrackedKeyError(
+				"alibaba-key-singapore",
+				500,
+				undefined,
+				"deepseek-v3.2",
+			);
+			reportTrackedKeyError(
+				"alibaba-key-singapore",
+				500,
+				undefined,
+				"deepseek-v3.2",
+			);
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token",
+				},
+				body: JSON.stringify({
+					model: "alibaba/deepseek-v3.2",
+					messages: [{ role: "user", content: "Hello!" }],
+				}),
+			});
+
+			expect(res.status).toBe(200);
+
+			const logs = await waitForLogs(1);
+			expect(logs[0].usedModel).toBe("alibaba/deepseek-v3.2:cn-beijing");
+			expect(logs[0].routingMetadata?.routing).toEqual([
+				expect.objectContaining({
+					provider: "alibaba",
+					model: "deepseek-v3.2",
+					region: "cn-beijing",
+					status_code: 200,
+					succeeded: true,
 				}),
 			]);
 		});

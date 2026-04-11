@@ -545,6 +545,142 @@ describe("stats-calculator", () => {
 			expect(anthropicMapping?.routingTotalRequests).toBe(1);
 		});
 
+		it("should keep failed regional attempts in mapping stats when recovery switches regions", async () => {
+			const previousMinuteStart = new Date("2024-01-01T12:29:00.000Z");
+
+			await db.insert(provider).values({
+				id: "alibaba",
+				name: "Alibaba",
+				description: "Alibaba provider",
+				streaming: true,
+				cancellation: false,
+				color: "#ff6a00",
+				website: "https://www.alibabacloud.com",
+				status: "active",
+			});
+
+			await db.insert(model).values({
+				id: "deepseek-v3.2",
+				name: "DeepSeek V3.2",
+				family: "deepseek",
+				status: "active",
+			});
+
+			await db.insert(modelProviderMapping).values([
+				{
+					id: "mapping-aggregate-region-retry",
+					modelId: "deepseek-v3.2",
+					providerId: "alibaba",
+					modelName: "deepseek-v3.2",
+					status: "active",
+				},
+				{
+					id: "mapping-region-singapore",
+					modelId: "deepseek-v3.2",
+					providerId: "alibaba",
+					modelName: "deepseek-v3.2:singapore",
+					region: "singapore",
+					status: "active",
+				},
+				{
+					id: "mapping-region-beijing",
+					modelId: "deepseek-v3.2",
+					providerId: "alibaba",
+					modelName: "deepseek-v3.2:cn-beijing",
+					region: "cn-beijing",
+					status: "active",
+				},
+			]);
+
+			await db.insert(log).values([
+				{
+					id: "log-region-retry-failed",
+					requestId: "req-region-retry",
+					organizationId: "org-1",
+					projectId: "proj-1",
+					apiKeyId: "key-1",
+					duration: 600,
+					requestedModel: "alibaba/deepseek-v3.2",
+					requestedProvider: "alibaba",
+					usedModel: "alibaba/deepseek-v3.2:singapore",
+					usedProvider: "alibaba",
+					responseSize: 0,
+					hasError: true,
+					unifiedFinishReason: "upstream_error",
+					mode: "api-keys",
+					usedMode: "api-keys",
+					retried: true,
+					retriedByLogId: "log-region-retry-success",
+					createdAt: new Date(previousMinuteStart.getTime() + 5000),
+				},
+				{
+					id: "log-region-retry-success",
+					requestId: "req-region-retry",
+					organizationId: "org-1",
+					projectId: "proj-1",
+					apiKeyId: "key-1",
+					duration: 900,
+					requestedModel: "alibaba/deepseek-v3.2",
+					requestedProvider: "alibaba",
+					usedModel: "alibaba/deepseek-v3.2:cn-beijing",
+					usedProvider: "alibaba",
+					responseSize: 140,
+					hasError: false,
+					promptTokens: "70",
+					completionTokens: "120",
+					totalTokens: "190",
+					unifiedFinishReason: "completed",
+					mode: "api-keys",
+					usedMode: "api-keys",
+					createdAt: new Date(previousMinuteStart.getTime() + 10000),
+				},
+			]);
+
+			await calculateMinutelyHistory();
+			await calculateAggregatedStatistics();
+
+			const mappingHistoryRecords = await db
+				.select()
+				.from(modelProviderMappingHistory)
+				.where(
+					eq(modelProviderMappingHistory.minuteTimestamp, previousMinuteStart),
+				);
+			const aggregateHistory = mappingHistoryRecords.find(
+				(record) =>
+					record.modelProviderMappingId === "mapping-aggregate-region-retry",
+			);
+			const singaporeHistory = mappingHistoryRecords.find(
+				(record) =>
+					record.modelProviderMappingId === "mapping-region-singapore",
+			);
+			const beijingHistory = mappingHistoryRecords.find(
+				(record) => record.modelProviderMappingId === "mapping-region-beijing",
+			);
+
+			expect(aggregateHistory?.logsCount).toBe(2);
+			expect(aggregateHistory?.errorsCount).toBe(1);
+			expect(singaporeHistory?.logsCount).toBe(1);
+			expect(singaporeHistory?.errorsCount).toBe(1);
+			expect(beijingHistory?.logsCount).toBe(1);
+			expect(beijingHistory?.errorsCount).toBe(0);
+
+			const regionalMappings = await db
+				.select()
+				.from(modelProviderMapping)
+				.where(eq(modelProviderMapping.modelId, "deepseek-v3.2"));
+			const singaporeMapping = regionalMappings.find(
+				(mapping) => mapping.id === "mapping-region-singapore",
+			);
+			const beijingMapping = regionalMappings.find(
+				(mapping) => mapping.id === "mapping-region-beijing",
+			);
+
+			expect(singaporeMapping?.routingUptime).toBeCloseTo(0);
+			expect(singaporeMapping?.routingTotalRequests).toBe(1);
+			expect(beijingMapping?.routingUptime).toBeCloseTo(100);
+			expect(beijingMapping?.routingTotalRequests).toBe(1);
+		});
+
 		it("should handle cached requests correctly by ignoring tokens but counting requests", async () => {
 			const previousMinuteStart = new Date("2024-01-01T12:29:00.000Z");
 
