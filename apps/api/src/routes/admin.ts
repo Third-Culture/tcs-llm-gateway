@@ -6228,4 +6228,168 @@ admin.openapi(archiveChatSupportConversation, async (c) => {
 	return c.json({ success: true });
 });
 
+// ─── Payment Failures ─────────────────────────────────────────────────────────
+
+const paymentFailureSchema = z.object({
+	id: z.string(),
+	createdAt: z.string().datetime(),
+	organizationId: z.string(),
+	userEmail: z.string().nullable(),
+	amount: z.string().nullable(),
+	currency: z.string(),
+	declineCode: z.string().nullable(),
+	errorCode: z.string().nullable(),
+	failureMessage: z.string().nullable(),
+	stripePaymentIntentId: z.string().nullable(),
+	source: z.string().nullable(),
+});
+
+const getPaymentFailures = createRoute({
+	method: "get",
+	path: "/payment-failures",
+	request: {
+		query: z.object({
+			days: z.coerce.number().int().min(1).max(365).optional(),
+			declineCode: z.string().optional(),
+			search: z.string().optional(),
+			limit: z.coerce.number().int().min(1).max(200).optional(),
+			offset: z.coerce.number().int().min(0).optional(),
+		}),
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({
+						failures: z.array(
+							paymentFailureSchema.extend({
+								organizationName: z.string(),
+								billingEmail: z.string(),
+							}),
+						),
+						summary: z.object({
+							total7d: z.number(),
+							total30d: z.number(),
+							byDeclineCode: z.array(
+								z.object({
+									declineCode: z.string().nullable(),
+									count: z.number(),
+								}),
+							),
+						}),
+						totalCount: z.number(),
+					}),
+				},
+			},
+			description: "Payment failures retrieved successfully",
+		},
+	},
+});
+
+admin.openapi(getPaymentFailures, async (c) => {
+	const {
+		days = 30,
+		declineCode,
+		search,
+		limit: limitNum = 50,
+		offset: offsetNum = 0,
+	} = c.req.valid("query");
+
+	const MS_PER_DAY = 24 * 60 * 60 * 1000;
+	// eslint-disable-next-line no-mixed-operators
+	const sinceDate = new Date(Date.now() - days * MS_PER_DAY);
+	// eslint-disable-next-line no-mixed-operators
+	const since7d = new Date(Date.now() - 7 * MS_PER_DAY);
+	// eslint-disable-next-line no-mixed-operators
+	const since30d = new Date(Date.now() - 30 * MS_PER_DAY);
+
+	// Base conditions reference only paymentFailure columns (safe without JOIN)
+	const baseConditions = [gte(tables.paymentFailure.createdAt, sinceDate)];
+
+	if (declineCode) {
+		baseConditions.push(eq(tables.paymentFailure.declineCode, declineCode));
+	}
+
+	// Search condition requires the org JOIN (checks both userEmail and billingEmail)
+	const searchCondition = search
+		? sql`(${tables.paymentFailure.userEmail} ILIKE ${"%" + search + "%"} OR ${tables.organization.billingEmail} ILIKE ${"%" + search + "%"})`
+		: undefined;
+
+	const failures = await db
+		.select({
+			id: tables.paymentFailure.id,
+			createdAt: tables.paymentFailure.createdAt,
+			organizationId: tables.paymentFailure.organizationId,
+			userEmail: tables.paymentFailure.userEmail,
+			amount: tables.paymentFailure.amount,
+			currency: tables.paymentFailure.currency,
+			declineCode: tables.paymentFailure.declineCode,
+			errorCode: tables.paymentFailure.errorCode,
+			failureMessage: tables.paymentFailure.failureMessage,
+			stripePaymentIntentId: tables.paymentFailure.stripePaymentIntentId,
+			source: tables.paymentFailure.source,
+			organizationName: tables.organization.name,
+			billingEmail: tables.organization.billingEmail,
+		})
+		.from(tables.paymentFailure)
+		.innerJoin(
+			tables.organization,
+			eq(tables.organization.id, tables.paymentFailure.organizationId),
+		)
+		.where(and(...baseConditions, searchCondition))
+		.orderBy(desc(tables.paymentFailure.createdAt))
+		.limit(limitNum)
+		.offset(offsetNum);
+
+	// Summary counts
+	const [count7dResult] = await db
+		.select({ count: sql<number>`COUNT(*)` })
+		.from(tables.paymentFailure)
+		.where(gte(tables.paymentFailure.createdAt, since7d));
+
+	const [count30dResult] = await db
+		.select({ count: sql<number>`COUNT(*)` })
+		.from(tables.paymentFailure)
+		.where(gte(tables.paymentFailure.createdAt, since30d));
+
+	const byDeclineCode = await db
+		.select({
+			declineCode: tables.paymentFailure.declineCode,
+			count: sql<number>`COUNT(*)`,
+		})
+		.from(tables.paymentFailure)
+		.where(gte(tables.paymentFailure.createdAt, since30d))
+		.groupBy(tables.paymentFailure.declineCode)
+		.orderBy(sql`COUNT(*) DESC`);
+
+	// totalCount needs the JOIN when search references org columns
+	const totalCountQuery = db
+		.select({ count: sql<number>`COUNT(*)` })
+		.from(tables.paymentFailure);
+
+	if (searchCondition) {
+		totalCountQuery.innerJoin(
+			tables.organization,
+			eq(tables.organization.id, tables.paymentFailure.organizationId),
+		);
+	}
+
+	const [totalCountResult] = await totalCountQuery.where(
+		and(...baseConditions, searchCondition),
+	);
+
+	return c.json({
+		failures,
+		summary: {
+			total7d: Number(count7dResult?.count ?? 0),
+			total30d: Number(count30dResult?.count ?? 0),
+			byDeclineCode: byDeclineCode.map((r) => ({
+				declineCode: r.declineCode,
+				count: Number(r.count),
+			})),
+		},
+		totalCount: Number(totalCountResult?.count ?? 0),
+	});
+});
+
 export default admin;
