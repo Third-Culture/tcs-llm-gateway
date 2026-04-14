@@ -192,6 +192,8 @@ export const xaiModels = [
 			{
 				providerId: "xai",
 				modelName: "grok-4",
+				// Model no longer listed in xAI docs; superseded by grok-4-1 and grok-4.20 variants
+				deactivatedAt: new Date("2026-04-15"),
 				inputPrice: 3.0 / 1e6,
 				outputPrice: 15.0 / 1e6,
 				requestPrice: 0,
@@ -216,6 +218,8 @@ export const xaiModels = [
 			{
 				providerId: "xai",
 				modelName: "grok-4-fast-reasoning",
+				// Model no longer listed in xAI docs; superseded by grok-4-1-fast-reasoning
+				deactivatedAt: new Date("2026-04-15"),
 				inputPrice: 0.2 / 1e6,
 				outputPrice: 0.5 / 1e6,
 				pricingTiers: [
@@ -256,6 +260,8 @@ export const xaiModels = [
 			{
 				providerId: "xai",
 				modelName: "grok-4-fast-non-reasoning",
+				// Model no longer listed in xAI docs; superseded by grok-4-1-fast-non-reasoning
+				deactivatedAt: new Date("2026-04-15"),
 				inputPrice: 0.2 / 1e6,
 				outputPrice: 0.5 / 1e6,
 				pricingTiers: [
@@ -400,6 +406,8 @@ export const xaiModels = [
 			{
 				providerId: "xai",
 				modelName: "grok-4-fast-non-reasoning",
+				// Model no longer listed in xAI docs; superseded by grok-4-1-fast variants
+				deactivatedAt: new Date("2026-04-15"),
 				inputPrice: 0.2 / 1e6,
 				outputPrice: 0.5 / 1e6,
 				pricingTiers: [
@@ -431,6 +439,8 @@ export const xaiModels = [
 			{
 				providerId: "xai",
 				modelName: "grok-4-fast-reasoning",
+				// Model no longer listed in xAI docs; superseded by grok-4-1-fast variants
+				deactivatedAt: new Date("2026-04-15"),
 				inputPrice: 0.2 / 1e6,
 				outputPrice: 0.5 / 1e6,
 				pricingTiers: [
@@ -589,7 +599,7 @@ export const xaiModels = [
 		providers: [
 			{
 				providerId: "xai",
-				modelName: "grok-4.20-beta-0309-reasoning",
+				modelName: "grok-4.20-0309-reasoning",
 				inputPrice: 2.0 / 1e6,
 				outputPrice: 6.0 / 1e6,
 				pricingTiers: [
@@ -628,7 +638,7 @@ export const xaiModels = [
 		providers: [
 			{
 				providerId: "xai",
-				modelName: "grok-4.20-beta-0309-non-reasoning",
+				modelName: "grok-4.20-0309-non-reasoning",
 				inputPrice: 2.0 / 1e6,
 				outputPrice: 6.0 / 1e6,
 				pricingTiers: [
