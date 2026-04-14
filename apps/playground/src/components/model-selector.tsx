@@ -770,7 +770,14 @@ export function ModelSelector({
 					}
 				: null,
 		);
-	}, [open, selectedModel, selectedProviderId, allEntries, filteredEntries]);
+	}, [
+		open,
+		selectedModel,
+		selectedProviderId,
+		selectedMapping,
+		allEntries,
+		filteredEntries,
+	]);
 
 	return (
 		<>
