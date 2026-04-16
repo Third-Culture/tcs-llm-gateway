@@ -3783,6 +3783,13 @@ chat.openapi(completions, async (c) => {
 						// Silently fail - reasoning_content caching is optional
 					}
 				}
+				// Moonshot rejects assistant tool_call messages without
+				// reasoning_content when thinking is enabled. If we have no cached
+				// value (cache miss, different instance, expired entry), fall back to
+				// an empty string so the request isn't rejected outright.
+				if (!(message as any).reasoning_content) {
+					(message as any).reasoning_content = "";
+				}
 			}
 		}
 	}
@@ -7307,6 +7314,36 @@ chat.openapi(completions, async (c) => {
 						if (splitContent.reasoningContent) {
 							fullContent = splitContent.content ?? "";
 							fullReasoningContent = splitContent.reasoningContent;
+						}
+					}
+
+					// Cache reasoning_content for Moonshot thinking models when tool_calls
+					// are present in a streamed response. Moonshot requires
+					// reasoning_content on assistant tool_call messages in multi-turn
+					// conversations; the non-streaming path caches this in
+					// parse-provider-response.ts, but streaming needs its own path.
+					if (
+						usedProvider === "moonshot" &&
+						fullReasoningContent &&
+						streamingToolCalls &&
+						streamingToolCalls.length > 0
+					) {
+						const { redisClient } = await import("@llmgateway/cache");
+						for (const toolCall of streamingToolCalls) {
+							if (toolCall?.id) {
+								redisClient
+									.setex(
+										`reasoning_content:${toolCall.id}`,
+										86400,
+										fullReasoningContent,
+									)
+									.catch((err) => {
+										logger.error(
+											"Failed to cache reasoning_content for streaming",
+											err instanceof Error ? err : new Error(String(err)),
+										);
+									});
+							}
 						}
 					}
 
