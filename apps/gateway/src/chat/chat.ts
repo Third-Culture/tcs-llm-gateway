@@ -3755,41 +3755,20 @@ chat.openapi(completions, async (c) => {
 		}
 	}
 
-	// For Moonshot provider, enrich assistant messages with cached reasoning_content
-	// This is needed for multi-turn tool call conversations with thinking models
-	// Moonshot requires reasoning_content in assistant messages with tool_calls
+	// Moonshot's thinking models reject assistant tool_call messages that lack
+	// reasoning_content. If the client echoes `reasoning` (OpenAI-style) we map
+	// it across; otherwise fall back to an empty string so multi-turn tool
+	// conversations don't 400.
 	if (usedProvider === "moonshot") {
-		const { redisClient } = await import("@llmgateway/cache");
 		for (const message of messages) {
 			if (
 				message.role === "assistant" &&
 				message.tool_calls &&
 				Array.isArray(message.tool_calls) &&
 				message.tool_calls.length > 0 &&
-				!(message as any).reasoning_content // Only add if not already present
+				!(message as any).reasoning_content
 			) {
-				// Get reasoning_content from the first tool call (all tool calls share the same reasoning)
-				const firstToolCall = message.tool_calls[0];
-				if (firstToolCall?.id) {
-					try {
-						const cachedReasoningContent = await redisClient.get(
-							`reasoning_content:${firstToolCall.id}`,
-						);
-						if (cachedReasoningContent) {
-							// Add reasoning_content to the message for Moonshot
-							(message as any).reasoning_content = cachedReasoningContent;
-						}
-					} catch {
-						// Silently fail - reasoning_content caching is optional
-					}
-				}
-				// Moonshot rejects assistant tool_call messages without
-				// reasoning_content when thinking is enabled. If we have no cached
-				// value (cache miss, different instance, expired entry), fall back to
-				// an empty string so the request isn't rejected outright.
-				if (!(message as any).reasoning_content) {
-					(message as any).reasoning_content = "";
-				}
+				(message as any).reasoning_content = (message as any).reasoning ?? "";
 			}
 		}
 	}
@@ -7314,36 +7293,6 @@ chat.openapi(completions, async (c) => {
 						if (splitContent.reasoningContent) {
 							fullContent = splitContent.content ?? "";
 							fullReasoningContent = splitContent.reasoningContent;
-						}
-					}
-
-					// Cache reasoning_content for Moonshot thinking models when tool_calls
-					// are present in a streamed response. Moonshot requires
-					// reasoning_content on assistant tool_call messages in multi-turn
-					// conversations; the non-streaming path caches this in
-					// parse-provider-response.ts, but streaming needs its own path.
-					if (
-						usedProvider === "moonshot" &&
-						fullReasoningContent &&
-						streamingToolCalls &&
-						streamingToolCalls.length > 0
-					) {
-						const { redisClient } = await import("@llmgateway/cache");
-						for (const toolCall of streamingToolCalls) {
-							if (toolCall?.id) {
-								redisClient
-									.setex(
-										`reasoning_content:${toolCall.id}`,
-										86400,
-										fullReasoningContent,
-									)
-									.catch((err) => {
-										logger.error(
-											"Failed to cache reasoning_content for streaming",
-											err instanceof Error ? err : new Error(String(err)),
-										);
-									});
-							}
 						}
 					}
 
