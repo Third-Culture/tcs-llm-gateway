@@ -13,6 +13,7 @@ import {
 	eq,
 	gte,
 	inArray,
+	isNotNull,
 	isNull,
 	lt,
 	lte,
@@ -1846,12 +1847,8 @@ admin.openapi(getProjectLogs, async (c) => {
 	return c.json({
 		logs: paginatedLogs.map((l) => ({
 			...l,
-			// Strip large base64 image content from list responses to reduce payload size.
-			// Full content is available via GET /logs/{id}.
 			content:
-				l.content &&
-				l.content.length > 500 &&
-				/[A-Za-z0-9+/]{200,}/.test(l.content)
+				l.content && l.content.includes(";base64,")
 					? "[image_generated]"
 					: l.content,
 			promptTokens: l.promptTokens ? String(l.promptTokens) : null,
@@ -3670,6 +3667,9 @@ const modelDetailSchema = z.object({
 		status: z.string(),
 		logsCount: z.number(),
 		errorsCount: z.number(),
+		clientErrorsCount: z.number(),
+		gatewayErrorsCount: z.number(),
+		upstreamErrorsCount: z.number(),
 		cachedCount: z.number(),
 		avgTimeToFirstToken: z.number().nullable(),
 		providerCount: z.number(),
@@ -3769,6 +3769,9 @@ admin.openapi(getModelDetail, async (c) => {
 				status: model.status,
 				logsCount: totalLogs,
 				errorsCount: totalErrors,
+				clientErrorsCount: 0,
+				gatewayErrorsCount: 0,
+				upstreamErrorsCount: 0,
 				cachedCount: totalCached,
 				avgTimeToFirstToken: null,
 				providerCount: statsRows.length,
@@ -3800,20 +3803,32 @@ admin.openapi(getModelDetail, async (c) => {
 			.select({
 				providerId: modelProviderMappingHistory.providerId,
 				logsCount:
-					sql<number>`SUM(${modelProviderMappingHistory.logsCount})`.as(
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.logsCount}), 0)`.as(
 						"logs_count",
 					),
 				errorsCount:
-					sql<number>`SUM(${modelProviderMappingHistory.errorsCount})`.as(
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.errorsCount}), 0)`.as(
 						"errors_count",
 					),
+				clientErrorsCount:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.clientErrorsCount}), 0)`.as(
+						"client_errors_count",
+					),
+				gatewayErrorsCount:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.gatewayErrorsCount}), 0)`.as(
+						"gateway_errors_count",
+					),
+				upstreamErrorsCount:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.upstreamErrorsCount}), 0)`.as(
+						"upstream_errors_count",
+					),
 				cachedCount:
-					sql<number>`SUM(${modelProviderMappingHistory.cachedCount})`.as(
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.cachedCount}), 0)`.as(
 						"cached_count",
 					),
-				avgTtft:
-					sql<number>`CASE WHEN SUM(${modelProviderMappingHistory.logsCount}) - SUM(${modelProviderMappingHistory.cachedCount}) > 0 THEN SUM(${modelProviderMappingHistory.totalTimeToFirstToken})::float / (SUM(${modelProviderMappingHistory.logsCount}) - SUM(${modelProviderMappingHistory.cachedCount})) ELSE NULL END`.as(
-						"avg_ttft",
+				totalTtft:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.totalTimeToFirstToken}), 0)`.as(
+						"total_ttft",
 					),
 			})
 			.from(modelProviderMappingHistory)
@@ -3836,15 +3851,21 @@ admin.openapi(getModelDetail, async (c) => {
 
 	const providerNameMap = new Map(providerRows.map((p) => [p.id, p.name]));
 	const providerStatsMap = new Map(
-		statsRows.map((r) => [
-			r.providerId,
-			{
-				logsCount: Number(r.logsCount ?? 0),
-				errorsCount: Number(r.errorsCount ?? 0),
-				cachedCount: Number(r.cachedCount ?? 0),
-				avgTtft: r.avgTtft !== null ? Number(r.avgTtft) : null,
-			},
-		]),
+		statsRows.map((r) => {
+			const logsCount = Number(r.logsCount ?? 0);
+			const cachedCount = Number(r.cachedCount ?? 0);
+			const nonCached = logsCount - cachedCount;
+			const totalTtft = Number(r.totalTtft ?? 0);
+			return [
+				r.providerId,
+				{
+					logsCount,
+					errorsCount: Number(r.errorsCount ?? 0),
+					cachedCount,
+					avgTtft: nonCached > 0 ? totalTtft / nonCached : null,
+				},
+			];
+		}),
 	);
 
 	const providerStats = mappings.map((m) => {
@@ -3860,6 +3881,31 @@ admin.openapi(getModelDetail, async (c) => {
 		};
 	});
 
+	const agg = statsRows.reduce(
+		(acc, r) => {
+			acc.logsCount += Number(r.logsCount ?? 0);
+			acc.errorsCount += Number(r.errorsCount ?? 0);
+			acc.clientErrorsCount += Number(r.clientErrorsCount ?? 0);
+			acc.gatewayErrorsCount += Number(r.gatewayErrorsCount ?? 0);
+			acc.upstreamErrorsCount += Number(r.upstreamErrorsCount ?? 0);
+			acc.cachedCount += Number(r.cachedCount ?? 0);
+			acc.totalTtft += Number(r.totalTtft ?? 0);
+			return acc;
+		},
+		{
+			logsCount: 0,
+			errorsCount: 0,
+			clientErrorsCount: 0,
+			gatewayErrorsCount: 0,
+			upstreamErrorsCount: 0,
+			cachedCount: 0,
+			totalTtft: 0,
+		},
+	);
+	const hasWindowData = agg.logsCount > 0;
+	const aggNonCached = agg.logsCount - agg.cachedCount;
+	const aggAvgTtft = aggNonCached > 0 ? agg.totalTtft / aggNonCached : null;
+
 	return c.json({
 		model: {
 			id: model.id,
@@ -3868,10 +3914,21 @@ admin.openapi(getModelDetail, async (c) => {
 			free: model.free,
 			stability: model.stability,
 			status: model.status,
-			logsCount: model.logsCount,
-			errorsCount: model.errorsCount,
-			cachedCount: model.cachedCount,
-			avgTimeToFirstToken: model.avgTimeToFirstToken,
+			logsCount: hasWindowData ? agg.logsCount : model.logsCount,
+			errorsCount: hasWindowData ? agg.errorsCount : model.errorsCount,
+			clientErrorsCount: hasWindowData
+				? agg.clientErrorsCount
+				: model.clientErrorsCount,
+			gatewayErrorsCount: hasWindowData
+				? agg.gatewayErrorsCount
+				: model.gatewayErrorsCount,
+			upstreamErrorsCount: hasWindowData
+				? agg.upstreamErrorsCount
+				: model.upstreamErrorsCount,
+			cachedCount: hasWindowData ? agg.cachedCount : model.cachedCount,
+			avgTimeToFirstToken: hasWindowData
+				? (aggAvgTtft ?? model.avgTimeToFirstToken)
+				: model.avgTimeToFirstToken,
 			providerCount: providerStats.length,
 			updatedAt: model.updatedAt.toISOString(),
 		},
@@ -4039,6 +4096,9 @@ const historyDataPointSchema = z.object({
 	timestamp: z.string(),
 	logsCount: z.number(),
 	errorsCount: z.number(),
+	clientErrorsCount: z.number(),
+	gatewayErrorsCount: z.number(),
+	upstreamErrorsCount: z.number(),
 	cachedCount: z.number(),
 	avgTtft: z.number().nullable(),
 	avgDuration: z.number().nullable(),
@@ -4061,6 +4121,9 @@ function mapHistoryRows(
 		minuteTimestamp: Date;
 		logsCount: number;
 		errorsCount: number;
+		clientErrorsCount?: number;
+		gatewayErrorsCount?: number;
+		upstreamErrorsCount?: number;
 		cachedCount: number;
 		totalDuration: number;
 		totalTimeToFirstToken: number;
@@ -4098,6 +4161,9 @@ function mapHistoryRows(
 			timestamp: r.minuteTimestamp.toISOString(),
 			logsCount,
 			errorsCount,
+			clientErrorsCount: Number(r.clientErrorsCount ?? 0),
+			gatewayErrorsCount: Number(r.gatewayErrorsCount ?? 0),
+			upstreamErrorsCount: Number(r.upstreamErrorsCount ?? 0),
 			cachedCount,
 			avgTtft:
 				nonCached > 0 ? Math.round(totalTimeToFirstToken / nonCached) : null,
@@ -4147,6 +4213,18 @@ admin.openapi(getProviderHistory, async (c) => {
 				errorsCount:
 					sql<number>`SUM(${modelProviderMappingHistory.errorsCount})`.as(
 						"errors_count",
+					),
+				clientErrorsCount:
+					sql<number>`SUM(${modelProviderMappingHistory.clientErrorsCount})`.as(
+						"client_errors_count",
+					),
+				gatewayErrorsCount:
+					sql<number>`SUM(${modelProviderMappingHistory.gatewayErrorsCount})`.as(
+						"gateway_errors_count",
+					),
+				upstreamErrorsCount:
+					sql<number>`SUM(${modelProviderMappingHistory.upstreamErrorsCount})`.as(
+						"upstream_errors_count",
 					),
 				cachedCount:
 					sql<number>`SUM(${modelProviderMappingHistory.cachedCount})`.as(
@@ -4265,6 +4343,9 @@ admin.openapi(getModelHistory, async (c) => {
 				timestamp: r.hourTimestamp.toISOString(),
 				logsCount: Number(r.logsCount),
 				errorsCount: Number(r.errorsCount),
+				clientErrorsCount: 0,
+				gatewayErrorsCount: 0,
+				upstreamErrorsCount: 0,
 				cachedCount: Number(r.cachedCount),
 				avgTtft: null,
 				avgDuration: null,
@@ -4281,6 +4362,17 @@ admin.openapi(getModelHistory, async (c) => {
 			errorsCount: sql<number>`SUM(${modelHistory.errorsCount})`.as(
 				"errors_count",
 			),
+			clientErrorsCount: sql<number>`SUM(${modelHistory.clientErrorsCount})`.as(
+				"client_errors_count",
+			),
+			gatewayErrorsCount:
+				sql<number>`SUM(${modelHistory.gatewayErrorsCount})`.as(
+					"gateway_errors_count",
+				),
+			upstreamErrorsCount:
+				sql<number>`SUM(${modelHistory.upstreamErrorsCount})`.as(
+					"upstream_errors_count",
+				),
 			cachedCount: sql<number>`SUM(${modelHistory.cachedCount})`.as(
 				"cached_count",
 			),
@@ -4378,6 +4470,9 @@ admin.openapi(getMappingHistory, async (c) => {
 				timestamp: r.hourTimestamp.toISOString(),
 				logsCount: Number(r.logsCount),
 				errorsCount: Number(r.errorsCount),
+				clientErrorsCount: 0,
+				gatewayErrorsCount: 0,
+				upstreamErrorsCount: 0,
 				cachedCount: Number(r.cachedCount),
 				avgTtft: null,
 				avgDuration: null,
@@ -4398,6 +4493,18 @@ admin.openapi(getMappingHistory, async (c) => {
 				errorsCount:
 					sql<number>`SUM(${modelProviderMappingHistory.errorsCount})`.as(
 						"errors_count",
+					),
+				clientErrorsCount:
+					sql<number>`SUM(${modelProviderMappingHistory.clientErrorsCount})`.as(
+						"client_errors_count",
+					),
+				gatewayErrorsCount:
+					sql<number>`SUM(${modelProviderMappingHistory.gatewayErrorsCount})`.as(
+						"gateway_errors_count",
+					),
+				upstreamErrorsCount:
+					sql<number>`SUM(${modelProviderMappingHistory.upstreamErrorsCount})`.as(
+						"upstream_errors_count",
 					),
 				cachedCount:
 					sql<number>`SUM(${modelProviderMappingHistory.cachedCount})`.as(
@@ -4541,16 +4648,39 @@ admin.openapi(getMappingHistory, async (c) => {
 		}
 	}
 
+	const errorBreakdownByHour = new Map<
+		string,
+		{ client: number; gateway: number; upstream: number }
+	>();
+	for (const r of minuteRows) {
+		const hk = getHourFloor(r.minuteTimestamp);
+		const existing = errorBreakdownByHour.get(hk);
+		const client = Number(r.clientErrorsCount);
+		const gateway = Number(r.gatewayErrorsCount);
+		const upstream = Number(r.upstreamErrorsCount);
+		if (existing) {
+			existing.client += client;
+			existing.gateway += gateway;
+			existing.upstream += upstream;
+		} else {
+			errorBreakdownByHour.set(hk, { client, gateway, upstream });
+		}
+	}
+
 	const data = hourlyRows.map((r) => {
 		const logsCount = Number(r.logsCount);
 		const errorsCount = Number(r.errorsCount);
 		const cachedCount = Number(r.cachedCount);
 		const hk = new Date(r.hourTimestamp).toISOString();
 		const latency = latencyByHour.get(hk);
+		const errorBreakdown = errorBreakdownByHour.get(hk);
 		return {
 			timestamp: hk,
 			logsCount,
 			errorsCount,
+			clientErrorsCount: errorBreakdown?.client ?? 0,
+			gatewayErrorsCount: errorBreakdown?.gateway ?? 0,
+			upstreamErrorsCount: errorBreakdown?.upstream ?? 0,
 			cachedCount,
 			avgTtft:
 				latency && latency.nonCached > 0
@@ -4566,6 +4696,400 @@ admin.openapi(getMappingHistory, async (c) => {
 	});
 
 	return c.json({ data });
+});
+
+// Provider detail – aggregated stats + per-model breakdown for the window
+const providerModelStatsSchema = z.object({
+	modelId: z.string(),
+	modelName: z.string(),
+	mappingId: z.string(),
+	region: z.string().nullable(),
+	status: z.string(),
+	logsCount: z.number(),
+	errorsCount: z.number(),
+	clientErrorsCount: z.number(),
+	gatewayErrorsCount: z.number(),
+	upstreamErrorsCount: z.number(),
+	cachedCount: z.number(),
+	avgTimeToFirstToken: z.number().nullable(),
+	updatedAt: z.string(),
+});
+
+const providerDetailSchema = z.object({
+	provider: z.object({
+		id: z.string(),
+		name: z.string(),
+		color: z.string().nullable(),
+		description: z.string(),
+		website: z.string().nullable(),
+		status: z.string(),
+		logsCount: z.number(),
+		errorsCount: z.number(),
+		clientErrorsCount: z.number(),
+		gatewayErrorsCount: z.number(),
+		upstreamErrorsCount: z.number(),
+		cachedCount: z.number(),
+		avgTimeToFirstToken: z.number().nullable(),
+		modelCount: z.number(),
+		updatedAt: z.string(),
+	}),
+	models: z.array(providerModelStatsSchema),
+});
+
+const getProviderDetail = createRoute({
+	method: "get",
+	path: "/providers/{providerId}",
+	request: {
+		params: z.object({ providerId: z.string() }),
+		query: z.object({
+			window: historyWindowSchema.default("4h").optional(),
+		}),
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": { schema: providerDetailSchema.openapi({}) },
+			},
+			description: "Provider detail with per-model stats.",
+		},
+	},
+});
+
+admin.openapi(getProviderDetail, async (c) => {
+	const { providerId } = c.req.valid("param");
+	const query = c.req.valid("query");
+	const window = query.window ?? "4h";
+	const startDate = getHistoryStartDate(window);
+
+	const providerRow = await db.query.provider.findFirst({
+		where: { id: { eq: providerId } },
+	});
+
+	if (!providerRow) {
+		throw new HTTPException(404, { message: "Provider not found" });
+	}
+
+	const [mappings, statsRows] = await Promise.all([
+		db
+			.select({
+				id: tables.modelProviderMapping.id,
+				modelId: tables.modelProviderMapping.modelId,
+				modelName: tables.modelProviderMapping.modelName,
+				region: tables.modelProviderMapping.region,
+				status: tables.modelProviderMapping.status,
+				avgTimeToFirstToken: tables.modelProviderMapping.avgTimeToFirstToken,
+				updatedAt: tables.modelProviderMapping.updatedAt,
+			})
+			.from(tables.modelProviderMapping)
+			.where(eq(tables.modelProviderMapping.providerId, providerId)),
+		db
+			.select({
+				modelId: modelProviderMappingHistory.modelId,
+				logsCount:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.logsCount}), 0)`.as(
+						"logs_count",
+					),
+				errorsCount:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.errorsCount}), 0)`.as(
+						"errors_count",
+					),
+				clientErrorsCount:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.clientErrorsCount}), 0)`.as(
+						"client_errors_count",
+					),
+				gatewayErrorsCount:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.gatewayErrorsCount}), 0)`.as(
+						"gateway_errors_count",
+					),
+				upstreamErrorsCount:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.upstreamErrorsCount}), 0)`.as(
+						"upstream_errors_count",
+					),
+				cachedCount:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.cachedCount}), 0)`.as(
+						"cached_count",
+					),
+				totalTtft:
+					sql<number>`COALESCE(SUM(${modelProviderMappingHistory.totalTimeToFirstToken}), 0)`.as(
+						"total_ttft",
+					),
+			})
+			.from(modelProviderMappingHistory)
+			.where(
+				and(
+					eq(modelProviderMappingHistory.providerId, providerId),
+					gte(modelProviderMappingHistory.minuteTimestamp, startDate),
+				),
+			)
+			.groupBy(modelProviderMappingHistory.modelId),
+	]);
+
+	const statsByModel = new Map(statsRows.map((r) => [r.modelId, r]));
+
+	const modelsOut = mappings.map((m) => {
+		const s = statsByModel.get(m.modelId);
+		const logsCount = Number(s?.logsCount ?? 0);
+		const cachedCount = Number(s?.cachedCount ?? 0);
+		const nonCached = logsCount - cachedCount;
+		const totalTtft = Number(s?.totalTtft ?? 0);
+		const avgTtft = nonCached > 0 ? totalTtft / nonCached : null;
+		return {
+			modelId: m.modelId,
+			modelName: m.modelName,
+			mappingId: m.id,
+			region: m.region,
+			status: m.status,
+			logsCount,
+			errorsCount: Number(s?.errorsCount ?? 0),
+			clientErrorsCount: Number(s?.clientErrorsCount ?? 0),
+			gatewayErrorsCount: Number(s?.gatewayErrorsCount ?? 0),
+			upstreamErrorsCount: Number(s?.upstreamErrorsCount ?? 0),
+			cachedCount,
+			avgTimeToFirstToken: avgTtft ?? m.avgTimeToFirstToken,
+			updatedAt: m.updatedAt.toISOString(),
+		};
+	});
+
+	const agg = statsRows.reduce(
+		(acc, r) => {
+			acc.logsCount += Number(r.logsCount ?? 0);
+			acc.errorsCount += Number(r.errorsCount ?? 0);
+			acc.clientErrorsCount += Number(r.clientErrorsCount ?? 0);
+			acc.gatewayErrorsCount += Number(r.gatewayErrorsCount ?? 0);
+			acc.upstreamErrorsCount += Number(r.upstreamErrorsCount ?? 0);
+			acc.cachedCount += Number(r.cachedCount ?? 0);
+			acc.totalTtft += Number(r.totalTtft ?? 0);
+			return acc;
+		},
+		{
+			logsCount: 0,
+			errorsCount: 0,
+			clientErrorsCount: 0,
+			gatewayErrorsCount: 0,
+			upstreamErrorsCount: 0,
+			cachedCount: 0,
+			totalTtft: 0,
+		},
+	);
+	const hasWindowData = agg.logsCount > 0;
+	const aggNonCached = agg.logsCount - agg.cachedCount;
+	const aggAvgTtft = aggNonCached > 0 ? agg.totalTtft / aggNonCached : null;
+
+	return c.json({
+		provider: {
+			id: providerRow.id,
+			name: providerRow.name,
+			color: providerRow.color,
+			description: providerRow.description,
+			website: providerRow.website,
+			status: providerRow.status,
+			logsCount: hasWindowData ? agg.logsCount : providerRow.logsCount,
+			errorsCount: hasWindowData ? agg.errorsCount : providerRow.errorsCount,
+			clientErrorsCount: hasWindowData
+				? agg.clientErrorsCount
+				: providerRow.clientErrorsCount,
+			gatewayErrorsCount: hasWindowData
+				? agg.gatewayErrorsCount
+				: providerRow.gatewayErrorsCount,
+			upstreamErrorsCount: hasWindowData
+				? agg.upstreamErrorsCount
+				: providerRow.upstreamErrorsCount,
+			cachedCount: hasWindowData ? agg.cachedCount : providerRow.cachedCount,
+			avgTimeToFirstToken: hasWindowData
+				? (aggAvgTtft ?? providerRow.avgTimeToFirstToken)
+				: providerRow.avgTimeToFirstToken,
+			modelCount: mappings.length,
+			updatedAt: providerRow.updatedAt.toISOString(),
+		},
+		models: modelsOut,
+	});
+});
+
+// Mapping detail – aggregated stats for a provider/model mapping in the window
+const mappingDetailSchema = z.object({
+	mapping: z.object({
+		id: z.string(),
+		modelId: z.string(),
+		modelName: z.string(),
+		providerId: z.string(),
+		providerName: z.string(),
+		region: z.string().nullable(),
+		status: z.string(),
+		inputPrice: z.string().nullable(),
+		outputPrice: z.string().nullable(),
+		cachedInputPrice: z.string().nullable(),
+		imageInputPrice: z.string().nullable(),
+		requestPrice: z.string().nullable(),
+		contextSize: z.number().nullable(),
+		maxOutput: z.number().nullable(),
+		streaming: z.boolean(),
+		logsCount: z.number(),
+		errorsCount: z.number(),
+		clientErrorsCount: z.number(),
+		gatewayErrorsCount: z.number(),
+		upstreamErrorsCount: z.number(),
+		cachedCount: z.number(),
+		avgTimeToFirstToken: z.number().nullable(),
+		updatedAt: z.string(),
+	}),
+});
+
+const getMappingDetail = createRoute({
+	method: "get",
+	path: "/providers/{providerId}/models/{modelId}",
+	request: {
+		params: z.object({
+			providerId: z.string(),
+			modelId: z.string(),
+		}),
+		query: z.object({
+			window: historyWindowSchema.default("4h").optional(),
+		}),
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": { schema: mappingDetailSchema.openapi({}) },
+			},
+			description: "Mapping detail with aggregated stats for the window.",
+		},
+	},
+});
+
+admin.openapi(getMappingDetail, async (c) => {
+	const { providerId, modelId } = c.req.valid("param");
+	const query = c.req.valid("query");
+	const window = query.window ?? "4h";
+	const startDate = getHistoryStartDate(window);
+
+	const mappingRow = await db
+		.select({
+			id: tables.modelProviderMapping.id,
+			modelId: tables.modelProviderMapping.modelId,
+			modelName: tables.modelProviderMapping.modelName,
+			providerId: tables.modelProviderMapping.providerId,
+			providerName: tables.provider.name,
+			region: tables.modelProviderMapping.region,
+			status: tables.modelProviderMapping.status,
+			inputPrice: tables.modelProviderMapping.inputPrice,
+			outputPrice: tables.modelProviderMapping.outputPrice,
+			cachedInputPrice: tables.modelProviderMapping.cachedInputPrice,
+			imageInputPrice: tables.modelProviderMapping.imageInputPrice,
+			requestPrice: tables.modelProviderMapping.requestPrice,
+			contextSize: tables.modelProviderMapping.contextSize,
+			maxOutput: tables.modelProviderMapping.maxOutput,
+			streaming: tables.modelProviderMapping.streaming,
+			logsCount: tables.modelProviderMapping.logsCount,
+			errorsCount: tables.modelProviderMapping.errorsCount,
+			clientErrorsCount: tables.modelProviderMapping.clientErrorsCount,
+			gatewayErrorsCount: tables.modelProviderMapping.gatewayErrorsCount,
+			upstreamErrorsCount: tables.modelProviderMapping.upstreamErrorsCount,
+			cachedCount: tables.modelProviderMapping.cachedCount,
+			avgTimeToFirstToken: tables.modelProviderMapping.avgTimeToFirstToken,
+			updatedAt: tables.modelProviderMapping.updatedAt,
+		})
+		.from(tables.modelProviderMapping)
+		.innerJoin(
+			tables.provider,
+			eq(tables.provider.id, tables.modelProviderMapping.providerId),
+		)
+		.where(
+			and(
+				eq(tables.modelProviderMapping.providerId, providerId),
+				eq(tables.modelProviderMapping.modelId, modelId),
+			),
+		)
+		.limit(1);
+
+	if (mappingRow.length === 0) {
+		throw new HTTPException(404, { message: "Mapping not found" });
+	}
+
+	const m = mappingRow[0];
+
+	const [aggRow] = await db
+		.select({
+			logsCount:
+				sql<number>`COALESCE(SUM(${modelProviderMappingHistory.logsCount}), 0)`.as(
+					"logs_count",
+				),
+			errorsCount:
+				sql<number>`COALESCE(SUM(${modelProviderMappingHistory.errorsCount}), 0)`.as(
+					"errors_count",
+				),
+			clientErrorsCount:
+				sql<number>`COALESCE(SUM(${modelProviderMappingHistory.clientErrorsCount}), 0)`.as(
+					"client_errors_count",
+				),
+			gatewayErrorsCount:
+				sql<number>`COALESCE(SUM(${modelProviderMappingHistory.gatewayErrorsCount}), 0)`.as(
+					"gateway_errors_count",
+				),
+			upstreamErrorsCount:
+				sql<number>`COALESCE(SUM(${modelProviderMappingHistory.upstreamErrorsCount}), 0)`.as(
+					"upstream_errors_count",
+				),
+			cachedCount:
+				sql<number>`COALESCE(SUM(${modelProviderMappingHistory.cachedCount}), 0)`.as(
+					"cached_count",
+				),
+			avgTtft: sql<
+				number | null
+			>`CASE WHEN SUM(${modelProviderMappingHistory.logsCount}) - SUM(${modelProviderMappingHistory.cachedCount}) > 0 THEN SUM(${modelProviderMappingHistory.totalTimeToFirstToken})::float / (SUM(${modelProviderMappingHistory.logsCount}) - SUM(${modelProviderMappingHistory.cachedCount})) ELSE NULL END`.as(
+				"avg_ttft",
+			),
+		})
+		.from(modelProviderMappingHistory)
+		.where(
+			and(
+				eq(modelProviderMappingHistory.modelProviderMappingId, m.id),
+				gte(modelProviderMappingHistory.minuteTimestamp, startDate),
+			),
+		);
+
+	const hasWindowData = Number(aggRow?.logsCount ?? 0) > 0;
+
+	return c.json({
+		mapping: {
+			id: m.id,
+			modelId: m.modelId,
+			modelName: m.modelName,
+			providerId: m.providerId,
+			providerName: m.providerName,
+			region: m.region,
+			status: m.status,
+			inputPrice: m.inputPrice,
+			outputPrice: m.outputPrice,
+			cachedInputPrice: m.cachedInputPrice,
+			imageInputPrice: m.imageInputPrice,
+			requestPrice: m.requestPrice,
+			contextSize: m.contextSize,
+			maxOutput: m.maxOutput,
+			streaming: m.streaming,
+			logsCount: hasWindowData ? Number(aggRow?.logsCount ?? 0) : m.logsCount,
+			errorsCount: hasWindowData
+				? Number(aggRow?.errorsCount ?? 0)
+				: m.errorsCount,
+			clientErrorsCount: hasWindowData
+				? Number(aggRow?.clientErrorsCount ?? 0)
+				: m.clientErrorsCount,
+			gatewayErrorsCount: hasWindowData
+				? Number(aggRow?.gatewayErrorsCount ?? 0)
+				: m.gatewayErrorsCount,
+			upstreamErrorsCount: hasWindowData
+				? Number(aggRow?.upstreamErrorsCount ?? 0)
+				: m.upstreamErrorsCount,
+			cachedCount: hasWindowData
+				? Number(aggRow?.cachedCount ?? 0)
+				: m.cachedCount,
+			avgTimeToFirstToken: hasWindowData
+				? aggRow?.avgTtft !== undefined && aggRow?.avgTtft !== null
+					? Number(aggRow.avgTtft)
+					: m.avgTimeToFirstToken
+				: m.avgTimeToFirstToken,
+			updatedAt: m.updatedAt.toISOString(),
+		},
+	});
 });
 
 // --- Cost by model endpoints ---
@@ -5281,6 +5805,7 @@ const contactSubmissionSchema = z.object({
 	userAgent: z.string().nullable(),
 	spamFilterStatus: z.string(),
 	rejectionReason: z.string().nullable(),
+	archivedAt: z.string().nullable(),
 });
 
 const contactSubmissionsListSchema = z.object({
@@ -5308,6 +5833,11 @@ const getContactSubmissions = createRoute({
 				.optional(),
 			sortBy: contactSubmissionsSortBySchema.default("createdAt").optional(),
 			sortOrder: sortOrderSchema.default("desc").optional(),
+			archived: z
+				.enum(["true", "false"])
+				.default("false")
+				.transform((v) => v === "true")
+				.optional(),
 		}),
 	},
 	responses: {
@@ -5330,6 +5860,7 @@ admin.openapi(getContactSubmissions, async (c) => {
 		status,
 		sortBy = "createdAt",
 		sortOrder = "desc",
+		archived = false,
 	} = c.req.valid("query");
 
 	const t = tables.enterpriseContactSubmission;
@@ -5347,8 +5878,9 @@ admin.openapi(getContactSubmissions, async (c) => {
 	if (status) {
 		conditions.push(eq(t.spamFilterStatus, status));
 	}
+	conditions.push(archived ? isNotNull(t.archivedAt) : isNull(t.archivedAt));
 
-	const where = conditions.length > 0 ? and(...conditions) : undefined;
+	const where = and(...conditions);
 
 	const sortColumn = {
 		createdAt: t.createdAt,
@@ -5373,6 +5905,7 @@ admin.openapi(getContactSubmissions, async (c) => {
 				userAgent: t.userAgent,
 				spamFilterStatus: t.spamFilterStatus,
 				rejectionReason: t.rejectionReason,
+				archivedAt: t.archivedAt,
 			})
 			.from(t)
 			.where(where)
@@ -5389,6 +5922,7 @@ admin.openapi(getContactSubmissions, async (c) => {
 		submissions: submissions.map((s) => ({
 			...s,
 			createdAt: s.createdAt.toISOString(),
+			archivedAt: s.archivedAt?.toISOString() ?? null,
 		})),
 		total: Number(countResult[0]?.count ?? 0),
 	});
@@ -5431,6 +5965,7 @@ admin.openapi(getContactSubmission, async (c) => {
 			userAgent: t.userAgent,
 			spamFilterStatus: t.spamFilterStatus,
 			rejectionReason: t.rejectionReason,
+			archivedAt: t.archivedAt,
 		})
 		.from(t)
 		.where(eq(t.id, id))
@@ -5444,6 +5979,7 @@ admin.openapi(getContactSubmission, async (c) => {
 	return c.json({
 		...submission,
 		createdAt: submission.createdAt.toISOString(),
+		archivedAt: submission.archivedAt?.toISOString() ?? null,
 	});
 });
 
@@ -5602,6 +6138,7 @@ const chatSupportConversationSchema = z.object({
 	userAgent: z.string().nullable(),
 	messageCount: z.number(),
 	escalatedAt: z.string().nullable(),
+	archivedAt: z.string().nullable(),
 	firstMessage: z.string().nullable(),
 });
 
@@ -5628,6 +6165,7 @@ const chatSupportConversationDetailSchema = z.object({
 	userAgent: z.string().nullable(),
 	messageCount: z.number(),
 	escalatedAt: z.string().nullable(),
+	archivedAt: z.string().nullable(),
 	messages: z.array(chatSupportMessageSchema),
 });
 
@@ -5639,6 +6177,11 @@ const getChatSupportConversations = createRoute({
 			limit: z.coerce.number().min(1).max(100).default(50).optional(),
 			offset: z.coerce.number().min(0).default(0).optional(),
 			search: z.string().optional(),
+			archived: z
+				.enum(["true", "false"])
+				.default("false")
+				.transform((v) => v === "true")
+				.optional(),
 		}),
 	},
 	responses: {
@@ -5654,7 +6197,12 @@ const getChatSupportConversations = createRoute({
 });
 
 admin.openapi(getChatSupportConversations, async (c) => {
-	const { limit = 50, offset = 0, search } = c.req.valid("query");
+	const {
+		limit = 50,
+		offset = 0,
+		search,
+		archived = false,
+	} = c.req.valid("query");
 
 	const t = tables.chatSupportConversation;
 	const mt = tables.chatSupportMessage;
@@ -5668,8 +6216,9 @@ admin.openapi(getChatSupportConversations, async (c) => {
 			.groupBy(mt.conversationId);
 		conditions.push(sql`${t.id} IN (${matchingConvIds})`);
 	}
+	conditions.push(archived ? isNotNull(t.archivedAt) : isNull(t.archivedAt));
 
-	const where = conditions.length > 0 ? and(...conditions) : undefined;
+	const where = and(...conditions);
 
 	const firstMessageSubquery = db
 		.select({
@@ -5692,6 +6241,7 @@ admin.openapi(getChatSupportConversations, async (c) => {
 				userAgent: t.userAgent,
 				messageCount: t.messageCount,
 				escalatedAt: t.escalatedAt,
+				archivedAt: t.archivedAt,
 				firstMessage: firstMessageSubquery.content,
 			})
 			.from(t)
@@ -5715,10 +6265,53 @@ admin.openapi(getChatSupportConversations, async (c) => {
 			createdAt: conv.createdAt.toISOString(),
 			updatedAt: conv.updatedAt.toISOString(),
 			escalatedAt: conv.escalatedAt?.toISOString() ?? null,
+			archivedAt: conv.archivedAt?.toISOString() ?? null,
 			firstMessage: conv.firstMessage ?? null,
 		})),
 		total: Number(countResult[0]?.count ?? 0),
 	});
+});
+
+const getChatSupportReadStatuses = createRoute({
+	method: "get",
+	path: "/chat-support-logs/read-statuses",
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({
+						readStatuses: z.record(z.string(), z.number()),
+					}),
+				},
+			},
+			description:
+				"Map of conversationId to lastReadMessageCount for the current admin.",
+		},
+	},
+});
+
+admin.openapi(getChatSupportReadStatuses, async (c) => {
+	const user = c.get("user");
+
+	if (!user) {
+		throw new HTTPException(401, { message: "Unauthorized" });
+	}
+
+	const rt = tables.chatSupportReadStatus;
+	const rows = await db
+		.select({
+			conversationId: rt.conversationId,
+			lastReadMessageCount: rt.lastReadMessageCount,
+		})
+		.from(rt)
+		.where(eq(rt.adminUserId, user.id));
+
+	const readStatuses: Record<string, number> = {};
+	for (const row of rows) {
+		readStatuses[row.conversationId] = row.lastReadMessageCount;
+	}
+
+	return c.json({ readStatuses });
 });
 
 const getChatSupportConversation = createRoute({
@@ -5759,6 +6352,7 @@ admin.openapi(getChatSupportConversation, async (c) => {
 			userAgent: t.userAgent,
 			messageCount: t.messageCount,
 			escalatedAt: t.escalatedAt,
+			archivedAt: t.archivedAt,
 		})
 		.from(t)
 		.where(eq(t.id, id))
@@ -5786,6 +6380,7 @@ admin.openapi(getChatSupportConversation, async (c) => {
 		createdAt: conversation.createdAt.toISOString(),
 		updatedAt: conversation.updatedAt.toISOString(),
 		escalatedAt: conversation.escalatedAt?.toISOString() ?? null,
+		archivedAt: conversation.archivedAt?.toISOString() ?? null,
 		messages: messages.map((m) => ({
 			...m,
 			createdAt: m.createdAt.toISOString(),
@@ -5917,6 +6512,411 @@ admin.openapi(replyChatSupportConversation, async (c) => {
 	}
 
 	return c.json({ success: true, message: "Reply sent successfully." });
+});
+
+// ── Chat Support Read Status ──────────────────────────────────────────────────
+
+const markChatSupportRead = createRoute({
+	method: "post",
+	path: "/chat-support-logs/{id}/read",
+	request: {
+		params: z.object({ id: z.string() }),
+		body: {
+			content: {
+				"application/json": {
+					schema: z.object({
+						messageCount: z.number().int().min(0),
+					}),
+				},
+			},
+		},
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({ success: z.boolean() }),
+				},
+			},
+			description: "Conversation marked as read.",
+		},
+	},
+});
+
+admin.openapi(markChatSupportRead, async (c) => {
+	const { id } = c.req.valid("param");
+	const { messageCount } = c.req.valid("json");
+	const user = c.get("user");
+
+	if (!user) {
+		throw new HTTPException(401, { message: "Unauthorized" });
+	}
+
+	const rt = tables.chatSupportReadStatus;
+
+	const existing = await db
+		.select({ id: rt.id })
+		.from(rt)
+		.where(and(eq(rt.conversationId, id), eq(rt.adminUserId, user.id)))
+		.limit(1);
+
+	if (existing.length > 0) {
+		await db
+			.update(rt)
+			.set({
+				lastReadMessageCount: sql<number>`GREATEST(${rt.lastReadMessageCount}, ${messageCount})`,
+				readAt: sql<Date>`CASE WHEN ${messageCount} >= ${rt.lastReadMessageCount} THEN NOW() ELSE ${rt.readAt} END`,
+			})
+			.where(eq(rt.id, existing[0]!.id));
+	} else {
+		await db.insert(rt).values({
+			conversationId: id,
+			adminUserId: user.id,
+			lastReadMessageCount: messageCount,
+		});
+	}
+
+	return c.json({ success: true });
+});
+
+// ── Delete Chat Support Conversation ──────────────────────────────────────────
+
+const deleteChatSupportConversation = createRoute({
+	method: "delete",
+	path: "/chat-support-logs/{id}",
+	request: {
+		params: z.object({ id: z.string() }),
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({ success: z.boolean() }).openapi({}),
+				},
+			},
+			description: "Conversation deleted.",
+		},
+		404: {
+			description: "Conversation not found.",
+		},
+	},
+});
+
+admin.openapi(deleteChatSupportConversation, async (c) => {
+	const { id } = c.req.valid("param");
+
+	const existing = await db.query.chatSupportConversation.findFirst({
+		where: { id: { eq: id } },
+	});
+
+	if (!existing) {
+		throw new HTTPException(404, { message: "Conversation not found" });
+	}
+
+	await db
+		.delete(tables.chatSupportConversation)
+		.where(eq(tables.chatSupportConversation.id, id));
+
+	return c.json({ success: true });
+});
+
+// ── Delete Contact Submission ─────────────────────────────────────────────────
+
+const deleteContactSubmission = createRoute({
+	method: "delete",
+	path: "/contact-submissions/{id}",
+	request: {
+		params: z.object({ id: z.string() }),
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({ success: z.boolean() }).openapi({}),
+				},
+			},
+			description: "Submission deleted.",
+		},
+		404: {
+			description: "Submission not found.",
+		},
+	},
+});
+
+admin.openapi(deleteContactSubmission, async (c) => {
+	const { id } = c.req.valid("param");
+
+	const existing = await db.query.enterpriseContactSubmission.findFirst({
+		where: { id: { eq: id } },
+	});
+
+	if (!existing) {
+		throw new HTTPException(404, { message: "Submission not found" });
+	}
+
+	await db
+		.delete(tables.enterpriseContactSubmission)
+		.where(eq(tables.enterpriseContactSubmission.id, id));
+
+	return c.json({ success: true });
+});
+
+// ── Archive Contact Submission ────────────────────────────────────────────────
+
+const archiveContactSubmission = createRoute({
+	method: "patch",
+	path: "/contact-submissions/{id}/archive",
+	request: {
+		params: z.object({ id: z.string() }),
+		body: {
+			content: {
+				"application/json": {
+					schema: z.object({ archived: z.boolean() }),
+				},
+			},
+		},
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({ success: z.boolean() }).openapi({}),
+				},
+			},
+			description: "Submission archived/unarchived.",
+		},
+		404: {
+			description: "Submission not found.",
+		},
+	},
+});
+
+admin.openapi(archiveContactSubmission, async (c) => {
+	const { id } = c.req.valid("param");
+	const { archived } = c.req.valid("json");
+
+	const rows = await db
+		.update(tables.enterpriseContactSubmission)
+		.set({ archivedAt: archived ? new Date() : null })
+		.where(eq(tables.enterpriseContactSubmission.id, id))
+		.returning();
+
+	if (rows.length === 0) {
+		throw new HTTPException(404, { message: "Submission not found" });
+	}
+
+	return c.json({ success: true });
+});
+
+// ── Archive Chat Support Conversation ────────────────────────────────────────
+
+const archiveChatSupportConversation = createRoute({
+	method: "patch",
+	path: "/chat-support-logs/{id}/archive",
+	request: {
+		params: z.object({ id: z.string() }),
+		body: {
+			content: {
+				"application/json": {
+					schema: z.object({ archived: z.boolean() }),
+				},
+			},
+		},
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({ success: z.boolean() }).openapi({}),
+				},
+			},
+			description: "Conversation archived/unarchived.",
+		},
+		404: {
+			description: "Conversation not found.",
+		},
+	},
+});
+
+admin.openapi(archiveChatSupportConversation, async (c) => {
+	const { id } = c.req.valid("param");
+	const { archived } = c.req.valid("json");
+
+	const rows = await db
+		.update(tables.chatSupportConversation)
+		.set({ archivedAt: archived ? new Date() : null })
+		.where(eq(tables.chatSupportConversation.id, id))
+		.returning();
+
+	if (rows.length === 0) {
+		throw new HTTPException(404, { message: "Conversation not found" });
+	}
+
+	return c.json({ success: true });
+});
+
+// ─── Payment Failures ─────────────────────────────────────────────────────────
+
+const paymentFailureSchema = z.object({
+	id: z.string(),
+	createdAt: z.string().datetime(),
+	organizationId: z.string(),
+	userEmail: z.string().nullable(),
+	amount: z.string().nullable(),
+	currency: z.string(),
+	declineCode: z.string().nullable(),
+	errorCode: z.string().nullable(),
+	failureMessage: z.string().nullable(),
+	stripePaymentIntentId: z.string().nullable(),
+	source: z.string().nullable(),
+});
+
+const getPaymentFailures = createRoute({
+	method: "get",
+	path: "/payment-failures",
+	request: {
+		query: z.object({
+			days: z.coerce.number().int().min(1).max(365).optional(),
+			declineCode: z.string().optional(),
+			search: z.string().optional(),
+			limit: z.coerce.number().int().min(1).max(200).optional(),
+			offset: z.coerce.number().int().min(0).optional(),
+		}),
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({
+						failures: z.array(
+							paymentFailureSchema.extend({
+								organizationName: z.string(),
+								billingEmail: z.string(),
+							}),
+						),
+						summary: z.object({
+							total7d: z.number(),
+							total30d: z.number(),
+							byDeclineCode: z.array(
+								z.object({
+									declineCode: z.string().nullable(),
+									count: z.number(),
+								}),
+							),
+						}),
+						totalCount: z.number(),
+					}),
+				},
+			},
+			description: "Payment failures retrieved successfully",
+		},
+	},
+});
+
+admin.openapi(getPaymentFailures, async (c) => {
+	const {
+		days = 30,
+		declineCode,
+		search,
+		limit: limitNum = 50,
+		offset: offsetNum = 0,
+	} = c.req.valid("query");
+
+	const MS_PER_DAY = 24 * 60 * 60 * 1000;
+	// eslint-disable-next-line no-mixed-operators
+	const sinceDate = new Date(Date.now() - days * MS_PER_DAY);
+	// eslint-disable-next-line no-mixed-operators
+	const since7d = new Date(Date.now() - 7 * MS_PER_DAY);
+	// eslint-disable-next-line no-mixed-operators
+	const since30d = new Date(Date.now() - 30 * MS_PER_DAY);
+
+	// Base conditions reference only paymentFailure columns (safe without JOIN)
+	const baseConditions = [gte(tables.paymentFailure.createdAt, sinceDate)];
+
+	if (declineCode) {
+		baseConditions.push(eq(tables.paymentFailure.declineCode, declineCode));
+	}
+
+	// Search condition requires the org JOIN (checks both userEmail and billingEmail)
+	const searchCondition = search
+		? sql`(${tables.paymentFailure.userEmail} ILIKE ${"%" + search + "%"} OR ${tables.organization.billingEmail} ILIKE ${"%" + search + "%"})`
+		: undefined;
+
+	const failures = await db
+		.select({
+			id: tables.paymentFailure.id,
+			createdAt: tables.paymentFailure.createdAt,
+			organizationId: tables.paymentFailure.organizationId,
+			userEmail: tables.paymentFailure.userEmail,
+			amount: tables.paymentFailure.amount,
+			currency: tables.paymentFailure.currency,
+			declineCode: tables.paymentFailure.declineCode,
+			errorCode: tables.paymentFailure.errorCode,
+			failureMessage: tables.paymentFailure.failureMessage,
+			stripePaymentIntentId: tables.paymentFailure.stripePaymentIntentId,
+			source: tables.paymentFailure.source,
+			organizationName: tables.organization.name,
+			billingEmail: tables.organization.billingEmail,
+		})
+		.from(tables.paymentFailure)
+		.innerJoin(
+			tables.organization,
+			eq(tables.organization.id, tables.paymentFailure.organizationId),
+		)
+		.where(and(...baseConditions, searchCondition))
+		.orderBy(desc(tables.paymentFailure.createdAt))
+		.limit(limitNum)
+		.offset(offsetNum);
+
+	// Summary counts
+	const [count7dResult] = await db
+		.select({ count: sql<number>`COUNT(*)` })
+		.from(tables.paymentFailure)
+		.where(gte(tables.paymentFailure.createdAt, since7d));
+
+	const [count30dResult] = await db
+		.select({ count: sql<number>`COUNT(*)` })
+		.from(tables.paymentFailure)
+		.where(gte(tables.paymentFailure.createdAt, since30d));
+
+	const byDeclineCode = await db
+		.select({
+			declineCode: tables.paymentFailure.declineCode,
+			count: sql<number>`COUNT(*)`,
+		})
+		.from(tables.paymentFailure)
+		.where(gte(tables.paymentFailure.createdAt, since30d))
+		.groupBy(tables.paymentFailure.declineCode)
+		.orderBy(sql`COUNT(*) DESC`);
+
+	// totalCount needs the JOIN when search references org columns
+	const totalCountQuery = db
+		.select({ count: sql<number>`COUNT(*)` })
+		.from(tables.paymentFailure);
+
+	if (searchCondition) {
+		totalCountQuery.innerJoin(
+			tables.organization,
+			eq(tables.organization.id, tables.paymentFailure.organizationId),
+		);
+	}
+
+	const [totalCountResult] = await totalCountQuery.where(
+		and(...baseConditions, searchCondition),
+	);
+
+	return c.json({
+		failures,
+		summary: {
+			total7d: Number(count7dResult?.count ?? 0),
+			total30d: Number(count30dResult?.count ?? 0),
+			byDeclineCode: byDeclineCode.map((r) => ({
+				declineCode: r.declineCode,
+				count: Number(r.count),
+			})),
+		},
+		totalCount: Number(totalCountResult?.count ?? 0),
+	});
 });
 
 export default admin;

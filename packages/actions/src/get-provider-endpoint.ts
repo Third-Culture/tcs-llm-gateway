@@ -17,6 +17,7 @@ function buildVertexCompatibleEndpoint(
 	token: string | undefined,
 	stream: boolean | undefined,
 	configIndex: number | undefined,
+	providerKeyOptions?: ProviderKeyOptions,
 ): string {
 	const endpoint = stream ? "streamGenerateContent" : "generateContent";
 	const model = modelName ?? "gemini-2.5-flash-lite";
@@ -35,7 +36,9 @@ function buildVertexCompatibleEndpoint(
 			: baseEndpoint;
 	}
 
-	const projectId = getProviderEnvValue(provider, "project", configIndex);
+	const projectId =
+		providerKeyOptions?.google_vertex_project_id ??
+		getProviderEnvValue(provider, "project", configIndex);
 	const region =
 		getProviderEnvValue(provider, "region", configIndex, "global") ?? "global";
 
@@ -74,6 +77,7 @@ export function getProviderEndpoint(
 	configIndex?: number,
 	imageGenerations?: boolean,
 	region?: string,
+	skipEnvVars?: boolean,
 ): string {
 	let modelName = model;
 	if (model && model !== "custom") {
@@ -88,6 +92,18 @@ export function getProviderEndpoint(
 		}
 	}
 	let url: string | undefined;
+
+	// Helper: read env value only when not in BYOK mode (skipEnvVars).
+	// In BYOK mode, only the hardcoded default is used.
+	const envValueOrDefault = (
+		p: Parameters<typeof getProviderEnvValue>[0],
+		key: string,
+		defaultValue?: string,
+	): string | undefined =>
+		skipEnvVars
+			? defaultValue
+			: (getProviderEnvValue(p, key, configIndex, defaultValue) ??
+				defaultValue);
 
 	// Generic region-based base URL resolution.
 	// Any provider with a regionConfig + endpointMap can use this.
@@ -122,15 +138,16 @@ export function getProviderEndpoint(
 				break;
 			case "google-ai-studio":
 				url =
-					getProviderEnvValue(
+					envValueOrDefault(
 						"google-ai-studio",
 						"baseUrl",
-						configIndex,
 						"https://generativelanguage.googleapis.com",
 					) ?? "https://generativelanguage.googleapis.com";
 				break;
 			case "glacier":
-				url = getProviderEnvValue("glacier", "baseUrl", configIndex);
+				url = skipEnvVars
+					? undefined
+					: getProviderEnvValue("glacier", "baseUrl", configIndex);
 				if (!url) {
 					throw new Error(
 						"Glacier provider requires LLM_GLACIER_BASE_URL environment variable",
@@ -139,26 +156,19 @@ export function getProviderEndpoint(
 				break;
 			case "google-vertex":
 				url =
-					getProviderEnvValue(
+					envValueOrDefault(
 						"google-vertex",
 						"baseUrl",
-						configIndex,
 						"https://aiplatform.googleapis.com",
 					) ?? "https://aiplatform.googleapis.com";
 				break;
 			case "quartz":
-				url = getProviderEnvValue("quartz", "baseUrl", configIndex);
+				url = skipEnvVars
+					? undefined
+					: getProviderEnvValue("quartz", "baseUrl", configIndex);
 				if (!url) {
 					throw new Error(
 						"Quartz provider requires LLM_QUARTZ_BASE_URL environment variable",
-					);
-				}
-				break;
-			case "obsidian":
-				url = getProviderEnvValue("obsidian", "baseUrl", configIndex);
-				if (!url) {
-					throw new Error(
-						"Obsidian provider requires LLM_OBSIDIAN_BASE_URL environment variable",
 					);
 				}
 				break;
@@ -220,17 +230,18 @@ export function getProviderEndpoint(
 				break;
 			case "aws-bedrock":
 				url =
-					getProviderEnvValue(
+					envValueOrDefault(
 						"aws-bedrock",
 						"baseUrl",
-						configIndex,
 						"https://bedrock-runtime.us-east-1.amazonaws.com",
 					) ?? "https://bedrock-runtime.us-east-1.amazonaws.com";
 				break;
 			case "azure": {
 				const resource =
 					providerKeyOptions?.azure_resource ??
-					getProviderEnvValue("azure", "resource", configIndex);
+					(skipEnvVars
+						? undefined
+						: getProviderEnvValue("azure", "resource", configIndex));
 
 				if (!resource) {
 					const azureEnv = getProviderEnvConfig("azure");
@@ -297,19 +308,6 @@ export function getProviderEndpoint(
 				? `${baseEndpoint}?${queryParams.join("&")}`
 				: baseEndpoint;
 		}
-		case "obsidian": {
-			const endpoint = stream ? "streamGenerateContent" : "generateContent";
-			const baseEndpoint = modelName
-				? `${url}/v1beta/models/${modelName}:${endpoint}`
-				: `${url}/v1beta/models/gemini-3-pro-image-preview:${endpoint}`;
-			const queryParams = [];
-			if (stream) {
-				queryParams.push("alt=sse");
-			}
-			return queryParams.length > 0
-				? `${baseEndpoint}?${queryParams.join("&")}`
-				: baseEndpoint;
-		}
 		case "google-vertex":
 		case "quartz":
 			return buildVertexCompatibleEndpoint(
@@ -319,6 +317,7 @@ export function getProviderEndpoint(
 				token,
 				stream,
 				configIndex,
+				providerKeyOptions,
 			);
 		case "perplexity":
 			return `${url}/chat/completions`;

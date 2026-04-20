@@ -2946,6 +2946,9 @@ export interface paths {
                                 status: string;
                                 logsCount: number;
                                 errorsCount: number;
+                                clientErrorsCount: number;
+                                gatewayErrorsCount: number;
+                                upstreamErrorsCount: number;
                                 cachedCount: number;
                                 avgTimeToFirstToken: number | null;
                                 providerCount: number;
@@ -3108,6 +3111,9 @@ export interface paths {
                                 timestamp: string;
                                 logsCount: number;
                                 errorsCount: number;
+                                clientErrorsCount: number;
+                                gatewayErrorsCount: number;
+                                upstreamErrorsCount: number;
                                 cachedCount: number;
                                 avgTtft: number | null;
                                 avgDuration: number | null;
@@ -3159,6 +3165,9 @@ export interface paths {
                                 timestamp: string;
                                 logsCount: number;
                                 errorsCount: number;
+                                clientErrorsCount: number;
+                                gatewayErrorsCount: number;
+                                upstreamErrorsCount: number;
                                 cachedCount: number;
                                 avgTtft: number | null;
                                 avgDuration: number | null;
@@ -3211,12 +3220,153 @@ export interface paths {
                                 timestamp: string;
                                 logsCount: number;
                                 errorsCount: number;
+                                clientErrorsCount: number;
+                                gatewayErrorsCount: number;
+                                upstreamErrorsCount: number;
                                 cachedCount: number;
                                 avgTtft: number | null;
                                 avgDuration: number | null;
                                 totalTokens: number;
                                 totalCost: number;
                             }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/providers/{providerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    window?: "1m" | "2m" | "5m" | "15m" | "1h" | "2h" | "4h" | "12h" | "24h" | "2d" | "7d";
+                };
+                header?: never;
+                path: {
+                    providerId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Provider detail with per-model stats. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            provider: {
+                                id: string;
+                                name: string;
+                                color: string | null;
+                                description: string;
+                                website: string | null;
+                                status: string;
+                                logsCount: number;
+                                errorsCount: number;
+                                clientErrorsCount: number;
+                                gatewayErrorsCount: number;
+                                upstreamErrorsCount: number;
+                                cachedCount: number;
+                                avgTimeToFirstToken: number | null;
+                                modelCount: number;
+                                updatedAt: string;
+                            };
+                            models: {
+                                modelId: string;
+                                modelName: string;
+                                mappingId: string;
+                                region: string | null;
+                                status: string;
+                                logsCount: number;
+                                errorsCount: number;
+                                clientErrorsCount: number;
+                                gatewayErrorsCount: number;
+                                upstreamErrorsCount: number;
+                                cachedCount: number;
+                                avgTimeToFirstToken: number | null;
+                                updatedAt: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/providers/{providerId}/models/{modelId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    window?: "1m" | "2m" | "5m" | "15m" | "1h" | "2h" | "4h" | "12h" | "24h" | "2d" | "7d";
+                };
+                header?: never;
+                path: {
+                    providerId: string;
+                    modelId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Mapping detail with aggregated stats for the window. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            mapping: {
+                                id: string;
+                                modelId: string;
+                                modelName: string;
+                                providerId: string;
+                                providerName: string;
+                                region: string | null;
+                                status: string;
+                                inputPrice: string | null;
+                                outputPrice: string | null;
+                                cachedInputPrice: string | null;
+                                imageInputPrice: string | null;
+                                requestPrice: string | null;
+                                contextSize: number | null;
+                                maxOutput: number | null;
+                                streaming: boolean;
+                                logsCount: number;
+                                errorsCount: number;
+                                clientErrorsCount: number;
+                                gatewayErrorsCount: number;
+                                upstreamErrorsCount: number;
+                                cachedCount: number;
+                                avgTimeToFirstToken: number | null;
+                                updatedAt: string;
+                            };
                         };
                     };
                 };
@@ -3482,6 +3632,7 @@ export interface paths {
                     status?: "pending" | "rejected" | "delivered" | "delivery_failed";
                     sortBy?: "createdAt" | "name" | "email" | "spamFilterStatus";
                     sortOrder?: "asc" | "desc";
+                    archived?: "true" | "false";
                 };
                 header?: never;
                 path?: never;
@@ -3508,6 +3659,7 @@ export interface paths {
                                 userAgent: string | null;
                                 spamFilterStatus: string;
                                 rejectionReason: string | null;
+                                archivedAt: string | null;
                             }[];
                             total: number;
                         };
@@ -3559,6 +3711,7 @@ export interface paths {
                             userAgent: string | null;
                             spamFilterStatus: string;
                             rejectionReason: string | null;
+                            archivedAt: string | null;
                         };
                     };
                 };
@@ -3566,7 +3719,37 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Submission deleted. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                        };
+                    };
+                };
+                /** @description Submission not found. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -3679,6 +3862,7 @@ export interface paths {
                     limit?: number;
                     offset?: number | null;
                     search?: string;
+                    archived?: "true" | "false";
                 };
                 header?: never;
                 path?: never;
@@ -3703,9 +3887,49 @@ export interface paths {
                                 userAgent: string | null;
                                 messageCount: number;
                                 escalatedAt: string | null;
+                                archivedAt: string | null;
                                 firstMessage: string | null;
                             }[];
                             total: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/chat-support-logs/read-statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Map of conversationId to lastReadMessageCount for the current admin. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            readStatuses: {
+                                [key: string]: number;
+                            };
                         };
                     };
                 };
@@ -3753,6 +3977,7 @@ export interface paths {
                             userAgent: string | null;
                             messageCount: number;
                             escalatedAt: string | null;
+                            archivedAt: string | null;
                             messages: {
                                 id: string;
                                 createdAt: string;
@@ -3774,7 +3999,37 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Conversation deleted. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                        };
+                    };
+                };
+                /** @description Conversation not found. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -3827,6 +4082,222 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/chat-support-logs/{id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        messageCount: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Conversation marked as read. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/contact-submissions/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        archived: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Submission archived/unarchived. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                        };
+                    };
+                };
+                /** @description Submission not found. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/admin/chat-support-logs/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        archived: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Conversation archived/unarchived. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                        };
+                    };
+                };
+                /** @description Conversation not found. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/admin/payment-failures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    days?: number;
+                    declineCode?: string;
+                    search?: string;
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Payment failures retrieved successfully */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            failures: {
+                                id: string;
+                                /** Format: date-time */
+                                createdAt: string;
+                                organizationId: string;
+                                userEmail: string | null;
+                                amount: string | null;
+                                currency: string;
+                                declineCode: string | null;
+                                errorCode: string | null;
+                                failureMessage: string | null;
+                                stripePaymentIntentId: string | null;
+                                source: string | null;
+                                organizationName: string;
+                                billingEmail: string;
+                            }[];
+                            summary: {
+                                total7d: number;
+                                total30d: number;
+                                byDeclineCode: {
+                                    declineCode: string | null;
+                                    count: number;
+                                }[];
+                            };
+                            totalCount: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4560,6 +5031,7 @@ export interface paths {
                             azure_validation_model?: string;
                             /** @enum {string} */
                             alibaba_region?: "singapore" | "us-virginia" | "cn-beijing";
+                            google_vertex_project_id?: string;
                         };
                         organizationId: string;
                     };
@@ -5554,6 +6026,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{id}/credits-runway": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Credits runway computed successfully */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            avgDailySpend7d: number;
+                            runwayDays: number | null;
+                            balance: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/team/{organizationId}/members": {
         parameters: {
             query?: never;
@@ -6068,6 +6581,9 @@ export interface paths {
                             bonusEnabled: boolean;
                             bonusEligible: boolean;
                             bonusIneligibilityReason?: string;
+                            /** @enum {string} */
+                            bonusType?: "first_purchase" | "second_topup";
+                            secondTopupBonusExpiresInDays?: number;
                         };
                     };
                 };
@@ -7997,12 +8513,11 @@ export interface operations {
                             providerName: string;
                             logsCount: number;
                             errorsCount: number;
-                            clientErrorsCount: number;
-                            gatewayErrorsCount: number;
-                            upstreamErrorsCount: number;
                             cachedCount: number;
                             avgTimeToFirstToken: number | null;
                             errorRate: number;
+                            uptime: number | null;
+                            windowHours: number;
                         }[];
                         arena: {
                             text: {

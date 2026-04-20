@@ -7,12 +7,14 @@ import {
 	AutohandIcon,
 	ClineIcon,
 	OpenCodeIcon,
+	SoulForgeIcon,
 } from "@llmgateway/shared/components";
 
-type Tool = "claude-code" | "autohand" | "opencode" | "cline";
+type Tool = "claude-code" | "soulforge" | "autohand" | "opencode" | "cline";
 
 const tools: { id: Tool; name: string; icon: typeof AnthropicIcon }[] = [
 	{ id: "claude-code", name: "Claude Code", icon: AnthropicIcon },
+	{ id: "soulforge", name: "SoulForge", icon: SoulForgeIcon },
 	{ id: "autohand", name: "Autohand", icon: AutohandIcon },
 	{ id: "opencode", name: "OpenCode", icon: OpenCodeIcon },
 	{ id: "cline", name: "Cline", icon: ClineIcon },
@@ -24,7 +26,7 @@ const snippets: Record<
 		lines: { prefix?: string; key: string; value: string }[];
 		command: string;
 		comment: string;
-		modelLine: { key: string; value: string };
+		modelLine?: { key: string; value: string };
 	}
 > = {
 	"claude-code": {
@@ -42,6 +44,11 @@ const snippets: Record<
 		comment: "# works with any model — switch freely",
 		modelLine: { key: "ANTHROPIC_MODEL=", value: "gpt-5" },
 	},
+	soulforge: {
+		lines: [],
+		command: "soulforge",
+		comment: "# type /keys to set your LLM Gateway key — saves ~50% tokens",
+	},
 	autohand: {
 		lines: [
 			{
@@ -58,19 +65,9 @@ const snippets: Record<
 		modelLine: { key: "OPENAI_MODEL=", value: "claude-opus-4-6" },
 	},
 	opencode: {
-		lines: [
-			{
-				key: "OPENAI_BASE_URL=",
-				value: "https://api.llmgateway.io/v1",
-			},
-			{
-				key: "OPENAI_API_KEY=",
-				value: "llmgtwy_your_key",
-			},
-		],
+		lines: [],
 		command: "opencode",
-		comment: "# works with any model — switch freely",
-		modelLine: { key: "OPENAI_MODEL=", value: "claude-sonnet-4-20250514" },
+		comment: "# LLM Gateway is built-in — type /providers to connect",
 	},
 	cline: {
 		lines: [
@@ -124,11 +121,15 @@ export function TerminalPreview() {
 						<div className="mt-3 text-muted-foreground/60">
 							{snippet.comment}
 						</div>
-						<div className="mt-1 text-muted-foreground whitespace-nowrap">
-							<span className="text-foreground/70">$</span> export{" "}
-							{snippet.modelLine.key}
-							<span className="text-foreground">{snippet.modelLine.value}</span>
-						</div>
+						{snippet.modelLine && (
+							<div className="mt-1 text-muted-foreground whitespace-nowrap">
+								<span className="text-foreground/70">$</span> export{" "}
+								{snippet.modelLine.key}
+								<span className="text-foreground">
+									{snippet.modelLine.value}
+								</span>
+							</div>
+						)}
 					</div>
 				</div>
 			</div>

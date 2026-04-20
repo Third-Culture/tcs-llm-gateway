@@ -39,6 +39,7 @@ import {
 	providerRateLimitWindows,
 } from "@/lib/provider-rate-limit.js";
 import { getResponsesContext } from "@/lib/responses-context.js";
+import { getNoFallbackRoutingMetadata } from "@/lib/routing-metadata.js";
 import {
 	createCombinedSignal,
 	createStreamingCombinedSignal,
@@ -124,6 +125,7 @@ import { getProviderEnv } from "./tools/get-provider-env.js";
 import { hasMeaningfulAssistantOutput } from "./tools/has-meaningful-assistant-output.js";
 import { healJsonResponse } from "./tools/heal-json-response.js";
 import { isModelTrulyFree } from "./tools/is-model-truly-free.js";
+import { mapFinishReasonToOpenai } from "./tools/map-finish-reason-to-openai.js";
 import { messagesContainImages } from "./tools/messages-contain-images.js";
 import { mightBeCompleteJson } from "./tools/might-be-complete-json.js";
 import { normalizeStreamingError } from "./tools/normalize-streaming-error.js";
@@ -156,6 +158,7 @@ import {
 	messageContentToString,
 } from "./tools/tokenizer.js";
 import {
+	applyExtendedUsageFields,
 	stripRequestScopedMetadataFromOpenAiResponse,
 	transformResponseToOpenai,
 	withCurrentRequestMetadataOnOpenAiResponse,
@@ -174,6 +177,27 @@ import type { ServerTypes } from "@/vars.js";
  * - Non-default regions only pass if a region-specific env key exists
  *   (e.g. LLM_ALIBABA_API_KEY__US_VIRGINIA).
  */
+function toDataStorageCostNumber(
+	promptTokens: number | string | null | undefined,
+	cachedTokens: number | string | null | undefined,
+	completionTokens: number | string | null | undefined,
+	reasoningTokens: number | string | null | undefined,
+	retentionLevel: "retain" | "none" | null,
+): number | null {
+	if (retentionLevel === "none") {
+		return null;
+	}
+	const str = calculateDataStorageCost(
+		promptTokens,
+		cachedTokens,
+		completionTokens,
+		reasoningTokens,
+		retentionLevel,
+	);
+	const num = Number(str);
+	return Number.isFinite(num) ? num : null;
+}
+
 function filterRegionsByAvailableKeys(
 	expandedProviders: ProviderModelMapping[],
 ): ProviderModelMapping[] {
@@ -509,7 +533,7 @@ function usesGoogleQueryToken(provider: string): boolean {
 }
 
 function isGoogleCompatibleProvider(provider: string): boolean {
-	return usesGoogleQueryToken(provider) || provider === "obsidian";
+	return usesGoogleQueryToken(provider);
 }
 
 // Pre-compiled regex pattern to avoid recompilation per request
@@ -590,7 +614,7 @@ function inferStreamingErrorStatusCode(
 	return 500;
 }
 
-async function inspectImmediateStreamingProviderError(
+export async function inspectImmediateStreamingProviderError(
 	response: Response,
 	provider: Provider,
 ): Promise<
@@ -713,9 +737,9 @@ async function inspectImmediateStreamingProviderError(
 				errorMessage:
 					error instanceof Error ? error.message : String(error ?? ""),
 				errorResponseText: "",
-				errorType: "stream",
-				inferredStatusCode: 0,
-				statusText: "",
+				errorType: "upstream_error",
+				inferredStatusCode: 502,
+				statusText: "stream_read_error",
 			},
 		};
 	}
@@ -834,14 +858,37 @@ const completions = createRoute({
 							prompt_tokens_details: z
 								.object({
 									cached_tokens: z.number(),
+									cache_write_tokens: z.number().optional(),
+									cache_creation_tokens: z.number().optional(),
+									audio_tokens: z.number().optional(),
+									video_tokens: z.number().optional(),
 								})
 								.optional(),
-							cost_usd_total: z.number().nullable().optional(),
-							cost_usd_input: z.number().nullable().optional(),
-							cost_usd_output: z.number().nullable().optional(),
-							cost_usd_cached_input: z.number().nullable().optional(),
+							completion_tokens_details: z
+								.object({
+									reasoning_tokens: z.number().optional(),
+									image_tokens: z.number().optional(),
+									audio_tokens: z.number().optional(),
+								})
+								.optional(),
+							cost: z.number().nullable().optional(),
+							cost_details: z
+								.object({
+									upstream_inference_cost: z.number(),
+									upstream_inference_prompt_cost: z.number(),
+									upstream_inference_completions_cost: z.number(),
+									total_cost: z.number().nullable().optional(),
+									input_cost: z.number().nullable().optional(),
+									output_cost: z.number().nullable().optional(),
+									cached_input_cost: z.number().nullable().optional(),
+									request_cost: z.number().nullable().optional(),
+									web_search_cost: z.number().nullable().optional(),
+									image_input_cost: z.number().nullable().optional(),
+									image_output_cost: z.number().nullable().optional(),
+									data_storage_cost: z.number().nullable().optional(),
+								})
+								.optional(),
 							info: z.string().optional(),
-							cost_usd_request: z.number().nullable().optional(),
 						}),
 						metadata: z.object({
 							request_id: z.string(),
@@ -1100,6 +1147,9 @@ chat.openapi(completions, async (c) => {
 		);
 
 	// Check for X-No-Fallback header to disable provider fallback on low uptime
+	const xNoFallbackHeaderSet =
+		c.req.raw.headers.has("x-no-fallback") ||
+		c.req.raw.headers.has("X-No-Fallback");
 	const noFallback =
 		c.req.raw.headers.get("x-no-fallback") === "true" ||
 		c.req.raw.headers.get("X-No-Fallback") === "true";
@@ -1450,20 +1500,20 @@ chat.openapi(completions, async (c) => {
 		(usedProvider === "llmgateway" && usedModel === "auto") ||
 		usedModel === "auto"
 	) {
-		// Estimate the context size needed based on the request
-		let requiredContextSize = 0;
+		// Estimate prompt/input tokens first so auto-routing can react to large prompts
+		let estimatedInputTokens = 0;
 
 		// Estimate prompt tokens from messages
 		if (messages && messages.length > 0) {
 			try {
-				requiredContextSize = encodeChatMessages(messages);
+				estimatedInputTokens = encodeChatMessages(messages);
 			} catch {
 				// Fallback to simple estimation if encoding fails
 				const messageTokens = messages.reduce(
 					(acc, m) => acc + (m.content?.length ?? 0),
 					0,
 				);
-				requiredContextSize = Math.max(1, Math.round(messageTokens / 4));
+				estimatedInputTokens = Math.max(1, Math.round(messageTokens / 4));
 			}
 		}
 
@@ -1472,12 +1522,15 @@ chat.openapi(completions, async (c) => {
 			try {
 				const toolsString = JSON.stringify(tools);
 				const toolTokens = Math.round(toolsString.length / 4);
-				requiredContextSize += toolTokens;
+				estimatedInputTokens += toolTokens;
 			} catch {
 				// Fallback estimation for tools
-				requiredContextSize += tools.length * 100; // Rough estimate per tool
+				estimatedInputTokens += tools.length * 100; // Rough estimate per tool
 			}
 		}
+
+		// Estimate the full context needed based on the request
+		let requiredContextSize = estimatedInputTokens;
 
 		// Add max_tokens if specified
 		if (max_tokens) {
@@ -1519,7 +1572,11 @@ chat.openapi(completions, async (c) => {
 
 		// Find the cheapest model that meets our context size requirements
 		// Only consider hardcoded models for auto selection
-		const allowedAutoModels = ["gpt-oss-120b", "gpt-5-nano", "gpt-4.1-nano"];
+		const allowedAutoModels = [
+			"claude-opus-4-6",
+			"claude-sonnet-4-6",
+			"claude-haiku-4-5",
+		];
 
 		let selectedModel: ModelDefinition | undefined;
 		let selectedProviders: any[] = [];
@@ -1538,6 +1595,12 @@ chat.openapi(completions, async (c) => {
 					continue;
 				}
 			} else if (!allowedAutoModels.includes(modelDef.id)) {
+				continue;
+			} else if (
+				estimatedInputTokens > 10_000 &&
+				modelDef.id === "claude-haiku-4-5"
+			) {
+				// Prefer Sonnet over Haiku for larger prompts once the input crosses 10k tokens
 				continue;
 			}
 
@@ -1698,7 +1761,7 @@ chat.openapi(completions, async (c) => {
 				usedRegion = cheapestResult.provider.region;
 				routingMetadata = {
 					...cheapestResult.metadata,
-					...(noFallback ? { noFallback: true } : {}),
+					...getNoFallbackRoutingMetadata(noFallback, xNoFallbackHeaderSet),
 				};
 			} else {
 				// Fallback to first available provider if price comparison fails
@@ -1720,8 +1783,8 @@ chat.openapi(completions, async (c) => {
 				});
 			}
 			// Default fallback if no suitable model is found - use cheapest allowed model
-			usedModel = "gpt-5-nano";
-			usedProvider = "openai";
+			usedModel = "claude-haiku-4-5";
+			usedProvider = "anthropic";
 		}
 		// Update modelInfo to the selected model so retry/fallback logic can find
 		// alternative providers. Without this, modelInfo still points to the "auto"
@@ -1733,7 +1796,7 @@ chat.openapi(completions, async (c) => {
 			};
 		} else {
 			// Fallback case: look up the default model definition
-			const fallbackModelDef = models.find((m) => m.id === "gpt-5-nano");
+			const fallbackModelDef = models.find((m) => m.id === "claude-haiku-4-5");
 			if (fallbackModelDef) {
 				modelInfo = {
 					...fallbackModelDef,
@@ -2064,6 +2127,10 @@ chat.openapi(completions, async (c) => {
 									originalProviderScore,
 									...cheapestResult.metadata.providerScores,
 								],
+								...getNoFallbackRoutingMetadata(
+									noFallback,
+									xNoFallbackHeaderSet,
+								),
 							};
 						}
 					}
@@ -2216,6 +2283,7 @@ chat.openapi(completions, async (c) => {
 							if (cheapestResult) {
 								usedProvider = cheapestResult.provider.providerId;
 								usedModel = cheapestResult.provider.modelName;
+								usedRegion = cheapestResult.provider.region;
 								routingMetadata = {
 									...cheapestResult.metadata,
 									selectionReason: "low-uptime-fallback",
@@ -2226,6 +2294,10 @@ chat.openapi(completions, async (c) => {
 										originalProviderScore,
 										...cheapestResult.metadata.providerScores,
 									],
+									...getNoFallbackRoutingMetadata(
+										noFallback,
+										xNoFallbackHeaderSet,
+									),
 								};
 							}
 						}
@@ -2379,7 +2451,7 @@ chat.openapi(completions, async (c) => {
 					routingMetadata = addContentFilterRoutingMetadata(
 						{
 							...cheapestResult.metadata,
-							...(noFallback ? { noFallback: true } : {}),
+							...getNoFallbackRoutingMetadata(noFallback, xNoFallbackHeaderSet),
 						},
 						contentFilterMatched,
 						contentFilterRoutingExcludedProviders,
@@ -2566,7 +2638,7 @@ chat.openapi(completions, async (c) => {
 				selectedProvider: usedProvider,
 				selectionReason,
 				providerScores: allProviderScores,
-				...(noFallback ? { noFallback: true } : {}),
+				...getNoFallbackRoutingMetadata(noFallback, xNoFallbackHeaderSet),
 			},
 			contentFilterMatched,
 			contentFilterRoutingExcludedProviders,
@@ -3167,6 +3239,7 @@ chat.openapi(completions, async (c) => {
 			configIndex,
 			isImageGeneration,
 			usedRegion,
+			providerKey !== undefined,
 		);
 
 		// If region is still unset but the provider supports regions, resolve the
@@ -4081,6 +4154,13 @@ chat.openapi(completions, async (c) => {
 						0,
 						project.organizationId,
 					);
+					streamingCosts.dataStorageCost = toDataStorageCostNumber(
+						streamingCosts.promptTokens ?? promptTokenCount,
+						null,
+						0,
+						null,
+						retentionLevel,
+					);
 
 					await writeSSEAndCache({
 						data: JSON.stringify({
@@ -4100,6 +4180,27 @@ chat.openapi(completions, async (c) => {
 						id: String(eventId++),
 					});
 
+					const contentFilterUsage: Record<string, any> = {
+						prompt_tokens: promptTokenCount,
+						completion_tokens: 0,
+						total_tokens: promptTokenCount,
+					};
+					applyExtendedUsageFields(contentFilterUsage, {
+						costs: {
+							inputCost: streamingCosts.inputCost,
+							outputCost: streamingCosts.outputCost,
+							cachedInputCost: streamingCosts.cachedInputCost,
+							requestCost: streamingCosts.requestCost,
+							webSearchCost: streamingCosts.webSearchCost,
+							imageInputCost: streamingCosts.imageInputCost,
+							imageOutputCost: streamingCosts.imageOutputCost,
+							totalCost: streamingCosts.totalCost,
+							dataStorageCost: streamingCosts.dataStorageCost,
+						},
+						cachedTokens: null,
+						cacheCreationTokens: null,
+						reasoningTokens: null,
+					});
 					await writeSSEAndCache({
 						data: JSON.stringify({
 							id: `chatcmpl-${Date.now()}`,
@@ -4113,18 +4214,7 @@ chat.openapi(completions, async (c) => {
 									finish_reason: null,
 								},
 							],
-							usage: {
-								prompt_tokens: promptTokenCount,
-								completion_tokens: 0,
-								total_tokens: promptTokenCount,
-								cost_usd_total: streamingCosts.totalCost,
-								cost_usd_input: streamingCosts.inputCost,
-								cost_usd_output: streamingCosts.outputCost,
-								cost_usd_cached_input: streamingCosts.cachedInputCost,
-								cost_usd_request: streamingCosts.requestCost,
-								cost_usd_image_input: streamingCosts.imageInputCost,
-								cost_usd_image_output: streamingCosts.imageOutputCost,
-							},
+							usage: contentFilterUsage,
 						}),
 						id: String(eventId++),
 					});
@@ -5421,6 +5511,7 @@ chat.openapi(completions, async (c) => {
 				let totalTokens = null;
 				let reasoningTokens = null;
 				let cachedTokens = null;
+				let cacheCreationTokens: number | null = null;
 				let streamingToolCalls = null;
 				let imageByteSize = 0; // Track total image data size for token estimation
 				let outputImageCount = 0; // Track number of output images for cost calculation
@@ -5452,6 +5543,10 @@ chat.openapi(completions, async (c) => {
 				const shouldBufferForHealing =
 					streamingIsJsonResponseFormat &&
 					(streamingResponseHealingEnabled === true ||
+						(usedProvider === "anthropic" &&
+							response_format?.type === "json_object") ||
+						(usedProvider === "aws-bedrock" &&
+							response_format?.type === "json_object") ||
 						usedProvider === "novita" ||
 						splitTaggedReasoning);
 
@@ -5839,10 +5934,68 @@ chat.openapi(completions, async (c) => {
 										webSearchCount,
 										project.organizationId,
 									);
+									streamingCosts.dataStorageCost = toDataStorageCostNumber(
+										streamingCosts.promptTokens ?? finalPromptTokens,
+										cachedTokens,
+										streamingCosts.completionTokens ?? finalCompletionTokens,
+										reasoningTokens,
+										retentionLevel,
+									);
 
 									// Include costs in response for all users
 									const shouldIncludeCosts = true;
 
+									const finalStreamUsage: Record<string, any> = {
+										prompt_tokens: Math.max(
+											1,
+											streamingCosts.promptTokens ?? finalPromptTokens ?? 1,
+										),
+										completion_tokens:
+											streamingCosts.completionTokens ??
+											finalCompletionTokens ??
+											0,
+										total_tokens: Math.max(
+											1,
+											(streamingCosts.promptTokens ?? finalPromptTokens ?? 0) +
+												(streamingCosts.completionTokens ??
+													finalCompletionTokens ??
+													0) +
+												(reasoningTokens ?? 0),
+										),
+										...(reasoningTokens !== null &&
+											reasoningTokens > 0 && {
+												reasoning_tokens: reasoningTokens,
+											}),
+										...((cachedTokens !== null ||
+											(cacheCreationTokens !== null &&
+												cacheCreationTokens > 0)) && {
+											prompt_tokens_details: {
+												cached_tokens: cachedTokens ?? 0,
+												...(cacheCreationTokens !== null &&
+													cacheCreationTokens > 0 && {
+														cache_creation_tokens: cacheCreationTokens,
+													}),
+											},
+										}),
+									};
+									applyExtendedUsageFields(finalStreamUsage, {
+										costs: shouldIncludeCosts
+											? {
+													inputCost: streamingCosts.inputCost,
+													outputCost: streamingCosts.outputCost,
+													cachedInputCost: streamingCosts.cachedInputCost,
+													requestCost: streamingCosts.requestCost,
+													webSearchCost: streamingCosts.webSearchCost,
+													imageInputCost: streamingCosts.imageInputCost,
+													imageOutputCost: streamingCosts.imageOutputCost,
+													totalCost: streamingCosts.totalCost,
+													dataStorageCost: streamingCosts.dataStorageCost,
+												}
+											: null,
+										cachedTokens,
+										cacheCreationTokens,
+										reasoningTokens,
+									});
 									const finalUsageChunk = {
 										id: `chatcmpl-${Date.now()}`,
 										object: "chat.completion.chunk",
@@ -5855,35 +6008,7 @@ chat.openapi(completions, async (c) => {
 												finish_reason: null,
 											},
 										],
-										usage: {
-											prompt_tokens: Math.max(
-												1,
-												streamingCosts.promptTokens ?? finalPromptTokens ?? 1,
-											),
-											completion_tokens:
-												streamingCosts.completionTokens ??
-												finalCompletionTokens ??
-												0,
-											total_tokens: Math.max(
-												1,
-												(streamingCosts.promptTokens ??
-													finalPromptTokens ??
-													0) +
-													(streamingCosts.completionTokens ??
-														finalCompletionTokens ??
-														0) +
-													(reasoningTokens ?? 0),
-											),
-											...(shouldIncludeCosts && {
-												cost_usd_total: streamingCosts.totalCost,
-												cost_usd_input: streamingCosts.inputCost,
-												cost_usd_output: streamingCosts.outputCost,
-												cost_usd_cached_input: streamingCosts.cachedInputCost,
-												cost_usd_request: streamingCosts.requestCost,
-												cost_usd_image_input: streamingCosts.imageInputCost,
-												cost_usd_image_output: streamingCosts.imageOutputCost,
-											}),
-										},
+										usage: finalStreamUsage,
 									};
 
 									await writeSSEAndCache({
@@ -6531,7 +6656,6 @@ chat.openapi(completions, async (c) => {
 									case "glacier":
 									case "google-vertex":
 									case "quartz":
-									case "obsidian":
 										// Preserve original Google finish reason for logging
 										if (data.promptFeedback?.blockReason) {
 											finishReason = data.promptFeedback.blockReason;
@@ -6587,6 +6711,9 @@ chat.openapi(completions, async (c) => {
 								}
 								if (usage.cachedTokens !== null) {
 									cachedTokens = usage.cachedTokens;
+								}
+								if (usage.cacheCreationTokens !== null) {
+									cacheCreationTokens = usage.cacheCreationTokens;
 								}
 
 								// Estimate tokens if not provided and we have a finish reason
@@ -7020,7 +7147,11 @@ chat.openapi(completions, async (c) => {
 										{
 											index: 0,
 											delta: {},
-											finish_reason: finishReason,
+											finish_reason: mapFinishReasonToOpenai(
+												finishReason,
+												usedProvider,
+												!!streamingToolCalls && streamingToolCalls.length > 0,
+											),
 										},
 									],
 								};
@@ -7059,6 +7190,7 @@ chat.openapi(completions, async (c) => {
 										estimatedCost: false,
 										discount: undefined,
 										pricingTier: undefined,
+										dataStorageCost: null as number | null,
 									}
 								: await calculateCosts(
 										usedModel,
@@ -7080,6 +7212,16 @@ chat.openapi(completions, async (c) => {
 										webSearchCount,
 										project.organizationId,
 									);
+						if (streamingCostsEarly.totalCost !== null) {
+							streamingCostsEarly.dataStorageCost = toDataStorageCostNumber(
+								streamingCostsEarly.promptTokens ?? calculatedPromptTokens,
+								cachedTokens,
+								streamingCostsEarly.completionTokens ??
+									calculatedCompletionTokens,
+								reasoningTokens,
+								retentionLevel,
+							);
+						}
 
 						// Always send final usage chunk with cost data for SDK compatibility
 						try {
@@ -7114,26 +7256,46 @@ chat.openapi(completions, async (c) => {
 									const adjCompletion = Math.round(
 										completionTokens ?? calculatedCompletionTokens ?? 0,
 									);
-									return {
+									const earlyUsage: Record<string, any> = {
 										prompt_tokens: adjPrompt,
 										completion_tokens: adjCompletion,
 										total_tokens: Math.max(
 											1,
 											Math.round(adjPrompt + adjCompletion),
 										),
-										...(cachedTokens !== null && {
+										...(reasoningTokens !== null &&
+											reasoningTokens > 0 && {
+												reasoning_tokens: reasoningTokens,
+											}),
+										...((cachedTokens !== null ||
+											(cacheCreationTokens !== null &&
+												cacheCreationTokens > 0)) && {
 											prompt_tokens_details: {
-												cached_tokens: cachedTokens,
+												cached_tokens: cachedTokens ?? 0,
+												...(cacheCreationTokens !== null &&
+													cacheCreationTokens > 0 && {
+														cache_creation_tokens: cacheCreationTokens,
+													}),
 											},
 										}),
-										cost_usd_total: streamingCostsEarly.totalCost,
-										cost_usd_input: streamingCostsEarly.inputCost,
-										cost_usd_output: streamingCostsEarly.outputCost,
-										cost_usd_cached_input: streamingCostsEarly.cachedInputCost,
-										cost_usd_request: streamingCostsEarly.requestCost,
-										cost_usd_image_input: streamingCostsEarly.imageInputCost,
-										cost_usd_image_output: streamingCostsEarly.imageOutputCost,
 									};
+									applyExtendedUsageFields(earlyUsage, {
+										costs: {
+											inputCost: streamingCostsEarly.inputCost,
+											outputCost: streamingCostsEarly.outputCost,
+											cachedInputCost: streamingCostsEarly.cachedInputCost,
+											requestCost: streamingCostsEarly.requestCost,
+											webSearchCost: streamingCostsEarly.webSearchCost,
+											imageInputCost: streamingCostsEarly.imageInputCost,
+											imageOutputCost: streamingCostsEarly.imageOutputCost,
+											totalCost: streamingCostsEarly.totalCost,
+											dataStorageCost: streamingCostsEarly.dataStorageCost,
+										},
+										cachedTokens,
+										cacheCreationTokens,
+										reasoningTokens,
+									});
+									return earlyUsage;
 								})(),
 							};
 
@@ -7207,7 +7369,11 @@ chat.openapi(completions, async (c) => {
 										{
 											index: 0,
 											delta: {},
-											finish_reason: finishReason ?? "stop",
+											finish_reason: mapFinishReasonToOpenai(
+												finishReason,
+												usedProvider,
+												!!streamingToolCalls && streamingToolCalls.length > 0,
+											),
 										},
 									],
 								};
@@ -7313,6 +7479,7 @@ chat.openapi(completions, async (c) => {
 									estimatedCost: false,
 									discount: undefined,
 									pricingTier: undefined,
+									dataStorageCost: null as number | null,
 								}
 							: await calculateCosts(
 									usedModel,
@@ -8762,6 +8929,7 @@ chat.openapi(completions, async (c) => {
 		completionTokens,
 		reasoningTokens,
 		cachedTokens,
+		cacheCreationTokens,
 		toolResults,
 		images,
 		annotations,
@@ -8786,6 +8954,10 @@ chat.openapi(completions, async (c) => {
 	const shouldHealNonStreaming =
 		isJsonResponseFormat &&
 		(responseHealingEnabled === true ||
+			(usedProvider === "anthropic" &&
+				response_format?.type === "json_object") ||
+			(usedProvider === "aws-bedrock" &&
+				response_format?.type === "json_object") ||
 			usedProvider === "novita" ||
 			splitTaggedReasoning);
 
@@ -8884,6 +9056,13 @@ chat.openapi(completions, async (c) => {
 		webSearchCount,
 		project.organizationId,
 	);
+	costs.dataStorageCost = toDataStorageCostNumber(
+		costs.promptTokens ?? calculatedPromptTokens,
+		cachedTokens,
+		costs.completionTokens ?? calculatedCompletionTokens,
+		calculatedReasoningTokens,
+		retentionLevel,
+	);
 
 	// Use costs.promptTokens as canonical value (includes image input
 	// tokens for providers that exclude them from upstream usage)
@@ -8932,6 +9111,7 @@ chat.openapi(completions, async (c) => {
 					imageInputCost: costs.imageInputCost,
 					imageOutputCost: costs.imageOutputCost,
 					totalCost: costs.totalCost,
+					dataStorageCost: costs.dataStorageCost,
 				}
 			: null,
 		false, // showUpgradeMessage - never show since Pro plan is removed
@@ -8939,6 +9119,7 @@ chat.openapi(completions, async (c) => {
 		routingAttempts.length > 0 ? routingAttempts : null,
 		requestId,
 		usedRegion,
+		cacheCreationTokens,
 	);
 
 	// Extract plugin IDs for logging

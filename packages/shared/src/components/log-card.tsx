@@ -51,6 +51,8 @@ interface RoutingMetadata {
 	selectionReason?: string;
 	usedApiKeyHash?: string;
 	availableProviders?: string[];
+	xNoFallbackHeaderSet?: boolean;
+	noFallback?: boolean;
 	providerScores?: Array<{
 		providerId: string;
 		region?: string;
@@ -556,6 +558,19 @@ export function LogCard({
 												<span className="text-muted-foreground">Key</span>
 												<span className="font-mono">
 													{formatApiKeyHash(routingMetadata.usedApiKeyHash)}
+												</span>
+											</div>
+										)}
+										{routingMetadata.xNoFallbackHeaderSet !== undefined && (
+											<div className="flex justify-between">
+												<span className="text-muted-foreground">
+													X-No-Fallback
+												</span>
+												<span className="font-mono">
+													{routingMetadata.xNoFallbackHeaderSet
+														? "set"
+														: "unset"}
+													{routingMetadata.noFallback ? " (active)" : ""}
 												</span>
 											</div>
 										)}
@@ -1280,7 +1295,7 @@ export function LogCard({
 											Available Tools
 										</h5>
 										<div className="rounded-md border p-3">
-											<pre className="max-h-40 text-xs overflow-auto whitespace-pre-wrap break-words">
+											<pre className="max-h-40 text-xs overflow-auto whitespace-pre-wrap break-all">
 												{JSON.stringify(tools, null, 2)}
 											</pre>
 										</div>
@@ -1292,7 +1307,7 @@ export function LogCard({
 											Tool Choice
 										</h5>
 										<div className="rounded-md border p-3">
-											<pre className="max-h-40 text-xs overflow-auto whitespace-pre-wrap break-words">
+											<pre className="max-h-40 text-xs overflow-auto whitespace-pre-wrap break-all">
 												{JSON.stringify(toolChoice, null, 2)}
 											</pre>
 										</div>
@@ -1347,7 +1362,7 @@ export function LogCard({
 													))
 											) : (
 												<div className="rounded-md border p-3">
-													<pre className="max-h-40 text-xs overflow-auto whitespace-pre-wrap break-words">
+													<pre className="max-h-40 text-xs overflow-auto whitespace-pre-wrap break-all">
 														{JSON.stringify(toolResults, null, 2)}
 													</pre>
 												</div>
@@ -1426,7 +1441,7 @@ export function LogCard({
 						<h4 className="text-sm font-medium">Message Context</h4>
 						<div className="rounded-md border p-3">
 							{messages ? (
-								<pre className="max-h-60 text-xs overflow-auto whitespace-pre-wrap break-words">
+								<pre className="max-h-60 text-xs overflow-auto whitespace-pre-wrap break-all">
 									{JSON.stringify(
 										messages,
 										(_key, value) => {
@@ -1459,7 +1474,7 @@ export function LogCard({
 									Response Format
 								</h5>
 								<div className="rounded-md border p-3">
-									<pre className="max-h-40 text-xs overflow-auto whitespace-pre-wrap break-words">
+									<pre className="max-h-40 text-xs overflow-auto whitespace-pre-wrap break-all">
 										{JSON.stringify(responseFormat, null, 2)}
 									</pre>
 								</div>
@@ -1472,7 +1487,7 @@ export function LogCard({
 						<div className="space-y-2">
 							<h4 className="text-sm font-medium">Reasoning Content</h4>
 							<div className="rounded-md border p-3">
-								<pre className="max-h-60 text-xs overflow-auto whitespace-pre-wrap break-words">
+								<pre className="max-h-60 text-xs overflow-auto whitespace-pre-wrap break-all">
 									{log.reasoningContent}
 								</pre>
 							</div>
@@ -1542,7 +1557,7 @@ export function LogCard({
 									)}
 								</div>
 							) : log.content ? (
-								<pre className="max-h-60 text-xs overflow-auto whitespace-pre-wrap break-words">
+								<pre className="max-h-60 text-xs overflow-auto whitespace-pre-wrap break-all">
 									{log.content}
 								</pre>
 							) : !retentionEnabled && isUserFacing ? (

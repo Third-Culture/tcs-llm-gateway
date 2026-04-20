@@ -517,6 +517,180 @@ describe("api", () => {
 		expect(JSON.stringify(json)).not.toContain('"path":["size"]');
 	});
 
+	test("/v1/images/generations forwards X-No-Fallback to chat completions", async () => {
+		await db.insert(tables.apiKey).values({
+			id: "token-id-image-no-fallback",
+			token: "real-token-image-no-fallback",
+			projectId: "project-id",
+			description: "Test API Key",
+			createdBy: "user-id",
+		});
+
+		const originalRequest: typeof app.request = app.request.bind(app);
+		let forwardedNoFallbackHeader: string | null | undefined;
+
+		const requestSpy = vi
+			.spyOn(app, "request")
+			.mockImplementation(
+				async (...args: Parameters<typeof app.request>): Promise<Response> => {
+					const [input, init] = args;
+					if (input === "/v1/chat/completions") {
+						const headers = new Headers(init?.headers);
+						forwardedNoFallbackHeader = headers.get("x-no-fallback");
+
+						return new Response(
+							JSON.stringify({
+								id: "chatcmpl-image-no-fallback",
+								object: "chat.completion",
+								created: 1774549411,
+								model: "gemini-3-pro-image-preview",
+								choices: [
+									{
+										index: 0,
+										message: {
+											role: "assistant",
+											content: null,
+											images: [
+												{
+													image_url: {
+														url: "data:image/png;base64,aGVsbG8=",
+													},
+												},
+											],
+										},
+										finish_reason: "stop",
+									},
+								],
+								usage: {
+									prompt_tokens: 1,
+									completion_tokens: 1,
+									total_tokens: 2,
+								},
+							}),
+							{
+								status: 200,
+								headers: {
+									"Content-Type": "application/json",
+								},
+							},
+						);
+					}
+
+					return await originalRequest(...args);
+				},
+			);
+
+		try {
+			const res = await app.request("/v1/images/generations", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token-image-no-fallback",
+					"x-no-fallback": "true",
+				},
+				body: JSON.stringify({
+					model: "gemini-3-pro-image-preview",
+					prompt: "Generate a mountain at sunrise",
+				}),
+			});
+
+			expect(res.status).toBe(200);
+			expect(forwardedNoFallbackHeader).toBe("true");
+		} finally {
+			requestSpy.mockRestore();
+		}
+	});
+
+	test("/v1/images/edits forwards X-No-Fallback to chat completions", async () => {
+		await db.insert(tables.apiKey).values({
+			id: "token-id-image-edits-no-fallback",
+			token: "real-token-image-edits-no-fallback",
+			projectId: "project-id",
+			description: "Test API Key",
+			createdBy: "user-id",
+		});
+
+		const originalRequest: typeof app.request = app.request.bind(app);
+		let forwardedNoFallbackHeader: string | null | undefined;
+
+		const requestSpy = vi
+			.spyOn(app, "request")
+			.mockImplementation(
+				async (...args: Parameters<typeof app.request>): Promise<Response> => {
+					const [input, init] = args;
+					if (input === "/v1/chat/completions") {
+						const headers = new Headers(init?.headers);
+						forwardedNoFallbackHeader = headers.get("x-no-fallback");
+
+						return new Response(
+							JSON.stringify({
+								id: "chatcmpl-image-edit-no-fallback",
+								object: "chat.completion",
+								created: 1774549411,
+								model: "gemini-3-pro-image-preview",
+								choices: [
+									{
+										index: 0,
+										message: {
+											role: "assistant",
+											content: null,
+											images: [
+												{
+													image_url: {
+														url: "data:image/png;base64,aGVsbG8=",
+													},
+												},
+											],
+										},
+										finish_reason: "stop",
+									},
+								],
+								usage: {
+									prompt_tokens: 1,
+									completion_tokens: 1,
+									total_tokens: 2,
+								},
+							}),
+							{
+								status: 200,
+								headers: {
+									"Content-Type": "application/json",
+								},
+							},
+						);
+					}
+
+					return await originalRequest(...args);
+				},
+			);
+
+		try {
+			const res = await app.request("/v1/images/edits", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer real-token-image-edits-no-fallback",
+					"x-no-fallback": "true",
+				},
+				body: JSON.stringify({
+					model: "gemini-3-pro-image-preview",
+					prompt: "Add a neon city reflection to this image",
+					images: [
+						{
+							image_url:
+								"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAJFBMVEX///////9MaXH///////////////////////////////////8ZR3RTAAAADHRSTlP+jgB78KRmvTse21aub7wnAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAc0lEQVR42l3PWRIDIQgE0G5Z1fvfN7hMKhO+5BWtgraqU933qWG1BkCg0jfkahcAyt4QQOiFKmJI+oWhezRwI0Zx1rzRZ44C7gRIMws8oKDFiT4QdHvBNMUL1LKu3KAnUu+fCWndp/98Xf6Xm1846+dZ/wNI2AJy5D7oXAAAAABJRU5ErkJggg==",
+						},
+					],
+				}),
+			});
+
+			expect(res.status).toBe(200);
+			expect(forwardedNoFallbackHeader).toBe("true");
+		} finally {
+			requestSpy.mockRestore();
+		}
+	});
+
 	test("/v1/images/generations returns empty data for content filter", async () => {
 		await db.insert(tables.apiKey).values({
 			id: "token-id-image-generation-content-filter",
@@ -1728,42 +1902,54 @@ describe("api", () => {
 
 	// test for llmgateway/auto special case
 	test("/v1/chat/completions with llmgateway/auto", async () => {
-		await db.insert(tables.apiKey).values({
-			id: "token-id",
-			token: "real-token",
-			projectId: "project-id",
-			description: "Test API Key",
-			createdBy: "user-id",
-		});
+		const originalGoogleCloudProject = process.env.LLM_GOOGLE_CLOUD_PROJECT;
+		process.env.LLM_GOOGLE_CLOUD_PROJECT = "test-project";
 
-		// Create provider key for OpenAI with mock server URL as baseUrl
-		await db.insert(tables.providerKey).values({
-			id: "provider-key-id",
-			token: "sk-test-key",
-			provider: "openai",
-			organizationId: "org-id",
-			baseUrl: mockServerUrl,
-		});
+		try {
+			await db.insert(tables.apiKey).values({
+				id: "token-id",
+				token: "real-token",
+				projectId: "project-id",
+				description: "Test API Key",
+				createdBy: "user-id",
+			});
 
-		const res = await app.request("/v1/chat/completions", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer real-token`,
-			},
-			body: JSON.stringify({
-				model: "llmgateway/auto",
-				messages: [
-					{
-						role: "user",
-						content: "Hello with llmgateway/auto!",
-					},
-				],
-			}),
-		});
-		expect(res.status).toBe(200);
-		const json = await res.json();
-		expect(json).toHaveProperty("choices.[0].message.content");
+			// Auto-routing now selects from Claude root models, so use a Claude-capable
+			// provider that the mock server supports.
+			await db.insert(tables.providerKey).values({
+				id: "provider-key-id",
+				token: "google-test-key",
+				provider: "google-vertex",
+				organizationId: "org-id",
+				baseUrl: mockServerUrl,
+			});
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer real-token`,
+				},
+				body: JSON.stringify({
+					model: "llmgateway/auto",
+					messages: [
+						{
+							role: "user",
+							content: "Hello with llmgateway/auto!",
+						},
+					],
+				}),
+			});
+			expect(res.status).toBe(200);
+			const json = await res.json();
+			expect(json).toHaveProperty("choices.[0].message.content");
+		} finally {
+			if (originalGoogleCloudProject !== undefined) {
+				process.env.LLM_GOOGLE_CLOUD_PROJECT = originalGoogleCloudProject;
+			} else {
+				delete process.env.LLM_GOOGLE_CLOUD_PROJECT;
+			}
+		}
 	});
 
 	// test for missing provider API key

@@ -136,7 +136,6 @@ export const providers = [
 		color: "#4285f4",
 		website: null,
 		announcement: null,
-		priority: 0.8,
 	},
 	{
 		id: "google-vertex",
@@ -180,23 +179,6 @@ export const providers = [
 		website: null,
 		announcement: null,
 		priority: 0.9,
-	},
-	{
-		id: "obsidian",
-		name: "Obsidian",
-		description: "Obsidian - Google-compatible LLM provider.",
-		env: {
-			required: {
-				apiKey: "LLM_OBSIDIAN_API_KEY",
-				baseUrl: "LLM_OBSIDIAN_BASE_URL",
-			},
-		},
-		streaming: true,
-		cancellation: true,
-		color: "#1a1a1a",
-		website: null,
-		announcement: null,
-		contentFilter: true,
 	},
 	{
 		id: "avalanche",
