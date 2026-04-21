@@ -29,7 +29,6 @@ export const zaiModels = [
 			},
 			{
 				providerId: "canopywave",
-				test: "skip",
 				modelName: "zai/glm-5.1",
 				inputPrice: 1.4 / 1e6,
 				cachedInputPrice: 0.26 / 1e6,
