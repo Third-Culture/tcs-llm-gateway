@@ -355,8 +355,7 @@ export function transformStreamingToOpenai(
 		case "google-ai-studio":
 		case "glacier":
 		case "google-vertex":
-		case "quartz":
-		case "obsidian": {
+		case "quartz": {
 			const buildUsage = (
 				usageMetadata: any | undefined,
 				messagesForFallback: any[],
@@ -1202,13 +1201,14 @@ export function transformStreamingToOpenai(
 		case "cerebras":
 		case "xai":
 		case "deepseek":
+		case "bluestone":
 		case "alibaba":
 		case "moonshot":
 		case "perplexity":
 		case "nebius":
 		case "canopywave":
 		case "inference.net":
-		case "together.ai":
+		case "together-ai":
 		case "custom":
 		case "nanogpt":
 		case "bytedance":

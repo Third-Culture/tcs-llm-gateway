@@ -460,7 +460,7 @@ function usesGoogleQueryToken(provider: string): boolean {
 }
 
 function isGoogleCompatibleProvider(provider: string): boolean {
-	return usesGoogleQueryToken(provider) || provider === "obsidian";
+	return usesGoogleQueryToken(provider);
 }
 
 // Pre-compiled regex pattern to avoid recompilation per request
@@ -6028,7 +6028,6 @@ chat.openapi(completions, async (c) => {
 										case "glacier":
 										case "google-vertex":
 										case "quartz":
-										case "obsidian":
 											// Preserve original Google finish reason for logging
 											if (data.promptFeedback?.blockReason) {
 												finishReason = data.promptFeedback.blockReason;
