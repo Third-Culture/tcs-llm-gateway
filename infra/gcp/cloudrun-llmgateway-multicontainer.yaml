@@ -1,0 +1,148 @@
+# Production Cloud Run service for the LLM Gateway in williams-452112.
+#
+# Single multi-container service running:
+#   - gateway:     LLM routing entrypoint (port 80, public ingress)
+#   - worker:      drains Redis log queue into Cloud SQL Postgres
+#   - redis:       ephemeral cache + log queue, accessed via localhost:6379
+#
+# Stateful Postgres lives in Cloud SQL (referenced via DATABASE_URL secret
+# and the cloudsql-instances annotation for the Cloud SQL Auth Proxy).
+#
+# Apply with:
+#   gcloud run services replace infra/gcp/cloudrun-llmgateway-multicontainer.yaml \
+#     --region=us-central1 --project=williams-452112
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: llmgateway
+  labels:
+    app: llmgateway
+    managed-by: manual
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "5"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/cloudsql-instances: REPLACE_PROJECT:REPLACE_REGION:REPLACE_SQL_INSTANCE
+        run.googleapis.com/container-dependencies: '{"gateway":["redis"],"worker":["redis"]}'
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      serviceAccountName: REPLACE_SA@REPLACE_PROJECT.iam.gserviceaccount.com
+      timeoutSeconds: 600
+      containerConcurrency: 80
+      containers:
+        - name: gateway
+          image: REPLACE_REGISTRY/REPLACE_PROJECT/REPLACE_REPO/llmgateway-gateway:REPLACE_TAG
+          ports:
+            - name: http1
+              containerPort: 80
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: GATEWAY_TIMEOUT_MS
+              value: "300000"
+            - name: AI_STREAMING_TIMEOUT_MS
+              value: "240000"
+            - name: AI_TIMEOUT_MS
+              value: "180000"
+            - name: HEALTH_CHECK_SKIP_DATABASE
+              value: "false"
+            - name: HEALTH_CHECK_TIMEOUT_MS
+              value: "15000"
+            - name: TELEMETRY_ACTIVE
+              value: "true"
+            - name: OTEL_SERVICE_NAME
+              value: gateway-prod
+            - name: REDIS_HOST
+              value: "127.0.0.1"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: llmgateway-auth-secret
+                  key: latest
+            - name: GATEWAY_API_KEY_HASH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: llmgateway-api-key-hash-secret
+                  key: latest
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: llmgateway-database-url
+                  key: latest
+            - name: LLM_GOOGLE_AI_STUDIO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-api-key
+                  key: latest
+          startupProbe:
+            tcpSocket:
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+        - name: worker
+          image: REPLACE_REGISTRY/REPLACE_PROJECT/REPLACE_REPO/llmgateway-worker:REPLACE_TAG
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: TELEMETRY_ACTIVE
+              value: "true"
+            - name: REDIS_HOST
+              value: "127.0.0.1"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: llmgateway-auth-secret
+                  key: latest
+            - name: GATEWAY_API_KEY_HASH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: llmgateway-api-key-hash-secret
+                  key: latest
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: llmgateway-database-url
+                  key: latest
+        - name: redis
+          image: redis:7-alpine
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          startupProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+  traffic:
+    - latestRevision: true
+      percent: 100

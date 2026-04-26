@@ -77,14 +77,40 @@ Apply with `gcloud run services replace <file> --region=<region>` after
 substituting environment-specific image digests, secret names, and the
 project's Cloud SQL connection name.
 
-- [`cloudrun-gateway.yaml`](./cloudrun-gateway.yaml)
+- [`cloudrun-llmgateway-multicontainer.yaml`](./cloudrun-llmgateway-multicontainer.yaml)
+  — single Cloud Run service that runs `gateway`, `worker`, and
+  `redis` side-by-side. Inter-container traffic stays on `localhost`,
+  Postgres lives in Cloud SQL. This is the manifest currently deployed
+  in `williams-452112` for the Greshi integration.
+- [`cloudrun-gateway.yaml`](./cloudrun-gateway.yaml) — gateway-only
+  reference (kept for environments that prefer split services).
 - [`cloudrun-api.yaml`](./cloudrun-api.yaml)
 - [`cloudrun-worker.yaml`](./cloudrun-worker.yaml)
 
-The gateway service is configured for streaming responses (long
-request timeouts and a min instance count of 1 to avoid cold-start
-penalties on the routing path). The worker uses min instances ≥ 1 so
-log/billing draining is continuous.
+The gateway container is configured for streaming responses (long
+request timeouts, `cpu-throttling: false`, and `minScale: 1` to avoid
+cold-start penalties on the routing path). The worker container runs
+inside the same instance via `container-dependencies`, so log /
+billing draining stays continuous as long as the service has at least
+one warm instance.
+
+### One-shot production seed
+
+After applying migrations against Cloud SQL (`pnpm --filter db migrate`
+with `DATABASE_URL` pointing at the Cloud SQL instance), seed the
+minimum entities the gateway needs to authenticate a self-hosted
+client (one installation, one enterprise org, one project, one API
+key):
+
+```bash
+SEED_GATEWAY_API_KEY=$(openssl rand -hex 24) \
+DATABASE_URL=postgres://llmgateway_app:...@<cloud-sql-ip>:5432/llmgateway \
+node packages/db/dist/seed-prod.js
+```
+
+Store the generated `SEED_GATEWAY_API_KEY` in Secret Manager (we use
+`llmgateway-greshi-api-key`) and reference it from the consuming
+service's deployment manifest.
 
 ## Health checks
 
@@ -162,6 +188,27 @@ LLM_GATEWAY_MODEL=auto
 When `LLM_GATEWAY_API_KEY` is unset the Greshi adapter falls back to
 direct Gemini, so partial rollouts (e.g. switching one workflow at a
 time) are safe.
+
+## Production deployment in `williams-452112`
+
+A live deployment of the gateway runs in the `williams-452112` GCP
+project (us-central1) and is the upstream for the Greshi `company_refresh`
+workflow:
+
+- **Service**: `llmgateway` Cloud Run (multi-container, manifest
+  [`cloudrun-llmgateway-multicontainer.yaml`](./cloudrun-llmgateway-multicontainer.yaml))
+- **URL**: `https://llmgateway-231857096432.us-central1.run.app`
+- **Database**: Cloud SQL Postgres 15 instance `llmgateway-pg`
+  (db-f1-micro, public IP, schema applied via `pnpm --filter db
+  migrate`).
+- **Seeded API key secret**: `llmgateway-greshi-api-key` (Secret
+  Manager). Granted to the `greshi-backend` runtime SA
+  (`231857096432-compute@developer.gserviceaccount.com`) with
+  `roles/secretmanager.secretAccessor`.
+- **Greshi env wiring** (set on the `greshi-backend` Cloud Run service):
+  - `LLM_GATEWAY_BASE_URL=https://llmgateway-231857096432.us-central1.run.app`
+  - `LLM_GATEWAY_API_KEY` ← secret `llmgateway-greshi-api-key:latest`
+  - `LLM_GATEWAY_MODEL=auto`
 
 ## Promotion checklist
 
