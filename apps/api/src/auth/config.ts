@@ -14,7 +14,13 @@ import { logger } from "@llmgateway/logger";
 import { getResendClient, resendAudienceId } from "@llmgateway/shared/email";
 
 const apiUrl = process.env.API_URL ?? "http://localhost:4002";
-const cookieDomain = process.env.COOKIE_DOMAIN ?? "localhost";
+// COOKIE_DOMAIN is optional. When unset (or empty) we leave the auth cookies
+// as host-only, which is the only supported mode when the API is deployed
+// on a hostname under the public suffix list (e.g. `*.run.app`) — those
+// providers reject any explicit Domain attribute.
+const cookieDomainRaw = process.env.COOKIE_DOMAIN;
+const cookieDomain =
+	cookieDomainRaw && cookieDomainRaw.length > 0 ? cookieDomainRaw : undefined;
 const uiUrl = process.env.UI_URL ?? "http://localhost:3002";
 const originUrls =
 	process.env.ORIGIN_URLS ??
@@ -461,13 +467,20 @@ export const apiAuth: ReturnType<typeof instrumentBetterAuth> =
 	instrumentBetterAuth(
 		betterAuth({
 			advanced: {
-				crossSubDomainCookies: {
-					enabled: true,
-					domain: cookieDomain,
-				},
-				defaultCookieAttributes: {
-					domain: cookieDomain,
-				},
+				crossSubDomainCookies: cookieDomain
+					? {
+							enabled: true,
+							domain: cookieDomain,
+						}
+					: { enabled: false },
+				// When the API is hosted on a different origin than the UI
+				// (typical for our Cloud Run deployment) the browser only
+				// sends the auth cookie on cross-site requests if it has
+				// `SameSite=None; Secure`. We default to that whenever the
+				// API is served over HTTPS.
+				defaultCookieAttributes: cookieDomain
+					? { domain: cookieDomain, sameSite: "none", secure: true }
+					: { sameSite: "none", secure: true },
 			},
 			session: {
 				cookieCache: {

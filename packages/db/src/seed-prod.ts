@@ -4,18 +4,20 @@ import { redisClient } from "@llmgateway/cache";
 
 import { closeDatabase, db, tables } from "./index.js";
 
-import type { PgTable } from "drizzle-orm/pg-core";
-
 async function upsert<T extends Record<string, unknown>>(
-	table: PgTable & Record<string, unknown>,
+	// Drizzle's table generic is intentionally complex; for an internal seed
+	// helper we relax the type so we can call .insert/.onConflictDoUpdate
+	// across heterogeneous table schemas without restating each one.
+	table: unknown,
 	values: T,
 	uniqueKey: keyof T & string = "id" as keyof T & string,
 ) {
+	const tbl = table as Record<string, unknown>;
 	return await db
-		.insert(table)
+		.insert(tbl as never)
 		.values(values as never)
 		.onConflictDoUpdate({
-			target: table[uniqueKey] as never,
+			target: tbl[uniqueKey] as never,
 			set: values as never,
 		});
 }

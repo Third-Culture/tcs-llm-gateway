@@ -1,0 +1,67 @@
+# Production Cloud Run service for the LLM Gateway interactive
+# playground in williams-452112.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: playground
+  labels:
+    app: llmgateway
+    component: playground
+    managed-by: manual
+  annotations:
+    run.googleapis.com/launch-stage: GA
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "3"
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      serviceAccountName: REPLACE_SA@REPLACE_PROJECT.iam.gserviceaccount.com
+      timeoutSeconds: 600
+      containerConcurrency: 80
+      containers:
+        - name: playground
+          image: REPLACE_REGISTRY/REPLACE_PROJECT/REPLACE_REPO/llmgateway-playground:REPLACE_TAG
+          ports:
+            - name: http1
+              containerPort: 80
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: HOSTED
+              value: "false"
+            - name: API_URL
+              value: REPLACE_API_URL
+            - name: API_BACKEND_URL
+              value: REPLACE_API_URL
+            - name: GATEWAY_URL
+              value: REPLACE_GATEWAY_URL_V1
+            - name: DOCS_URL
+              value: REPLACE_DOCS_URL
+            - name: APP_VERSION
+              value: REPLACE_TAG
+          startupProbe:
+            tcpSocket:
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 80
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+  traffic:
+    - latestRevision: true
+      percent: 100

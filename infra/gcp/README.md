@@ -18,13 +18,13 @@ environment because secrets and config are environment-specific.
 
 Each environment runs the following services:
 
-| Service | Image                       | Public? | Notes                                                         |
-| ------- | --------------------------- | ------- | ------------------------------------------------------------- |
-| gateway | `theopenco/llmgateway-gateway` | yes  | LLM routing entrypoint. Must be reachable from Greshi/clients. |
-| api     | `theopenco/llmgateway-api`     | yes  | Management API for keys, projects, billing.                   |
-| worker  | `theopenco/llmgateway-worker`  | no   | Pulls log + billing jobs from Redis. Must be always-on.       |
-| ui      | `theopenco/llmgateway-ui`      | yes  | Dashboard. Optional in staging.                               |
-| docs    | `theopenco/llmgateway-docs`    | yes  | Optional.                                                     |
+| Service | Image                          | Public? | Notes                                                          |
+| ------- | ------------------------------ | ------- | -------------------------------------------------------------- |
+| gateway | `theopenco/llmgateway-gateway` | yes     | LLM routing entrypoint. Must be reachable from Greshi/clients. |
+| api     | `theopenco/llmgateway-api`     | yes     | Management API for keys, projects, billing.                    |
+| worker  | `theopenco/llmgateway-worker`  | no      | Pulls log + billing jobs from Redis. Must be always-on.        |
+| ui      | `theopenco/llmgateway-ui`      | yes     | Dashboard. Optional in staging.                                |
+| docs    | `theopenco/llmgateway-docs`    | yes     | Optional.                                                      |
 
 Backing services per environment:
 
@@ -191,24 +191,125 @@ time) are safe.
 
 ## Production deployment in `williams-452112`
 
-A live deployment of the gateway runs in the `williams-452112` GCP
-project (us-central1) and is the upstream for the Greshi `company_refresh`
-workflow:
+A live deployment of the LLM Gateway platform runs in the
+`williams-452112` GCP project (us-central1). It is the upstream for the
+Greshi `company_refresh` workflow and the long-term landing place for
+every other internal service that needs cost-aware LLM routing.
 
-- **Service**: `llmgateway` Cloud Run (multi-container, manifest
-  [`cloudrun-llmgateway-multicontainer.yaml`](./cloudrun-llmgateway-multicontainer.yaml))
-- **URL**: `https://llmgateway-231857096432.us-central1.run.app`
+The full platform is split across five Cloud Run services that are
+self-contained (every dependency outside of Cloud SQL Postgres lives
+inside the same Cloud Run service via container sidecars):
+
+| Service      | URL                                                 | Manifest                                                                             | Notes                                             |
+| ------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `llmgateway` | https://llmgateway-231857096432.us-central1.run.app | [cloudrun-llmgateway-multicontainer.yaml](./cloudrun-llmgateway-multicontainer.yaml) | gateway + worker + redis sidecars                 |
+| `api`        | https://api-231857096432.us-central1.run.app        | [cloudrun-api-multicontainer.yaml](./cloudrun-api-multicontainer.yaml)               | management API + redis sidecar                    |
+| `ui`         | https://ui-231857096432.us-central1.run.app         | [cloudrun-ui-deployed.yaml](./cloudrun-ui-deployed.yaml)                             | Next.js dashboard (server-side talks to `api`)    |
+| `playground` | https://playground-231857096432.us-central1.run.app | [cloudrun-playground-deployed.yaml](./cloudrun-playground-deployed.yaml)             | Next.js playground (server-side talks to gateway) |
+| `docs`       | https://docs-231857096432.us-central1.run.app       | [cloudrun-docs-deployed.yaml](./cloudrun-docs-deployed.yaml)                         | Fumadocs static site                              |
+
+All five are publicly invokable. `llmgateway` and `api` are the
+authenticated entrypoints; `ui`, `playground`, and `docs` are
+unauthenticated front-ends that delegate auth to `api`.
+
+Shared backing infrastructure:
+
 - **Database**: Cloud SQL Postgres 15 instance `llmgateway-pg`
   (db-f1-micro, public IP, schema applied via `pnpm --filter db
-  migrate`).
-- **Seeded API key secret**: `llmgateway-greshi-api-key` (Secret
-  Manager). Granted to the `greshi-backend` runtime SA
-  (`231857096432-compute@developer.gserviceaccount.com`) with
-  `roles/secretmanager.secretAccessor`.
-- **Greshi env wiring** (set on the `greshi-backend` Cloud Run service):
-  - `LLM_GATEWAY_BASE_URL=https://llmgateway-231857096432.us-central1.run.app`
-  - `LLM_GATEWAY_API_KEY` ← secret `llmgateway-greshi-api-key:latest`
-  - `LLM_GATEWAY_MODEL=auto`
+migrate`). Same instance is reused by both `llmgateway` and `api`.
+- **Cache**: Redis 7-alpine sidecars co-located in `llmgateway` and
+  `api`. Inter-container traffic stays on `localhost`, no Memorystore
+  required.
+- **Secrets**: `llmgateway-auth-secret`, `llmgateway-api-key-hash-secret`,
+  `llmgateway-database-url`, `llmgateway-db-app-password`, and
+  `llmgateway-greshi-api-key`, all in Secret Manager.
+
+### Auth + cookies on `*.run.app`
+
+`*.run.app` is on the public suffix list, so the API cannot set an
+explicit `Domain` attribute on its session cookie. The runtime config
+in `apps/api/src/auth/config.ts` therefore:
+
+1. Treats `COOKIE_DOMAIN` as optional. If unset, host-only cookies are
+   used (this is what the deployed `api` service does — see the
+   manifest, which sets `COOKIE_DOMAIN: ""`).
+2. Forces `SameSite=None; Secure` whenever the cookie is host-only and
+   the API is served over HTTPS, so cross-origin requests from
+   `ui-231857096432.us-central1.run.app` to
+   `api-231857096432.us-central1.run.app` carry the auth cookie.
+
+Verify after a deploy by signing up against the API and checking the
+`Set-Cookie` header:
+
+```bash
+curl -i -H "Origin: https://ui-231857096432.us-central1.run.app" \
+  -H "Content-Type: application/json" \
+  -X POST \
+  -d '{"email":"smoke@example.com","password":"long-test-password","name":"smoke"}' \
+  https://api-231857096432.us-central1.run.app/auth/sign-up/email \
+  | grep -i "set-cookie"
+# Expect: __Secure-better-auth.session_token=...; SameSite=None; Secure; ...
+```
+
+### Deploying the platform
+
+The reference manifests use `REPLACE_*` placeholders to keep secrets and
+project-specific values out of git. Render and apply with:
+
+```bash
+PROJECT=williams-452112
+REGION=us-central1
+SA=github-actions
+REGISTRY=us-central1-docker.pkg.dev
+REPO=greshi-repo
+TAG=$(git rev-parse --short=8 HEAD)
+GATEWAY_URL=https://llmgateway-231857096432.us-central1.run.app
+API_URL=https://api-231857096432.us-central1.run.app
+UI_URL=https://ui-231857096432.us-central1.run.app
+PLAYGROUND_URL=https://playground-231857096432.us-central1.run.app
+DOCS_URL=https://docs-231857096432.us-central1.run.app
+ORIGIN_URLS="$UI_URL,$PLAYGROUND_URL,$DOCS_URL,$GATEWAY_URL"
+
+for tpl in cloudrun-api-multicontainer.yaml \
+           cloudrun-ui-deployed.yaml \
+           cloudrun-playground-deployed.yaml \
+           cloudrun-docs-deployed.yaml; do
+  sed \
+    -e "s|REPLACE_PROJECT|$PROJECT|g" \
+    -e "s|REPLACE_REGION|$REGION|g" \
+    -e "s|REPLACE_SA|$SA|g" \
+    -e "s|REPLACE_REGISTRY|$REGISTRY|g" \
+    -e "s|REPLACE_REPO|$REPO|g" \
+    -e "s|REPLACE_TAG|$TAG|g" \
+    -e "s|REPLACE_SQL_INSTANCE|llmgateway-pg|g" \
+    -e "s|REPLACE_GATEWAY_URL_V1|$GATEWAY_URL/v1|g" \
+    -e "s|REPLACE_GATEWAY_URL|$GATEWAY_URL|g" \
+    -e "s|REPLACE_API_URL|$API_URL|g" \
+    -e "s|REPLACE_UI_URL|$UI_URL|g" \
+    -e "s|REPLACE_PLAYGROUND_URL|$PLAYGROUND_URL|g" \
+    -e "s|REPLACE_DOCS_URL|$DOCS_URL|g" \
+    -e "s|REPLACE_ORIGIN_URLS|$ORIGIN_URLS|g" \
+    infra/gcp/$tpl > /tmp/llmgw-deploy/$tpl
+  gcloud run services replace /tmp/llmgw-deploy/$tpl \
+    --region=$REGION --project=$PROJECT
+done
+```
+
+`llmgateway` (the routing service) keeps its own image and manifest;
+the snippet above only handles the four "platform" services that were
+added on top of it.
+
+### Greshi env wiring
+
+Greshi (the canonical first internal consumer) is wired with:
+
+- `LLM_GATEWAY_BASE_URL=https://llmgateway-231857096432.us-central1.run.app`
+- `LLM_GATEWAY_API_KEY` ← secret `llmgateway-greshi-api-key:latest`
+- `LLM_GATEWAY_MODEL=auto`
+
+The `greshi-backend` runtime SA
+(`231857096432-compute@developer.gserviceaccount.com`) holds
+`roles/secretmanager.secretAccessor` on `llmgateway-greshi-api-key`.
 
 ## Promotion checklist
 
