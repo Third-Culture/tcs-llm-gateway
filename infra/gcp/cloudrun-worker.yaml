@@ -1,0 +1,73 @@
+# Reference Cloud Run service for the background worker.
+#
+# The worker drains Redis-backed log/billing queues; Cloud Run Jobs are
+# not appropriate because we need a continuously-running consumer. Use
+# a Cloud Run Service with min instances >= 1, ingress=internal, and no
+# public traffic.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: worker
+  labels:
+    app: llmgateway
+    component: worker
+  annotations:
+    run.googleapis.com/launch-stage: GA
+    run.googleapis.com/ingress: internal
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "3"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/cloudsql-instances: $REPLACE_PROJECT:$REPLACE_REGION:$REPLACE_SQL_INSTANCE
+        run.googleapis.com/vpc-access-connector: projects/$REPLACE_PROJECT/locations/$REPLACE_REGION/connectors/$REPLACE_CONNECTOR
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+    spec:
+      serviceAccountName: worker-runtime@$REPLACE_PROJECT.iam.gserviceaccount.com
+      timeoutSeconds: 3600
+      containerConcurrency: 1
+      containers:
+        - name: worker
+          image: $REPLACE_REGISTRY/$REPLACE_PROJECT/llmgateway/worker@sha256:$REPLACE_DIGEST
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: TELEMETRY_ACTIVE
+              value: "true"
+            - name: OTEL_SERVICE_NAME
+              value: worker-$REPLACE_ENV
+            - name: LOG_QUEUE_BATCH_SIZE
+              value: "100"
+            - name: CREDIT_BATCH_SIZE
+              value: "100"
+            - name: CREDIT_BATCH_INTERVAL
+              value: "5"
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: AUTH_SECRET
+                  key: latest
+            - name: GATEWAY_API_KEY_HASH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: GATEWAY_API_KEY_HASH_SECRET
+                  key: latest
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: DATABASE_URL
+                  key: latest
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: REDIS_URL
+                  key: latest
+  traffic:
+    - latestRevision: true
+      percent: 100

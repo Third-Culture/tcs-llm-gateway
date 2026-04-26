@@ -223,6 +223,68 @@ export const completionsRequestSchema = z.object({
 			"When used with auto routing, only route to free models (models with zero input and output pricing)",
 		example: false,
 	}),
+	task: z
+		.union([
+			z.string().openapi({
+				description:
+					"Builtin task profile id (e.g. 'company_refresh_json', 'deck_style_check', 'news_analysis').",
+			}),
+			z
+				.object({
+					id: z.string(),
+					requires: z
+						.object({
+							jsonOutput: z.boolean().optional(),
+							jsonOutputSchema: z.boolean().optional(),
+							tools: z.boolean().optional(),
+							webSearch: z.boolean().optional(),
+							vision: z.boolean().optional(),
+							reasoning: z.boolean().optional(),
+						})
+						.optional(),
+					limits: z
+						.object({
+							minContextSize: z.number().int().positive().optional(),
+							minMaxOutput: z.number().int().positive().optional(),
+						})
+						.optional(),
+					expected: z
+						.object({
+							inputTokens: z.number().int().nonnegative().optional(),
+							outputTokens: z.number().int().nonnegative().optional(),
+						})
+						.optional(),
+					pricing: z
+						.object({
+							maxInputPricePerToken: z.number().nonnegative().optional(),
+							maxOutputPricePerToken: z.number().nonnegative().optional(),
+							maxEstimatedCost: z.number().nonnegative().optional(),
+						})
+						.optional(),
+					models: z
+						.object({
+							allow: z.array(z.string()).optional(),
+							deny: z.array(z.string()).optional(),
+						})
+						.optional(),
+					providers: z
+						.object({
+							allow: z.array(z.string()).optional(),
+							deny: z.array(z.string()).optional(),
+						})
+						.optional(),
+					qualityFloor: z.enum(["low", "medium", "high"]).optional(),
+				})
+				.openapi({
+					description:
+						"Inline task profile describing required capabilities and expected token shape.",
+				}),
+		])
+		.optional()
+		.openapi({
+			description:
+				'Routing profile for the request. Used by `model: "auto"` to pick the lowest estimated cost provider/model that satisfies the task\'s capability and capacity requirements. Either a builtin profile id or an inline profile object.',
+		}),
 	onboarding: z.boolean().optional().default(false).openapi({
 		description:
 			"When true, skips email verification for free model usage. Intended for onboarding flows.",

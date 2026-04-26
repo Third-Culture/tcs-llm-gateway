@@ -136,6 +136,13 @@ export interface RoutingMetadata {
 		apiKeyHash?: string;
 		logId?: string;
 	}>;
+	// Identifier of the resolved task profile, when `task` was supplied in
+	// the request and the task-aware selector picked the model.
+	taskProfileId?: string;
+	// Estimated cost for the selected (model, provider) under the task
+	// profile's expected token shape. Useful for log/observability so users
+	// can correlate routing decisions with realised cost.
+	estimatedTaskCost?: number;
 }
 
 export interface ProviderSelectionResult<T extends AvailableModelProvider> {

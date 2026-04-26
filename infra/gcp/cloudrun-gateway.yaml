@@ -1,0 +1,99 @@
+# Reference Cloud Run service for the LLM Gateway.
+#
+# Apply with:
+#   gcloud run services replace infra/gcp/cloudrun-gateway.yaml \
+#     --region=europe-west1 --project=tcs-llm-gateway-staging
+#
+# Substitute every $REPLACE_* token before applying. Pin the image to a
+# digest, not a tag; tags are mutable and break reproducibility.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: gateway
+  labels:
+    app: llmgateway
+    component: gateway
+  annotations:
+    run.googleapis.com/launch-stage: GA
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "20"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/cloudsql-instances: $REPLACE_PROJECT:$REPLACE_REGION:$REPLACE_SQL_INSTANCE
+        run.googleapis.com/vpc-access-connector: projects/$REPLACE_PROJECT/locations/$REPLACE_REGION/connectors/$REPLACE_CONNECTOR
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+    spec:
+      serviceAccountName: gateway-runtime@$REPLACE_PROJECT.iam.gserviceaccount.com
+      timeoutSeconds: 600
+      containerConcurrency: 80
+      containers:
+        - name: gateway
+          image: $REPLACE_REGISTRY/$REPLACE_PROJECT/llmgateway/gateway@sha256:$REPLACE_DIGEST
+          ports:
+            - name: http1
+              containerPort: 80
+          resources:
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "80"
+            - name: GATEWAY_TIMEOUT_MS
+              value: "300000"
+            - name: AI_STREAMING_TIMEOUT_MS
+              value: "240000"
+            - name: AI_TIMEOUT_MS
+              value: "180000"
+            - name: HEALTH_CHECK_SKIP_DATABASE
+              value: "false"
+            - name: HEALTH_CHECK_TIMEOUT_MS
+              value: "15000"
+            - name: TELEMETRY_ACTIVE
+              value: "true"
+            - name: OTEL_SERVICE_NAME
+              value: gateway-$REPLACE_ENV
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: AUTH_SECRET
+                  key: latest
+            - name: GATEWAY_API_KEY_HASH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: GATEWAY_API_KEY_HASH_SECRET
+                  key: latest
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: DATABASE_URL
+                  key: latest
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: REDIS_URL
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+  traffic:
+    - latestRevision: true
+      percent: 100

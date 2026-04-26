@@ -52,7 +52,10 @@ import {
 	getProviderHeaders,
 	getProviderSelectionPrice,
 	prepareRequestBody,
+	resolveTaskProfile,
+	selectModelForTask,
 	type RoutingMetadata,
+	type TaskProfile,
 } from "@llmgateway/actions";
 import {
 	generateCacheKey,
@@ -992,6 +995,7 @@ chat.openapi(completions, async (c) => {
 		effort,
 		web_search,
 		plugins,
+		task,
 	} = validationResult.data;
 	let {
 		messages,
@@ -1582,8 +1586,198 @@ chat.openapi(completions, async (c) => {
 		let selectedProviders: any[] = [];
 		let lowestPrice = Number.MAX_VALUE;
 		const now = new Date(); // Cache current time for deprecation checks
+		let taskProfileForMetadata: TaskProfile | undefined;
+		let estimatedTaskCostForMetadata: number | undefined;
 
-		for (const modelDef of models) {
+		// Resolve the optional task profile and use it to drive catalog-wide
+		// capability+cost selection. When `task` is omitted we fall back to the
+		// legacy allowlist loop below to preserve existing behavior.
+		const resolvedTaskProfile: TaskProfile | undefined = (() => {
+			if (task === undefined) {
+				return undefined;
+			}
+			try {
+				return resolveTaskProfile(task);
+			} catch (error) {
+				throw new HTTPException(400, {
+					message: error instanceof Error ? error.message : String(error),
+				});
+			}
+		})();
+
+		if (resolvedTaskProfile) {
+			// Augment the user-supplied profile with runtime requirements derived
+			// from the request itself (response_format, tools, web search,
+			// vision, reasoning, max_tokens, and the computed context size).
+			// User-supplied limits/requires win when they are stricter.
+			const augmentedRequires = {
+				...(resolvedTaskProfile.requires ?? {}),
+				...(response_format?.type === "json_object" ||
+				response_format?.type === "json_schema"
+					? { jsonOutput: true }
+					: {}),
+				...(response_format?.type === "json_schema"
+					? { jsonOutputSchema: true }
+					: {}),
+				...((tools !== undefined && tools.length > 0) ||
+				tool_choice !== undefined
+					? { tools: true }
+					: {}),
+				...(webSearchTool ? { webSearch: true } : {}),
+				...(hasImages ? { vision: true } : {}),
+				...(reasoning_effort !== undefined ? { reasoning: true } : {}),
+			};
+			const userMinContextSize =
+				resolvedTaskProfile.limits?.minContextSize ?? 0;
+			const augmentedLimits = {
+				...(resolvedTaskProfile.limits ?? {}),
+				minContextSize: Math.max(userMinContextSize, requiredContextSize),
+				...(max_tokens !== undefined
+					? {
+							minMaxOutput: Math.max(
+								resolvedTaskProfile.limits?.minMaxOutput ?? 0,
+								max_tokens,
+							),
+						}
+					: {}),
+			};
+
+			const augmentedProfile: TaskProfile = {
+				...resolvedTaskProfile,
+				requires: augmentedRequires,
+				limits: augmentedLimits,
+			};
+
+			taskProfileForMetadata = augmentedProfile;
+
+			const taskSelection = selectModelForTask(augmentedProfile, {
+				availableProviders,
+				freeModelsOnly: free_models_only,
+				noReasoning: no_reasoning,
+				now,
+			});
+
+			if (!taskSelection) {
+				throw new HTTPException(400, {
+					message: `No model satisfies the task profile "${augmentedProfile.id}" with the available providers and capabilities. Loosen the profile, add provider keys, or pick a specific model.`,
+				});
+			}
+
+			// Walk candidates in cost order doing IAM validation. The first
+			// candidate that passes IAM wins; this lets per-model IAM rules
+			// (allow_models / deny_models) drop expensive models without
+			// silently picking an unallowed one.
+			let taskSelectedModel: ModelDefinition | undefined;
+			let taskSelectedAllowedProviders: string[] | undefined;
+			for (const candidate of taskSelection.candidates) {
+				if (taskSelectedModel && candidate.model.id !== taskSelectedModel.id) {
+					continue;
+				}
+				if (!taskSelectedModel) {
+					const candidateIam = await validateModelAccess(
+						apiKey.id,
+						candidate.model.id,
+						undefined,
+						candidate.model,
+					);
+					if (!candidateIam.allowed) {
+						continue;
+					}
+					taskSelectedModel = candidate.model;
+					taskSelectedAllowedProviders = candidateIam.allowedProviders;
+					break;
+				}
+			}
+
+			if (!taskSelectedModel) {
+				throw new HTTPException(403, {
+					message: `Task profile "${augmentedProfile.id}" matched models, but IAM rules block all of them.`,
+				});
+			}
+
+			// Re-collect all candidate providers for the chosen model that
+			// satisfy capabilities + availability + IAM. This mirrors the
+			// legacy loop's per-model provider filter so the existing
+			// region/uptime selector can do its job downstream.
+			const modelCandidateProviders = preferConcreteRegionalMappings(
+				project.mode === "credits"
+					? filterRegionsByAvailableKeys(
+							expandAllProviderRegions(
+								taskSelectedModel.providers as ProviderModelMapping[],
+							),
+						)
+					: expandAllProviderRegions(
+							taskSelectedModel.providers as ProviderModelMapping[],
+						),
+			);
+
+			const taskSuitableProviders = modelCandidateProviders.filter(
+				(provider) => {
+					if (!availableProviders.includes(provider.providerId)) {
+						return false;
+					}
+					if (
+						taskSelectedAllowedProviders &&
+						!taskSelectedAllowedProviders.includes(provider.providerId)
+					) {
+						return false;
+					}
+					if (provider.deprecatedAt && now > provider.deprecatedAt) {
+						return false;
+					}
+					if (provider.deactivatedAt && now > provider.deactivatedAt) {
+						return false;
+					}
+					if (no_reasoning && provider.reasoning === true) {
+						return false;
+					}
+					const stab =
+						provider.stability ?? taskSelectedModel.stability ?? "stable";
+					if (stab === "unstable" || stab === "experimental") {
+						return false;
+					}
+					if (augmentedRequires.jsonOutput && provider.jsonOutput !== true) {
+						return false;
+					}
+					if (
+						augmentedRequires.jsonOutputSchema &&
+						provider.jsonOutputSchema !== true
+					) {
+						return false;
+					}
+					if (augmentedRequires.tools && provider.tools !== true) {
+						return false;
+					}
+					if (augmentedRequires.webSearch && provider.webSearch !== true) {
+						return false;
+					}
+					if (augmentedRequires.vision && provider.vision !== true) {
+						return false;
+					}
+					if (augmentedRequires.reasoning && provider.reasoning !== true) {
+						return false;
+					}
+					if (
+						(provider.contextSize ?? 0) < (augmentedLimits.minContextSize ?? 0)
+					) {
+						return false;
+					}
+					if (
+						augmentedLimits.minMaxOutput !== undefined &&
+						(provider.maxOutput ?? 0) < augmentedLimits.minMaxOutput
+					) {
+						return false;
+					}
+					return true;
+				},
+			);
+
+			selectedModel = taskSelectedModel;
+			selectedProviders = taskSuitableProviders;
+			estimatedTaskCostForMetadata = taskSelection.estimatedCost;
+		}
+
+		for (const modelDef of resolvedTaskProfile ? [] : models) {
 			if (modelDef.id === "auto" || modelDef.id === "custom") {
 				continue;
 			}
@@ -1761,6 +1955,13 @@ chat.openapi(completions, async (c) => {
 				usedRegion = cheapestResult.provider.region;
 				routingMetadata = {
 					...cheapestResult.metadata,
+					...(taskProfileForMetadata
+						? {
+								selectionReason: "task-profile",
+								taskProfileId: taskProfileForMetadata.id,
+								estimatedTaskCost: estimatedTaskCostForMetadata,
+							}
+						: {}),
 					...getNoFallbackRoutingMetadata(noFallback, xNoFallbackHeaderSet),
 				};
 			} else {

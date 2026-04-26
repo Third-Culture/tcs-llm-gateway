@@ -450,6 +450,66 @@ describe("e2e individual tests", () => {
 		},
 	);
 
+	test(
+		"auto routing with task profile picks JSON-capable model",
+		getTestOptions({ completions: false }),
+		async () => {
+			if (!hasAutoRoutingProviderEnv()) {
+				console.log(
+					"Skipping task-profile auto test - no auto-routing provider API key provided",
+				);
+				return;
+			}
+
+			const { token } = await createTestData(`auto-task-${Date.now()}`);
+
+			const requestId = generateTestRequestId();
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"x-request-id": requestId,
+					"x-no-fallback": "true",
+					Authorization: `Bearer ${token}`,
+				},
+				body: JSON.stringify({
+					model: "auto",
+					task: "company_refresh_json",
+					response_format: { type: "json_object" },
+					messages: [
+						{
+							role: "user",
+							content:
+								'Reply ONLY with json describing the company Acme: {"name":"Acme"}',
+						},
+					],
+				}),
+			});
+
+			expect(res.status).toBe(200);
+			const json = await res.json();
+			expect(json).toHaveProperty("choices.[0].message.content");
+
+			const log = await waitForLogByRequestId(requestId);
+			expect(log.requestedModel).toBe("auto");
+			expect(log.usedProvider).toBeTruthy();
+			expect(log.usedModel).toBeTruthy();
+
+			const usedModelId = log.usedModelMapping;
+			expect(usedModelId).toBeDefined();
+			const modelDef = models.find((m) => m.id === usedModelId);
+			expect(modelDef).toBeDefined();
+			const matchingProvider = modelDef?.providers.find(
+				(p) => p.providerId === log.usedProvider,
+			);
+			expect(matchingProvider).toBeDefined();
+			const jsonOutput = (
+				matchingProvider as { jsonOutput?: boolean } | undefined
+			)?.jsonOutput;
+			expect(jsonOutput).toBe(true);
+		},
+	);
+
 	test.skip("/v1/chat/completions with bare 'custom' model", async () => {
 		const envVarName = getProviderEnvVar("openai");
 		const envVarValue = envVarName ? process.env[envVarName] : undefined;
