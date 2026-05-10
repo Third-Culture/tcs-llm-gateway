@@ -30,7 +30,8 @@ env:
   #   - WIF pool:        tcs-github-pool
   #   - WIF provider:    tcs-github-provider
   #   - Deploy SA:       tcs-llm-deployer@third-culture.iam.gserviceaccount.com
-  WIF_PROVIDER: projects/third-culture/locations/global/workloadIdentityPools/tcs-github-pool/providers/tcs-github-provider
+  # WIF provider audience requires the GCP project NUMBER (not the project ID).
+  WIF_PROVIDER: projects/303980490211/locations/global/workloadIdentityPools/tcs-github-pool/providers/tcs-github-provider
   DEPLOY_SA: tcs-llm-deployer@third-culture.iam.gserviceaccount.com
 
 jobs:
