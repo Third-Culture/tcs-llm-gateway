@@ -91,9 +91,10 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 COPY . .
 
 # Install all dependencies, build, then prune to production only
-# TURBO_CONCURRENCY (default: auto) caps parallel Next.js builds so low-RAM CI
-# workers (e.g. Cloud Build E2_HIGHCPU_8 @ 8 GB) don't OOM on webpack.
-ARG TURBO_CONCURRENCY=auto
+# TURBO_CONCURRENCY caps parallel Next.js builds so low-RAM CI workers
+# (e.g. Cloud Build E2_HIGHCPU_8 @ 8 GB) don't OOM on webpack. Must be a
+# positive integer — turbo >=2.7 rejects "auto" / "100%" string forms.
+ARG TURBO_CONCURRENCY=4
 ARG NODE_MAX_OLD_SPACE=4096
 RUN --mount=type=cache,target=/app/.turbo \
     NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE}" \
