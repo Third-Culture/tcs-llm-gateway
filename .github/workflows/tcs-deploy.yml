@@ -1,0 +1,114 @@
+name: tcs-deploy
+
+# Builds the unified tcs-llm-gateway image, pushes it to Artifact Registry in
+# the third-culture GCP project, and rolls out the three Cloud Run services.
+#
+# Triggered on push to `tcs/main` (our customization branch) or manually.
+# Uses Workload Identity Federation — no JSON service account keys.
+
+on:
+  push:
+    branches:
+      - tcs/main
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional override for the image tag (defaults to short SHA)"
+        required: false
+        type: string
+
+concurrency:
+  group: tcs-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: third-culture
+  GCP_REGION: us-central1
+  AR_REPO: tcs
+  IMAGE_NAME: llm-gateway
+  # Pre-created via infra/gcp/bootstrap.sh:
+  #   - WIF pool:        tcs-github-pool
+  #   - WIF provider:    tcs-github-provider
+  #   - Deploy SA:       tcs-llm-deployer@third-culture.iam.gserviceaccount.com
+  WIF_PROVIDER: projects/third-culture/locations/global/workloadIdentityPools/tcs-github-pool/providers/tcs-github-provider
+  DEPLOY_SA: tcs-llm-deployer@third-culture.iam.gserviceaccount.com
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [[ -n "${{ inputs.image_tag }}" ]]; then
+            echo "value=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            short_sha=$(git rev-parse --short HEAD)
+            echo "value=tcs-${short_sha}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push unified image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/unified.dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy gateway service
+        run: |
+          gcloud run deploy llmgateway-gateway \
+            --region=${{ env.GCP_REGION }} \
+            --image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }} \
+            --quiet
+
+      - name: Deploy api service
+        run: |
+          gcloud run deploy llmgateway-api \
+            --region=${{ env.GCP_REGION }} \
+            --image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }} \
+            --quiet
+
+      - name: Deploy ui service
+        run: |
+          gcloud run deploy llmgateway-ui \
+            --region=${{ env.GCP_REGION }} \
+            --image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }} \
+            --quiet
+
+      - name: Summary
+        run: |
+          echo "### tcs-llm-gateway rollout" >> "$GITHUB_STEP_SUMMARY"
+          echo "- image: \`${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- services: llmgateway-gateway, llmgateway-api, llmgateway-ui" >> "$GITHUB_STEP_SUMMARY"
+          echo "- region: ${{ env.GCP_REGION }}" >> "$GITHUB_STEP_SUMMARY"

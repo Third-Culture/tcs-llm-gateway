@@ -83,7 +83,6 @@ RUN cat .tool-versions | cut -d' ' -f1 | grep "^[^\#]" | xargs -i asdf plugin ad
 COPY .npmrc package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY --parents packages/*/package.json .
 COPY --parents apps/*/package.json .
-COPY --parents ee/*/package.json .
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
@@ -92,7 +91,13 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 COPY . .
 
 # Install all dependencies, build, then prune to production only
-RUN --mount=type=cache,target=/app/.turbo pnpm build
+# TURBO_CONCURRENCY (default: auto) caps parallel Next.js builds so low-RAM CI
+# workers (e.g. Cloud Build E2_HIGHCPU_8 @ 8 GB) don't OOM on webpack.
+ARG TURBO_CONCURRENCY=auto
+ARG NODE_MAX_OLD_SPACE=4096
+RUN --mount=type=cache,target=/app/.turbo \
+    NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE}" \
+    pnpm turbo run build --concurrency=${TURBO_CONCURRENCY}
 
 # Copy database init scripts
 COPY packages/db/init/ /docker-entrypoint-initdb.d/

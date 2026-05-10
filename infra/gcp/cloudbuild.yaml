@@ -1,0 +1,48 @@
+# TCS LLM Gateway — server-side image build via Cloud Build.
+# Invoked from infra/gcp/golive.sh when no local Docker is available.
+#
+# Variables (substituted by gcloud):
+#   _REGION    GCP region hosting Artifact Registry (default us-central1)
+#   _REPO      Artifact Registry repo name (default tcs)
+#   _IMAGE     Image name (default llm-gateway)
+#   _TAG       Image tag (default latest)
+
+steps:
+  # The dockerfile uses `# syntax=docker/dockerfile:1-labs` (for the --parents
+  # flag), so we must run with BuildKit. Plain `docker build` with
+  # DOCKER_BUILDKIT=1 picks up the syntax frontend automatically AND uses the
+  # docker daemon's preconfigured Artifact Registry credential helper, so the
+  # final push works. (Buildx with --push runs in a sidecar without that
+  # credential helper, which is why the previous attempt failed at push.)
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    env:
+      - DOCKER_BUILDKIT=1
+    args:
+      - build
+      - --file=infra/unified.dockerfile
+      - --build-arg=TURBO_CONCURRENCY=1
+      - --build-arg=NODE_MAX_OLD_SPACE=4096
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:${_TAG}
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest
+      - .
+
+# Cloud Build pushes these tags using the build service account, which has
+# roles/artifactregistry.writer on the project (granted by setup-wif.sh).
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:${_TAG}
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest
+
+options:
+  # E2_HIGHCPU_32 is quota-restricted; E2_HIGHCPU_8 (8 GB) works once we cap
+  # turbo concurrency in the Dockerfile so only one Next.js build runs at a time.
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+  diskSizeGb: 100
+
+timeout: 3600s
+substitutions:
+  _REGION: us-central1
+  _REPO: tcs
+  _IMAGE: llm-gateway
+  _TAG: latest

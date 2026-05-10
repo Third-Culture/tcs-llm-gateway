@@ -1,0 +1,11 @@
+project_id             = "third-culture"
+region                 = "us-central1"
+artifact_registry_repo = "tcs"
+image_tag              = "latest"
+root_domain            = "thirdculture.systems"
+ui_hostname            = "llm.thirdculture.systems"
+gateway_hostname       = "api.llm.thirdculture.systems"
+db_tier                = "db-g1-small"
+redis_memory_gb        = 1
+iap_support_email      = "di@thirdculture.world"
+iap_allowed_users      = ["domain:thirdculture.world"]

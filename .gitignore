@@ -33,3 +33,12 @@ generate-image-*.png
 scripts/*.jpg
 scripts/*.png
 .soulforge
+
+# Terraform — only commit source .tf, .tf.example, and .terraform.lock.hcl
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+infra/**/*.tfplan
+infra/**/*.tfvars
+!infra/**/*.tfvars.example
+

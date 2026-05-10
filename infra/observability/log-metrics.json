@@ -1,0 +1,118 @@
+{
+  "metrics": [
+    {
+      "name": "llmgateway/cost_usd",
+      "description": "LLM request cost in USD, by tenant and model.",
+      "filter": "resource.type=\"cloud_run_revision\" AND jsonPayload.event=\"llm.request\"",
+      "valueExtractor": "EXTRACT(jsonPayload.cost_usd)",
+      "metricDescriptor": {
+        "unit": "1",
+        "valueType": "DISTRIBUTION",
+        "metricKind": "DELTA",
+        "labels": [
+          { "key": "tenant_key", "valueType": "STRING" },
+          { "key": "used_model", "valueType": "STRING" },
+          { "key": "used_provider", "valueType": "STRING" }
+        ]
+      },
+      "labelExtractors": {
+        "tenant_key": "EXTRACT(jsonPayload.tenant_key)",
+        "used_model": "EXTRACT(jsonPayload.used_model)",
+        "used_provider": "EXTRACT(jsonPayload.used_provider)"
+      }
+    },
+    {
+      "name": "llmgateway/total_tokens",
+      "description": "Total tokens (prompt+completion) per LLM request.",
+      "filter": "resource.type=\"cloud_run_revision\" AND jsonPayload.event=\"llm.request\"",
+      "valueExtractor": "EXTRACT(jsonPayload.total_tokens)",
+      "metricDescriptor": {
+        "unit": "1",
+        "valueType": "DISTRIBUTION",
+        "metricKind": "DELTA",
+        "labels": [
+          { "key": "tenant_key", "valueType": "STRING" },
+          { "key": "used_model", "valueType": "STRING" }
+        ]
+      },
+      "labelExtractors": {
+        "tenant_key": "EXTRACT(jsonPayload.tenant_key)",
+        "used_model": "EXTRACT(jsonPayload.used_model)"
+      }
+    },
+    {
+      "name": "llmgateway/request_duration_ms",
+      "description": "End-to-end LLM request latency in ms.",
+      "filter": "resource.type=\"cloud_run_revision\" AND jsonPayload.event=\"llm.request\"",
+      "valueExtractor": "EXTRACT(jsonPayload.duration_ms)",
+      "metricDescriptor": {
+        "unit": "ms",
+        "valueType": "DISTRIBUTION",
+        "metricKind": "DELTA",
+        "labels": [
+          { "key": "tenant_key", "valueType": "STRING" },
+          { "key": "used_model", "valueType": "STRING" }
+        ]
+      },
+      "labelExtractors": {
+        "tenant_key": "EXTRACT(jsonPayload.tenant_key)",
+        "used_model": "EXTRACT(jsonPayload.used_model)"
+      }
+    },
+    {
+      "name": "llmgateway/ttft_ms",
+      "description": "Time-to-first-token for streamed LLM requests.",
+      "filter": "resource.type=\"cloud_run_revision\" AND jsonPayload.event=\"llm.request\" AND jsonPayload.ttft_ms>0",
+      "valueExtractor": "EXTRACT(jsonPayload.ttft_ms)",
+      "metricDescriptor": {
+        "unit": "ms",
+        "valueType": "DISTRIBUTION",
+        "metricKind": "DELTA",
+        "labels": [
+          { "key": "tenant_key", "valueType": "STRING" },
+          { "key": "used_model", "valueType": "STRING" }
+        ]
+      },
+      "labelExtractors": {
+        "tenant_key": "EXTRACT(jsonPayload.tenant_key)",
+        "used_model": "EXTRACT(jsonPayload.used_model)"
+      }
+    },
+    {
+      "name": "llmgateway/fallback_count",
+      "description": "Requests where the gateway fell back from the primary provider.",
+      "filter": "resource.type=\"cloud_run_revision\" AND jsonPayload.event=\"llm.request\" AND jsonPayload.fallback=true",
+      "metricDescriptor": {
+        "unit": "1",
+        "valueType": "INT64",
+        "metricKind": "DELTA",
+        "labels": [
+          { "key": "used_provider", "valueType": "STRING" },
+          { "key": "requested_model", "valueType": "STRING" }
+        ]
+      },
+      "labelExtractors": {
+        "used_provider": "EXTRACT(jsonPayload.used_provider)",
+        "requested_model": "EXTRACT(jsonPayload.requested_model)"
+      }
+    },
+    {
+      "name": "llmgateway/error_count",
+      "description": "Failed LLM requests, by tenant and provider.",
+      "filter": "resource.type=\"cloud_run_revision\" AND jsonPayload.event=\"llm.error\"",
+      "metricDescriptor": {
+        "unit": "1",
+        "valueType": "INT64",
+        "metricKind": "DELTA",
+        "labels": [
+          { "key": "tenant_key", "valueType": "STRING" },
+          { "key": "used_provider", "valueType": "STRING" }
+        ]
+      },
+      "labelExtractors": {
+        "tenant_key": "EXTRACT(jsonPayload.tenant_key)",
+        "used_provider": "EXTRACT(jsonPayload.used_provider)"
+      }
+    }
+  ]
+}

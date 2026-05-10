@@ -47,6 +47,11 @@ import {
 } from "./services/stats-calculator.js";
 import { syncProvidersAndModels } from "./services/sync-models.js";
 import {
+	checkBudgetThresholds,
+	type TcsBudgetAlertContext,
+} from "./services/tcs-budget-alerts.js";
+import { emitTcsStructuredLogs } from "./services/tcs-structured-logs.js";
+import {
 	processPendingVideoJobs,
 	processPendingWebhookDeliveries,
 } from "./services/video-jobs.js";
@@ -650,6 +655,7 @@ export async function batchProcessLogs(): Promise<void> {
 	}
 
 	const deductedOrgIds: string[] = [];
+	const budgetAlertContexts: TcsBudgetAlertContext[] = [];
 
 	try {
 		await db.transaction(async (tx) => {
@@ -899,11 +905,21 @@ export async function batchProcessLogs(): Promise<void> {
 				const apiKeyRecords = await tx.query.apiKey.findMany({
 					columns: {
 						id: true,
+						description: true,
+						projectId: true,
 						currentPeriodStartedAt: true,
 						currentPeriodUsage: true,
 						periodUsageLimit: true,
 						periodUsageDurationValue: true,
 						periodUsageDurationUnit: true,
+					},
+					with: {
+						project: {
+							columns: {
+								id: true,
+								organizationId: true,
+							},
+						},
 					},
 					where: {
 						id: {
@@ -938,6 +954,28 @@ export async function batchProcessLogs(): Promise<void> {
 						})
 						.where(eq(apiKey.id, apiKeyId));
 
+					if (
+						usageUpdate.hasPeriodUsageUpdate &&
+						apiKeyRecord.periodUsageLimit &&
+						apiKeyRecord.periodUsageDurationValue !== null &&
+						apiKeyRecord.periodUsageDurationUnit !== null &&
+						apiKeyRecord.project &&
+						usageUpdate.currentPeriodStartedAt
+					) {
+						budgetAlertContexts.push({
+							apiKeyId,
+							apiKeyDescription: apiKeyRecord.description,
+							projectId: apiKeyRecord.projectId,
+							organizationId: apiKeyRecord.project.organizationId,
+							periodStartedAt: usageUpdate.currentPeriodStartedAt,
+							periodUsageLimit: apiKeyRecord.periodUsageLimit,
+							previousUsage: String(apiKeyRecord.currentPeriodUsage ?? "0"),
+							newUsage: usageUpdate.currentPeriodUsage,
+							durationValue: apiKeyRecord.periodUsageDurationValue,
+							durationUnit: apiKeyRecord.periodUsageDurationUnit,
+						});
+					}
+
 					logger.debug(`Added ${costNumber} usage to API key ${apiKeyId}`);
 				}
 			}
@@ -956,6 +994,11 @@ export async function batchProcessLogs(): Promise<void> {
 		// Async low-balance alert check (outside transaction, non-blocking)
 		if (deductedOrgIds.length > 0) {
 			void checkLowBalanceAlerts(deductedOrgIds);
+		}
+
+		// Async per-API-key TCS budget threshold alerts (outside transaction, non-blocking)
+		for (const alertCtx of budgetAlertContexts) {
+			void checkBudgetThresholds(alertCtx);
 		}
 	} catch (error) {
 		logger.error(
@@ -1166,6 +1209,22 @@ export async function processLogQueue(): Promise<void> {
 			return data;
 		});
 
+		// Build a tenant_key lookup for structured Cloud Logging emission.
+		// One query per batch keeps overhead bounded regardless of batch size.
+		const apiKeyIds = Array.from(
+			new Set(processedLogData.map((d) => d.apiKeyId).filter(Boolean)),
+		);
+		const apiKeyDescriptions = new Map<string, string | null>();
+		if (apiKeyIds.length > 0) {
+			const rows = await cdb
+				.select({ id: apiKey.id, description: apiKey.description })
+				.from(apiKey)
+				.where(inArray(apiKey.id, apiKeyIds));
+			for (const row of rows) {
+				apiKeyDescriptions.set(row.id, row.description ?? null);
+			}
+		}
+
 		// Insert logs with retry logic
 		let lastError: Error | undefined;
 		for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -1173,6 +1232,16 @@ export async function processLogQueue(): Promise<void> {
 				// Type assertion is safe here as both LogInsertData and its subset are compatible with the log insert schema
 				await db.insert(log).values(processedLogData as LogInsertData[]);
 				recordLogInsertSuccess();
+				try {
+					emitTcsStructuredLogs(processedLogData, apiKeyDescriptions);
+				} catch (emitError) {
+					logger.warn(
+						"Failed to emit TCS structured logs (non-fatal)",
+						emitError instanceof Error
+							? emitError
+							: new Error(String(emitError)),
+					);
+				}
 				return; // Success, exit function
 			} catch (insertError) {
 				lastError =

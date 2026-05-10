@@ -1,0 +1,39 @@
+{
+  "services": [
+    {
+      "name": "salesforce-digify-sync",
+      "description": "Williams Salesforce <-> Digify sync service",
+      "repo": "Third-Culture/salesforce-digify-sync",
+      "monthly_budget_usd": 50,
+      "default_model": "tcs-balanced"
+    },
+    {
+      "name": "tcs-metabase",
+      "description": "TCS Metabase data pipelines (Linear, Xero, Calendar, OKR)",
+      "repo": "Third-Culture/tcs-metabase",
+      "monthly_budget_usd": 75,
+      "default_model": "tcs-cheap"
+    },
+    {
+      "name": "tcs-linear-automations",
+      "description": "Evidence verification bot + Linear automations",
+      "repo": "Third-Culture/tcs-linear-automations",
+      "monthly_budget_usd": 100,
+      "default_model": "tcs-reasoning"
+    },
+    {
+      "name": "tcs-williams-services",
+      "description": "TCS services for Williams Racing",
+      "repo": "Third-Culture/tcs-williams-services",
+      "monthly_budget_usd": 150,
+      "default_model": "tcs-balanced"
+    },
+    {
+      "name": "dev-shared",
+      "description": "Shared experimentation key for internal development",
+      "repo": null,
+      "monthly_budget_usd": 25,
+      "default_model": "tcs-cheap"
+    }
+  ]
+}
