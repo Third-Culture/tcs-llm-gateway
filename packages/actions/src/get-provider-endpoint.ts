@@ -268,6 +268,45 @@ export function getProviderEndpoint(
 			case "embercloud":
 				url = "https://api.embercloud.ai";
 				break;
+			case "fireworks":
+				// Fireworks OpenAI-compatible endpoint lives at /inference/v1/chat/completions.
+				// Base URL stops at /inference so the default switch below appends /v1/chat/completions.
+				url =
+					envValueOrDefault(
+						"fireworks",
+						"baseUrl",
+						"https://api.fireworks.ai/inference",
+					) ?? "https://api.fireworks.ai/inference";
+				break;
+			case "parasail":
+				url =
+					envValueOrDefault("parasail", "baseUrl", "https://api.parasail.io") ??
+					"https://api.parasail.io";
+				break;
+			case "deepinfra":
+				// DeepInfra's OpenAI-compatible endpoint is at
+				// https://api.deepinfra.com/v1/openai/chat/completions (note the
+				// `/v1/openai/...` prefix, not `/openai/v1/...`). We keep the base
+				// URL plain and let the second switch-case below append the
+				// correct full suffix.
+				url =
+					envValueOrDefault(
+						"deepinfra",
+						"baseUrl",
+						"https://api.deepinfra.com",
+					) ?? "https://api.deepinfra.com";
+				break;
+			case "wandb":
+				// W&B Inference (CoreWeave) is OpenAI-compatible at
+				// https://api.inference.wandb.ai/v1/chat/completions, so the default
+				// switch-case below appends /v1/chat/completions correctly.
+				url =
+					envValueOrDefault(
+						"wandb",
+						"baseUrl",
+						"https://api.inference.wandb.ai",
+					) ?? "https://api.inference.wandb.ai";
+				break;
 			case "custom":
 				if (!baseUrl) {
 					throw new Error(`Custom provider requires a baseUrl`);
@@ -453,7 +492,13 @@ export function getProviderEndpoint(
 		case "canopywave":
 		case "minimax":
 		case "embercloud":
+		case "fireworks":
+		case "parasail":
+		case "wandb":
 		case "custom":
+			return `${url}/v1/chat/completions`;
+		case "deepinfra":
+			return `${url}/v1/openai/chat/completions`;
 		default:
 			return `${url}/v1/chat/completions`;
 	}
