@@ -377,6 +377,27 @@ export const moonshotModels = [
 				tools: true,
 				jsonOutput: true,
 			},
+			{
+				providerId: "parasail",
+				// Verify exact Parasail model slug from their catalogue once the account
+				// is provisioned. Expected slug as of 2026-04 is moonshotai/kimi-k2.6
+				// (Parasail accepts Hugging-Face-style slugs via their OpenAI-compatible
+				// endpoint).
+				test: "skip",
+				stability: "beta",
+				modelName: "moonshotai/kimi-k2.6",
+				inputPrice: 0.9 / 1e6,
+				cachedInputPrice: 0.15 / 1e6,
+				outputPrice: 3.8 / 1e6,
+				requestPrice: 0,
+				contextSize: 262144,
+				maxOutput: 262144,
+				streaming: true,
+				reasoning: true,
+				vision: true,
+				tools: true,
+				jsonOutput: true,
+			},
 		],
 	},
 ] as const satisfies ModelDefinition[];

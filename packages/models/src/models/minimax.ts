@@ -55,6 +55,29 @@ export const minimaxModels = [
 				jsonOutput: true,
 				jsonOutputSchema: true,
 			},
+			{
+				providerId: "fireworks",
+				// Verify exact Fireworks model slug once provisioned; as of 2026-04 the
+				// expected slug is accounts/fireworks/models/minimax-m2p7-instruct.
+				// If Fireworks has not yet published MiniMax M2.7, the gateway will
+				// transparently fall back to together-ai / novita / minimax-direct
+				// via the fallback chain in packages/models/src/models/tcs.ts.
+				test: "skip",
+				stability: "beta",
+				modelName: "accounts/fireworks/models/minimax-m2p7-instruct",
+				inputPrice: 0.3 / 1e6,
+				cachedInputPrice: 0.06 / 1e6,
+				outputPrice: 1.2 / 1e6,
+				requestPrice: 0,
+				contextSize: 196608,
+				maxOutput: 131072,
+				streaming: true,
+				reasoning: true,
+				vision: false,
+				tools: true,
+				jsonOutput: true,
+				jsonOutputSchema: true,
+			},
 		],
 	},
 	{
