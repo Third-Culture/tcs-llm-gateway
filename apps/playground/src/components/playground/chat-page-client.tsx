@@ -25,6 +25,7 @@ import {
 } from "@/hooks/useChats";
 import { useMcpServers } from "@/hooks/useMcpServers";
 import { useUser } from "@/hooks/useUser";
+import { getMessageCost, type PlaygroundChatMessage } from "@/lib/chat-cost";
 import { parseImageFile } from "@/lib/image-utils";
 import { mapModels } from "@/lib/mapmodels";
 import { shouldDisableFallback } from "@/lib/no-fallback";
@@ -154,7 +155,7 @@ export default function ChatPageClient({
 	const shouldClearMessagesRef = useRef(false);
 
 	const { messages, setMessages, sendMessage, status, stop, regenerate } =
-		useChat({
+		useChat<PlaygroundChatMessage>({
 			onError: async (e) => {
 				isSendingRef.current = false;
 				errorOccurredRef.current = true;
@@ -283,6 +284,7 @@ export default function ChatPageClient({
 
 				// Extract tool parts (AI SDK v6 uses tool-{toolName} as the part type)
 				const toolParts = message.parts.filter(isToolPart);
+				const messageCost = getMessageCost(message);
 
 				const bodyToSave = {
 					role: "assistant" as const,
@@ -290,6 +292,7 @@ export default function ChatPageClient({
 					images: images.length > 0 ? JSON.stringify(images) : undefined,
 					reasoning: reasoningContent || undefined,
 					tools: toolParts.length > 0 ? JSON.stringify(toolParts) : undefined,
+					...(messageCost !== undefined ? { cost: messageCost } : {}),
 				};
 
 				try {
@@ -564,6 +567,9 @@ export default function ChatPageClient({
 						role: msg.role,
 						content: msg.content ?? "",
 						parts,
+						...(typeof msg.cost === "number"
+							? { metadata: { cost: msg.cost } }
+							: {}),
 					};
 				});
 			}
@@ -1198,12 +1204,13 @@ function ExtraChatPanel({
 	const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 	const [text, setText] = useState("");
 
-	const { messages, sendMessage, status, stop, regenerate } = useChat({
-		onError: async (e) => {
-			const msg = getErrorMessage(e);
-			toast.error(msg);
-		},
-	});
+	const { messages, sendMessage, status, stop, regenerate } =
+		useChat<PlaygroundChatMessage>({
+			onError: async (e) => {
+				const msg = getErrorMessage(e);
+				toast.error(msg);
+			},
+		});
 
 	const supportsImages = useMemo(() => {
 		let model = availableModels.find((m) => m.id === selectedModel);

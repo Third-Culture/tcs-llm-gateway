@@ -71,16 +71,22 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import {
+	formatUsd,
+	getMessageCost,
+	getSessionCost,
+	type PlaygroundChatMessage,
+} from "@/lib/chat-cost";
 import { parseImagePartToDataUrl } from "@/lib/image-utils";
 
-import type { UIMessage, ChatRequestOptions, ChatStatus } from "ai";
+import type { ChatRequestOptions, ChatStatus } from "ai";
 
 interface ChatUIProps {
-	messages: UIMessage[];
+	messages: PlaygroundChatMessage[];
 	supportsImages: boolean;
 	supportsImageGen: boolean;
 	sendMessage: (
-		message: UIMessage,
+		message: PlaygroundChatMessage,
 		options?: ChatRequestOptions,
 	) => Promise<void>;
 	selectedModel: string;
@@ -242,6 +248,19 @@ function getFinishReasonLabel(reason: string): string {
 }
 
 // rerender-memo: Memoize message component to prevent re-renders when only streaming status changes
+const MessageCostLine = ({
+	messageCost,
+	sessionCost,
+}: {
+	messageCost: number;
+	sessionCost: number;
+}) => (
+	<div className="mt-2 text-xs text-muted-foreground">
+		This message: {formatUsd(messageCost)} · Session total:{" "}
+		{formatUsd(sessionCost)}
+	</div>
+);
+
 const AssistantMessage = memo(
 	({
 		message,
@@ -249,12 +268,14 @@ const AssistantMessage = memo(
 		status,
 		regenerate,
 		finishReason,
+		sessionCost,
 	}: {
-		message: UIMessage;
+		message: PlaygroundChatMessage;
 		isLastMessage: boolean;
 		status: string;
 		regenerate: () => void;
 		finishReason?: string | null;
+		sessionCost: number;
 	}) => {
 		// useMemo for extracted parts to avoid recomputation
 		const { textParts, imageParts, toolParts, reasoningContent, sourceParts } =
@@ -262,6 +283,10 @@ const AssistantMessage = memo(
 				return extractMessageParts(message.parts);
 			}, [message.parts]);
 		const textContent = textParts.join("");
+		const messageCost = getMessageCost(message);
+		const showCost =
+			messageCost !== undefined &&
+			(!isLastMessage || status === "ready" || status === "error");
 
 		return (
 			<div className="message-item">
@@ -331,6 +356,13 @@ const AssistantMessage = memo(
 					</Sources>
 				) : null}
 
+				{showCost ? (
+					<MessageCostLine
+						messageCost={messageCost}
+						sessionCost={sessionCost}
+					/>
+				) : null}
+
 				{isLastMessage && finishReason && (
 					<div className="mt-2 flex items-center gap-2 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200">
 						<AlertTriangle className="size-3.5 shrink-0" />
@@ -375,7 +407,7 @@ const UserMessage = memo(
 		isLastMessage,
 		status,
 	}: {
-		message: UIMessage;
+		message: PlaygroundChatMessage;
 		isLastMessage: boolean;
 		status: string;
 	}) => {
@@ -449,6 +481,8 @@ export const ChatUI = ({
 	finishReason = null,
 	floatingInput = false,
 }: ChatUIProps) => {
+	const sessionCost = useMemo(() => getSessionCost(messages), [messages]);
+
 	// Check if the model uses WIDTHxHEIGHT format (Alibaba or ZAI)
 	const usesPixelDimensions =
 		selectedModel.toLowerCase().includes("alibaba") ||
@@ -639,6 +673,7 @@ export const ChatUI = ({
 								status={status}
 								regenerate={regenerate}
 								finishReason={isLastMessage ? finishReason : null}
+								sessionCost={sessionCost}
 							/>
 						);
 					} else {

@@ -13,6 +13,10 @@ import {
 import { cookies } from "next/headers";
 import { z } from "zod";
 
+import {
+	extractGatewayCostFromProviderMetadata,
+	type PlaygroundMessageMetadata,
+} from "@/lib/chat-cost";
 import { getUser } from "@/lib/getUser";
 import { getModelImageConfig } from "@/lib/image-gen";
 
@@ -785,6 +789,8 @@ export async function POST(req: Request) {
 
 		const hasTools = Object.keys(allTools).length > 0;
 
+		let accumulatedCost = 0;
+
 		// Streaming chat with optional MCP tools
 		const result = streamText({
 			model: llmgateway.chat(selectedModel),
@@ -806,6 +812,27 @@ export async function POST(req: Request) {
 		const uiStream = result.toUIMessageStream({
 			sendReasoning: true,
 			sendSources: true,
+			messageMetadata: ({ part }) => {
+				if (part.type !== "finish") {
+					return undefined;
+				}
+
+				const finishPart = part as typeof part & {
+					providerMetadata?: Parameters<
+						typeof extractGatewayCostFromProviderMetadata
+					>[0];
+				};
+				const stepCost = extractGatewayCostFromProviderMetadata(
+					finishPart.providerMetadata,
+				);
+				if (stepCost !== undefined) {
+					accumulatedCost += stepCost;
+				}
+
+				return accumulatedCost > 0
+					? ({ cost: accumulatedCost } satisfies PlaygroundMessageMetadata)
+					: undefined;
+			},
 		});
 		const sseStream = uiStream.pipeThrough(new JsonToSseTransformStream());
 

@@ -3380,6 +3380,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/metrics/cost-timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    window?: "1h" | "4h" | "12h" | "1d" | "7d" | "30d" | "90d" | "365d";
+                    from?: string;
+                    to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Platform inference cost over time. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {string} */
+                            window: "1h" | "4h" | "12h" | "1d" | "7d" | "30d" | "90d" | "365d";
+                            /** @enum {string} */
+                            granularity: "hour" | "day";
+                            data: {
+                                timestamp: string;
+                                cost: number;
+                                requests: number;
+                                inputCost: number;
+                                outputCost: number;
+                            }[];
+                            totals: {
+                                cost: number;
+                                requests: number;
+                                inputCost: number;
+                                outputCost: number;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/metrics/cost-by-model": {
         parameters: {
             query?: never;
@@ -6791,6 +6848,7 @@ export interface paths {
                                 reasoning: string | null;
                                 tools: string | null;
                                 sequence: number;
+                                cost: number | null;
                                 /** Format: date-time */
                                 createdAt: string;
                             }[];
@@ -6911,6 +6969,7 @@ export interface paths {
                         images?: string;
                         reasoning?: string;
                         tools?: string;
+                        cost?: number;
                     };
                 };
             };
@@ -6931,6 +6990,7 @@ export interface paths {
                                 reasoning: string | null;
                                 tools: string | null;
                                 sequence: number;
+                                cost: number | null;
                                 /** Format: date-time */
                                 createdAt: string;
                             };

@@ -29,6 +29,7 @@ const messageSchema = z.object({
 	reasoning: z.string().nullable(), // Reasoning content
 	tools: z.string().nullable(), // JSON string of tool parts
 	sequence: z.number(),
+	cost: z.number().nullable(),
 	createdAt: z.string().datetime(),
 });
 
@@ -50,6 +51,7 @@ const createMessageSchema = z
 		images: z.string().optional(), // JSON string
 		reasoning: z.string().optional(), // Reasoning content
 		tools: z.string().optional(), // Tool parts JSON
+		cost: z.number().optional(),
 	})
 	.refine(
 		(data) => data.content ?? data.images ?? data.reasoning ?? data.tools,
@@ -300,6 +302,7 @@ chats.openapi(getChat, async (c) => {
 				reasoning: message.reasoning,
 				tools: (message as any).tools ?? null,
 				sequence: message.sequence,
+				cost: message.cost,
 				createdAt: message.createdAt.toISOString(),
 			})),
 		},
@@ -533,6 +536,7 @@ chats.openapi(addMessage, async (c) => {
 			images: body.images ?? null,
 			reasoning: body.reasoning ?? null,
 			tools: body.tools ?? null,
+			cost: body.cost ?? null,
 			sequence: nextSequence,
 		})
 		.returning();
@@ -553,6 +557,7 @@ chats.openapi(addMessage, async (c) => {
 				reasoning: newMessage.reasoning,
 				tools: (newMessage as any).tools ?? null,
 				sequence: newMessage.sequence,
+				cost: newMessage.cost,
 				createdAt: newMessage.createdAt.toISOString(),
 			},
 		},
