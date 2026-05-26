@@ -6,6 +6,7 @@ import {
 	ComputerIcon,
 	CreditCard,
 	ExternalLink,
+	LineChart,
 	MoonIcon,
 	Shield,
 	SunIcon,
@@ -994,6 +995,30 @@ export function DashboardSidebar({
 					isMobile={isMobile}
 					toggleSidebar={toggleSidebar}
 				/>
+
+				{user.isAdmin ? (
+					<SidebarGroup>
+						<SidebarGroupLabel className="text-muted-foreground px-2 text-xs font-medium">
+							Admin
+						</SidebarGroupLabel>
+						<SidebarGroupContent className="mt-2">
+							<SidebarMenu>
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										asChild
+										isActive={pathname.startsWith("/admin/cost")}
+										tooltip="Cost monitor"
+									>
+										<Link href="/admin/cost" onClick={handleNavClick}>
+											<LineChart className="size-4" />
+											<span>Cost monitor</span>
+										</Link>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+							</SidebarMenu>
+						</SidebarGroupContent>
+					</SidebarGroup>
+				) : null}
 			</SidebarContent>
 
 			<SidebarFooter>

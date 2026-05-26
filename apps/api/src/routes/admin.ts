@@ -5117,6 +5117,32 @@ const costByModelResponseSchema = z.object({
 	totalRequests: z.number(),
 });
 
+const costTimeseriesGranularitySchema = z.enum(["hour", "day"]);
+
+const costTimeseriesPointSchema = z.object({
+	timestamp: z.string(),
+	cost: z.number(),
+	requests: z.number(),
+	inputCost: z.number(),
+	outputCost: z.number(),
+});
+
+const costTimeseriesResponseSchema = z.object({
+	window: tokenWindowSchema,
+	granularity: costTimeseriesGranularitySchema,
+	data: z.array(costTimeseriesPointSchema),
+	totals: z.object({
+		cost: z.number(),
+		requests: z.number(),
+		inputCost: z.number(),
+		outputCost: z.number(),
+	}),
+});
+
+function getCostTimeseriesGranularity(window: string): "hour" | "day" {
+	return window === "1d" || window === "7d" ? "hour" : "day";
+}
+
 function getTokenWindowStartDate(window: string): Date {
 	const windowMs: Record<string, number> = {
 		"1h": 60 * 60 * 1000,
@@ -5131,6 +5157,106 @@ function getTokenWindowStartDate(window: string): Date {
 	const ms = windowMs[window] ?? 7 * 24 * 60 * 60 * 1000;
 	return new Date(Date.now() - ms);
 }
+
+const getCostTimeseries = createRoute({
+	method: "get",
+	path: "/metrics/cost-timeseries",
+	request: {
+		query: z.object({
+			window: tokenWindowSchema.default("7d").optional(),
+			from: z.string().optional(),
+			to: z.string().optional(),
+		}),
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: costTimeseriesResponseSchema.openapi({}),
+				},
+			},
+			description: "Platform inference cost over time.",
+		},
+	},
+});
+
+admin.openapi(getCostTimeseries, async (c) => {
+	const query = c.req.valid("query");
+	const window = query.window ?? "7d";
+	const granularity = getCostTimeseriesGranularity(window);
+
+	let startDate: Date;
+	let endDate: Date | undefined;
+	if (query.from && query.to) {
+		startDate = new Date(query.from + "T00:00:00");
+		startDate.setUTCHours(0, 0, 0, 0);
+		endDate = new Date(query.to + "T00:00:00");
+		endDate.setUTCHours(23, 59, 59, 999);
+	} else {
+		startDate = getTokenWindowStartDate(window);
+	}
+
+	const bucket =
+		granularity === "hour"
+			? sql`date_trunc('hour', ${projectHourlyStats.hourTimestamp})`
+			: sql`date_trunc('day', ${projectHourlyStats.hourTimestamp})`;
+
+	const dateFilter = endDate
+		? and(
+				gte(projectHourlyStats.hourTimestamp, startDate),
+				lte(projectHourlyStats.hourTimestamp, endDate),
+			)
+		: gte(projectHourlyStats.hourTimestamp, startDate);
+
+	const rows = await db
+		.select({
+			timestamp: sql<string>`${bucket}::text`.as("timestamp"),
+			cost: sql<number>`COALESCE(SUM(${projectHourlyStats.cost}), 0)`.as(
+				"cost",
+			),
+			requests:
+				sql<number>`COALESCE(SUM(${projectHourlyStats.requestCount}), 0)`.as(
+					"requests",
+				),
+			inputCost:
+				sql<number>`COALESCE(SUM(${projectHourlyStats.inputCost}), 0)`.as(
+					"input_cost",
+				),
+			outputCost:
+				sql<number>`COALESCE(SUM(${projectHourlyStats.outputCost}), 0)`.as(
+					"output_cost",
+				),
+		})
+		.from(projectHourlyStats)
+		.where(dateFilter)
+		.groupBy(bucket)
+		.orderBy(asc(bucket));
+
+	const data = rows.map((row) => ({
+		timestamp: row.timestamp,
+		cost: Number(row.cost),
+		requests: Number(row.requests),
+		inputCost: Number(row.inputCost),
+		outputCost: Number(row.outputCost),
+	}));
+
+	const totals = data.reduce(
+		(acc, point) => ({
+			cost: acc.cost + point.cost,
+			requests: acc.requests + point.requests,
+			inputCost: acc.inputCost + point.inputCost,
+			outputCost: acc.outputCost + point.outputCost,
+		}),
+		{ cost: 0, requests: 0, inputCost: 0, outputCost: 0 },
+	);
+
+	return c.json({
+		window,
+		granularity,
+		data,
+		totals,
+	});
+});
 
 // Global cost by model
 const getGlobalCostByModel = createRoute({
