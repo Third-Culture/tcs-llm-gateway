@@ -1262,9 +1262,6 @@ importers:
       '@radix-ui/react-use-controllable-state':
         specifier: 1.2.2
         version: 1.2.2(@types/react@19.2.14)(react@19.2.4)
-      '@third-culture/brand-pack':
-        specifier: file:../../../tcs-brand-pack
-        version: file:../tcs-brand-pack(zod@3.25.75)
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -4261,10 +4258,6 @@ packages:
 
   '@tediousjs/connection-string@0.5.0':
     resolution: {integrity: sha512-7qSgZbincDDDFyRweCIEvZULFAw5iz/DeunhvuxpL31nfntX3P4Yd4HkHBRg9H8CdqY1e5WFN1PZIz/REL9MVQ==}
-
-  '@third-culture/brand-pack@file:../tcs-brand-pack':
-    resolution: {directory: ../tcs-brand-pack, type: directory}
-    engines: {node: '>=20'}
 
   '@tokenlens/core@1.3.0':
     resolution: {integrity: sha512-d8YNHNC+q10bVpi95fELJwJyPVf1HfvBEI18eFQxRSZTdByXrP+f/ZtlhSzkx0Jl0aEmYVeBA5tPeeYRioLViQ==}
@@ -14790,15 +14783,6 @@ snapshots:
   '@tanstack/table-core@8.21.3': {}
 
   '@tediousjs/connection-string@0.5.0': {}
-
-  '@third-culture/brand-pack@file:../tcs-brand-pack(zod@3.25.75)':
-    dependencies:
-      '@modelcontextprotocol/sdk': 1.25.3(hono@4.12.7)(zod@3.25.75)
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - hono
-      - supports-color
-      - zod
 
   '@tokenlens/core@1.3.0': {}
 
