@@ -73,9 +73,9 @@ resource "google_sql_database_instance" "postgres" {
     }
 
     backup_configuration {
-      enabled    = true
-      start_time = "03:00"
-      location   = var.region
+      enabled                        = true
+      start_time                     = "03:00"
+      location                       = var.region
       point_in_time_recovery_enabled = true
     }
 
@@ -163,24 +163,25 @@ locals {
   # REDIS_PASSWORD intentionally omitted — Memorystore is configured without
   # auth, so leaving the env var unset is correct (ioredis will skip AUTH).
   gateway_env_secrets = {
-    DATABASE_URL                  = "TCS_LLM_DATABASE_URL"
-    AUTH_SECRET                   = "TCS_LLM_AUTH_SECRET"
-    GATEWAY_API_KEY_HASH_SECRET   = "GATEWAY_API_KEY_HASH_SECRET"
-    LLM_FIREWORKS_API_KEY     = "LLM_FIREWORKS_API_KEY"
-    LLM_PARASAIL_API_KEY      = "LLM_PARASAIL_API_KEY"
-    LLM_DEEPINFRA_API_KEY     = "LLM_DEEPINFRA_API_KEY"
-    LLM_WANDB_API_KEY         = "LLM_WANDB_API_KEY"
-    LLM_GOOGLE_VERTEX_API_KEY = "LLM_GOOGLE_VERTEX_API_KEY"
-    LLM_MOONSHOT_API_KEY      = "LLM_MOONSHOT_API_KEY"
-    LLM_MINIMAX_API_KEY       = "LLM_MINIMAX_API_KEY"
-    LLM_CANOPY_WAVE_API_KEY   = "LLM_CANOPY_WAVE_API_KEY"
-    LLM_TOGETHER_AI_API_KEY   = "LLM_TOGETHER_AI_API_KEY"
-    LLM_NOVITA_AI_API_KEY     = "LLM_NOVITA_AI_API_KEY"
-    LLM_OPENAI_API_KEY        = "LLM_OPENAI_API_KEY"
-    LLM_ANTHROPIC_API_KEY     = "LLM_ANTHROPIC_API_KEY"
+    DATABASE_URL                 = "TCS_LLM_DATABASE_URL"
+    AUTH_SECRET                  = "TCS_LLM_AUTH_SECRET"
+    GATEWAY_API_KEY_HASH_SECRET  = "GATEWAY_API_KEY_HASH_SECRET"
+    LLM_FIREWORKS_API_KEY        = "LLM_FIREWORKS_API_KEY"
+    LLM_PARASAIL_API_KEY         = "LLM_PARASAIL_API_KEY"
+    LLM_DEEPINFRA_API_KEY        = "LLM_DEEPINFRA_API_KEY"
+    LLM_WANDB_API_KEY            = "LLM_WANDB_API_KEY"
+    LLM_GOOGLE_VERTEX_API_KEY    = "LLM_GOOGLE_VERTEX_API_KEY"
+    LLM_MOONSHOT_API_KEY         = "LLM_MOONSHOT_API_KEY"
+    LLM_MINIMAX_API_KEY          = "LLM_MINIMAX_API_KEY"
+    LLM_CANOPY_WAVE_API_KEY      = "LLM_CANOPY_WAVE_API_KEY"
+    LLM_TOGETHER_AI_API_KEY      = "LLM_TOGETHER_AI_API_KEY"
+    LLM_NOVITA_AI_API_KEY        = "LLM_NOVITA_AI_API_KEY"
+    LLM_OPENAI_API_KEY           = "LLM_OPENAI_API_KEY"
+    LLM_ANTHROPIC_API_KEY        = "LLM_ANTHROPIC_API_KEY"
     TCS_SLACK_BUDGET_WEBHOOK_URL = "TCS_SLACK_BUDGET_WEBHOOK_URL"
-    TCS_LINEAR_API_KEY        = "TCS_LINEAR_API_KEY"
-    TCS_LINEAR_BUDGET_TEAM_ID = "TCS_LINEAR_BUDGET_TEAM_ID"
+    TCS_LINEAR_API_KEY           = "TCS_LINEAR_API_KEY"
+    TCS_LINEAR_BUDGET_TEAM_ID    = "TCS_LINEAR_BUDGET_TEAM_ID"
+    INTERNAL_STATS_TOKEN         = "TCS_LLM_INTERNAL_STATS_TOKEN"
   }
 
   # Public-facing URLs. We can't read these from the cloud_run_v2_service
