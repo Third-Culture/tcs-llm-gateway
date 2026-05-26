@@ -80,6 +80,8 @@ import {
 import Logo from "@/lib/icons/Logo";
 import { buildUrlWithParams } from "@/lib/navigation-utils";
 
+import { Wordmark } from "@llmgateway/shared/components";
+
 import { OrganizationSwitcher } from "./organization-switcher";
 
 import type { AnimatedIconProps } from "@/components/dashboard/animated-nav-icons";
@@ -211,14 +213,12 @@ function DashboardSidebarHeader({
 		<SidebarHeader>
 			<SidebarMenu>
 				<SidebarMenuItem>
-					<SidebarMenuButton size="lg" asChild tooltip="LLM Gateway">
+					<SidebarMenuButton size="lg" asChild tooltip="Third Culture">
 						<Link href={buildUrl()} prefetch={true}>
 							<div className="flex aspect-square size-8 items-center justify-center">
-								<Logo className="size-6 text-black dark:text-white" />
+								<Logo className="size-6 text-foreground" />
 							</div>
-							<span className="text-lg font-bold tracking-tight">
-								LLM Gateway
-							</span>
+							<Wordmark className="h-4 w-auto text-foreground group-data-[collapsible=icon]:hidden" />
 						</Link>
 					</SidebarMenuButton>
 				</SidebarMenuItem>

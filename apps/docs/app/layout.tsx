@@ -2,7 +2,6 @@
 import "./global.css";
 
 import { RootProvider } from "fumadocs-ui/provider/next";
-import { Geist_Mono, Inter } from "next/font/google";
 
 import { ConfigProvider } from "@/lib/context";
 import { PostHogProvider } from "@/lib/providers";
@@ -10,24 +9,15 @@ import { PostHogProvider } from "@/lib/providers";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-const inter = Inter({
-	subsets: ["latin"],
-});
-
-const mono = Geist_Mono({
-	subsets: ["latin"],
-	variable: "--font-mono",
-});
-
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
 	metadataBase: new URL("https://llmgateway.io"),
-	title: "LLM Gateway Documentation",
+	title: "Third Culture — LLM Gateway Documentation",
 	description:
-		"LLM Gateway Documentation - Route, manage, and analyze your LLM requests across multiple providers with a unified API interface.",
+		"Third Culture LLM Gateway documentation — route, manage, and analyze your LLM requests across multiple providers with a unified API interface.",
 	icons: {
-		icon: "/favicon/favicon.ico?v=2",
+		icon: [{ url: "/brand/tc-mark-on-light.svg?v=1", type: "image/svg+xml" }],
 	},
 	alternates: {
 		canonical: "./",
@@ -35,17 +25,12 @@ export const metadata: Metadata = {
 };
 
 export default function Layout({ children }: { children: ReactNode }) {
-	// Access environment variables directly on the server
 	const posthogKey = process.env.POSTHOG_KEY ?? "";
 	const posthogHost = process.env.POSTHOG_HOST ?? "";
 
 	return (
-		<html
-			lang="en"
-			className={`${inter.className} ${mono.variable}`}
-			suppressHydrationWarning
-		>
-			<body className="flex flex-col min-h-screen">
+		<html lang="en" className="font-sans" suppressHydrationWarning>
+			<body className="flex min-h-screen flex-col">
 				<ConfigProvider posthogKey={posthogKey} posthogHost={posthogHost}>
 					<PostHogProvider>
 						<RootProvider

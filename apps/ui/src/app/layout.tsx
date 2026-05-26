@@ -1,5 +1,3 @@
-import { Inter, Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
-
 import { Providers } from "@/components/providers";
 import { getConfig } from "@/lib/config-server";
 
@@ -8,75 +6,43 @@ import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-const inter = Inter({
-	variable: "--font-inter",
-	subsets: ["latin"],
-	display: "swap",
-});
-
-const geistMono = Geist_Mono({
-	variable: "--font-mono",
-	subsets: ["latin"],
-	display: "swap",
-});
-
-const plusJakarta = Plus_Jakarta_Sans({
-	variable: "--font-display",
-	subsets: ["latin"],
-	weight: ["500", "600", "700", "800"],
-	display: "swap",
-});
-
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
 	metadataBase: new URL("https://llmgateway.io"),
 	title: {
-		default: "LLM Gateway - Unified API for Multiple LLM Providers",
-		template: "%s | LLM Gateway",
+		default: "Third Culture — LLM Gateway",
+		template: "%s | Third Culture",
 	},
 	description:
 		"Route, manage, and analyze your LLM requests across multiple providers with a unified API interface. Access OpenAI, Anthropic, Google, and 19+ providers through one API.",
-	authors: [{ name: "LLM Gateway" }],
-	creator: "LLM Gateway",
-	publisher: "LLM Gateway",
+	authors: [{ name: "Third Culture." }],
+	creator: "Third Culture.",
+	publisher: "Third Culture.",
 	icons: {
-		icon: [
-			{ url: "/favicon/favicon.ico?v=1", sizes: "any" },
-			{
-				url: "/favicon/favicon-16x16.png?v=1",
-				sizes: "16x16",
-				type: "image/png",
-			},
-			{
-				url: "/favicon/favicon-32x32.png?v=1",
-				sizes: "32x32",
-				type: "image/png",
-			},
-		],
-		apple: [{ url: "/favicon/apple-touch-icon.png?v=1", sizes: "180x180" }],
+		icon: [{ url: "/brand/tc-mark-on-light.svg?v=1", type: "image/svg+xml" }],
+		apple: [{ url: "/brand/tc-mark-on-light.svg?v=1" }],
 	},
-	manifest: "/favicon/site.webmanifest?v=1",
+	manifest: "/favicon/site.webmanifest?v=2",
 	alternates: {
 		canonical: "./",
 	},
 	openGraph: {
-		title: "LLM Gateway - Unified API for Multiple LLM Providers",
+		title: "Third Culture — LLM Gateway",
 		description:
 			"Route, manage, and analyze your LLM requests across multiple providers with a unified API interface. Access OpenAI, Anthropic, Google, and 19+ providers through one API.",
 		images: ["/opengraph.png?v=1"],
 		type: "website",
 		url: "https://llmgateway.io",
-		siteName: "LLM Gateway",
+		siteName: "Third Culture",
 		locale: "en_US",
 	},
 	twitter: {
 		card: "summary_large_image",
-		title: "LLM Gateway - Unified API for Multiple LLM Providers",
+		title: "Third Culture — LLM Gateway",
 		description:
 			"Route, manage, and analyze your LLM requests across multiple providers with a unified API interface.",
 		images: ["/opengraph.png?v=1"],
-		creator: "@llmgateway",
 	},
 	robots: {
 		index: true,
@@ -94,20 +60,14 @@ export const metadata: Metadata = {
 const organizationSchema = {
 	"@context": "https://schema.org",
 	"@type": "Organization",
-	name: "LLM Gateway",
+	name: "Third Culture.",
 	url: "https://llmgateway.io",
 	logo: {
 		"@type": "ImageObject",
-		url: "https://llmgateway.io/favicon/android-chrome-512x512.png",
-		width: 512,
-		height: 512,
+		url: "https://llmgateway.io/brand/tc-mark-on-light.svg",
 	},
 	description:
 		"Route, manage, and analyze your LLM requests across multiple providers with a unified API interface.",
-	sameAs: [
-		"https://twitter.com/llmgateway",
-		"https://github.com/llmgateway/llmgateway",
-	],
 	contactPoint: {
 		"@type": "ContactPoint",
 		email: "contact@llmgateway.io",
@@ -118,7 +78,7 @@ const organizationSchema = {
 const websiteSchema = {
 	"@context": "https://schema.org",
 	"@type": "WebSite",
-	name: "LLM Gateway",
+	name: "Third Culture — LLM Gateway",
 	url: "https://llmgateway.io",
 	potentialAction: {
 		"@type": "SearchAction",
@@ -153,9 +113,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 					}}
 				/>
 			</head>
-			<body
-				className={`${inter.variable} ${geistMono.variable} ${plusJakarta.variable} min-h-screen antialiased`}
-			>
+			<body className="min-h-screen font-sans antialiased">
 				<Providers config={config}>{children}</Providers>
 			</body>
 		</html>

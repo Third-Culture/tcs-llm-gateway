@@ -1,5 +1,3 @@
-import { Inter, Geist_Mono } from "next/font/google";
-
 import { Providers } from "@/components/providers";
 import { getConfig } from "@/lib/config-server";
 
@@ -8,31 +6,19 @@ import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-const inter = Inter({
-	variable: "--font-inter",
-	subsets: ["latin"],
-	display: "swap",
-});
-
-const geistMono = Geist_Mono({
-	variable: "--font-mono",
-	subsets: ["latin"],
-	display: "swap",
-});
-
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
 	metadataBase: new URL("https://chat.llmgateway.io"),
 	title: {
 		default:
-			"LLM Gateway Playground - Chat, Image & Video Generation with 210+ AI Models",
-		template: "%s | LLM Gateway Playground",
+			"Third Culture Playground — Chat, Image & Video with 210+ AI Models",
+		template: "%s | Third Culture Playground",
 	},
 	description:
 		"Test and compare 210+ AI models in one playground. Chat with GPT-4, Claude, Gemini, generate images and videos, and run multi-model group chats.",
 	icons: {
-		icon: "/favicon/favicon.ico?v=2",
+		icon: [{ url: "/brand/tc-mark-on-light.svg?v=1", type: "image/svg+xml" }],
 	},
 	alternates: {
 		canonical: "./",
@@ -49,35 +35,34 @@ export const metadata: Metadata = {
 		},
 	},
 	openGraph: {
-		title: "LLM Gateway Playground - Chat, Image & Video Generation",
+		title: "Third Culture Playground — Chat, Image & Video Generation",
 		description:
 			"Test and compare 210+ AI models in one playground. Chat, generate images and videos, and run multi-model group chats.",
 		images: ["/opengraph.png?v=1"],
 		type: "website",
 		url: "https://chat.llmgateway.io",
-		siteName: "LLM Gateway Playground",
+		siteName: "Third Culture Playground",
 		locale: "en_US",
 	},
 	twitter: {
 		card: "summary_large_image",
-		title: "LLM Gateway Playground - Chat, Image & Video Generation",
+		title: "Third Culture Playground — Chat, Image & Video Generation",
 		description:
 			"Test and compare 210+ AI models in one playground. Chat, generate images and videos, and run multi-model group chats.",
 		images: ["/opengraph.png?v=1"],
-		creator: "@llmgateway",
 	},
 };
 
 const webSiteSchema = {
 	"@context": "https://schema.org",
 	"@type": "WebSite",
-	name: "LLM Gateway Playground",
+	name: "Third Culture Playground",
 	url: "https://chat.llmgateway.io",
 	description:
 		"Test and compare 210+ AI models in one playground. Chat, generate images and videos, and run multi-model group chats.",
 	publisher: {
 		"@type": "Organization",
-		name: "LLM Gateway",
+		name: "Third Culture.",
 		url: "https://llmgateway.io",
 	},
 };
@@ -96,7 +81,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 					}}
 				/>
 			</head>
-			<body className={`${inter.variable} ${geistMono.variable} antialiased`}>
+			<body className="font-sans antialiased">
 				<Providers config={config}>{children}</Providers>
 			</body>
 		</html>

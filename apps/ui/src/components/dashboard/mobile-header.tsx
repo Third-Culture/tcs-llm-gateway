@@ -7,6 +7,8 @@ import { useDashboardNavigation } from "@/hooks/useDashboardNavigation";
 import { SidebarTrigger } from "@/lib/components/sidebar";
 import Logo from "@/lib/icons/Logo";
 
+import { Wordmark } from "@llmgateway/shared/components";
+
 export function MobileHeader() {
 	const { buildUrl } = useDashboardNavigation();
 
@@ -15,11 +17,11 @@ export function MobileHeader() {
 			<SidebarTrigger />
 			<Link
 				href={buildUrl()}
-				className="flex items-center gap-2 font-semibold"
+				className="flex items-center gap-2"
 				prefetch={true}
 			>
-				<Logo className="h-6 w-6 rounded-full text-black dark:text-white" />
-				<span>LLM Gateway</span>
+				<Logo className="h-6 w-auto text-foreground" />
+				<Wordmark className="h-3.5 w-auto text-foreground" />
 			</Link>
 			<div className="flex flex-1 items-center justify-end gap-2">
 				<ModeToggle />

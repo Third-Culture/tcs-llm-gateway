@@ -56,6 +56,8 @@ import { useUser } from "@/hooks/useUser";
 import { clearLastUsedProjectCookiesAction } from "@/lib/actions/project";
 import { useAuth } from "@/lib/auth-client";
 
+import { Wordmark } from "@llmgateway/shared/components";
+
 import { ChatSidebarSkeleton } from "./chat-sidebar-skeleton";
 // import { ProjectSwitcher } from "./project-switcher";
 
@@ -340,8 +342,8 @@ export function ChatSidebar({
 							className="flex self-start items-center gap-2 my-2"
 							prefetch={true}
 						>
-							<Logo className="size-6" />
-							<h1 className="text-xl font-semibold">LLM Gateway</h1>
+							<Logo className="h-6 w-auto text-foreground" />
+							<Wordmark className="h-4 w-auto text-foreground" />
 							<Badge>Chat</Badge>
 						</Link>
 						<div className="w-full rounded-md border p-4 text-sm">
@@ -378,14 +380,12 @@ export function ChatSidebar({
 			<SidebarHeader>
 				<SidebarMenu>
 					<SidebarMenuItem>
-						<SidebarMenuButton size="lg" asChild tooltip="LLM Gateway">
+						<SidebarMenuButton size="lg" asChild tooltip="Third Culture">
 							<Link href="/" prefetch={true}>
 								<div className="flex aspect-square size-8 items-center justify-center">
-									<Logo className="size-6" />
+									<Logo className="size-6 text-foreground" />
 								</div>
-								<span className="text-lg font-bold tracking-tight">
-									LLM Gateway
-								</span>
+								<Wordmark className="h-4 w-auto text-foreground" />
 							</Link>
 						</SidebarMenuButton>
 					</SidebarMenuItem>

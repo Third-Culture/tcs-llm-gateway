@@ -25,6 +25,7 @@
 		"seed": "pnpm --filter db seed",
 		"setup": "pnpm build:core && docker compose down -v && docker compose up -d && sleep 5 && pnpm push-test && pnpm push-dev && pnpm seed",
 		"sync": "pnpm push-dev; pnpm push-test",
+		"sync:brand": "cp ../tcs-brand-pack/tokens/tokens.css packages/shared/styles/tokens-brand.css && cp ../tcs-brand-pack/logos/mark/tc-mark-on-light.svg apps/ui/public/brand/tc-mark-on-light.svg && cp ../tcs-brand-pack/logos/mark/tc-mark-on-dark.svg apps/ui/public/brand/tc-mark-on-dark.svg && cp ../tcs-brand-pack/logos/wordmark/wordmark-slide-ink-on-cream.svg apps/ui/public/brand/wordmark-ink-on-cream.svg && cp ../tcs-brand-pack/logos/wordmark/wordmark-cream-on-blue.svg apps/ui/public/brand/wordmark-cream-on-blue.svg && for app in playground code docs; do cp ../tcs-brand-pack/logos/mark/tc-mark-on-light.svg apps/$app/public/brand/tc-mark-on-light.svg; cp ../tcs-brand-pack/logos/mark/tc-mark-on-dark.svg apps/$app/public/brand/tc-mark-on-dark.svg; cp ../tcs-brand-pack/logos/wordmark/wordmark-slide-ink-on-cream.svg apps/$app/public/brand/wordmark-ink-on-cream.svg; done && echo synced brand assets from @third-culture/brand-pack",
 		"test:e2e": "pnpm build:core && E2E_TEST=true vitest run -c vitest/vitest.e2e.config.mts --no-file-parallelism",
 		"test:unit": "pnpm build:core && vitest run --no-file-parallelism"
 	},

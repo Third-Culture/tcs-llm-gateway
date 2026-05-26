@@ -14,6 +14,8 @@ import {
 	SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
+import { Wordmark } from "@llmgateway/shared/components";
+
 import type { Organization } from "@/lib/types";
 
 interface ChatSidebarSkeletonProps {
@@ -34,14 +36,12 @@ export const ChatSidebarSkeleton = ({
 			<SidebarHeader>
 				<SidebarMenu>
 					<SidebarMenuItem>
-						<SidebarMenuButton size="lg" asChild tooltip="LLM Gateway">
+						<SidebarMenuButton size="lg" asChild tooltip="Third Culture">
 							<Link href="/" prefetch={true}>
 								<div className="flex aspect-square size-8 items-center justify-center">
-									<Logo className="size-6" />
+									<Logo className="size-6 text-foreground" />
 								</div>
-								<span className="text-lg font-bold tracking-tight">
-									LLM Gateway
-								</span>
+								<Wordmark className="h-4 w-auto text-foreground" />
 							</Link>
 						</SidebarMenuButton>
 					</SidebarMenuItem>

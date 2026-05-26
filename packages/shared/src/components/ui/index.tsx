@@ -15,6 +15,8 @@ export * from "./input-group";
 export * from "./input";
 export * from "./label";
 export * from "./logo";
+export * from "./theme-toggle";
+export * from "./wordmark";
 export * from "./popover";
 export * from "./progress";
 export * from "./scroll-area";

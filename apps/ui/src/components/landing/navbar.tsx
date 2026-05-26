@@ -36,6 +36,8 @@ import { useAppConfig } from "@/lib/config";
 import Logo from "@/lib/icons/Logo";
 import { cn } from "@/lib/utils";
 
+import { Wordmark } from "@llmgateway/shared/components";
+
 import { ThemeToggle } from "./theme-toggle";
 
 import type { ApiModel, ApiProvider } from "@/lib/fetch-models";
@@ -340,14 +342,12 @@ export const Navbar = ({
 						<div className="flex w-full justify-between nav:w-auto">
 							<Link
 								href="/"
-								aria-label="home"
-								className="flex items-center space-x-2"
+								aria-label="Third Culture home"
+								className="flex items-center gap-3"
 								prefetch={true}
 							>
-								<Logo className="h-8 w-8 rounded-full text-black dark:text-white" />
-								<span className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">
-									LLM Gateway
-								</span>
+								<Logo className="h-7 w-auto text-foreground" />
+								<Wordmark className="hidden h-5 w-auto text-foreground sm:block" />
 							</Link>
 
 							<button
@@ -735,7 +735,7 @@ export const Navbar = ({
 									</a>
 								</div>
 
-								<ThemeToggle />
+								<ThemeToggle variant="pill" />
 
 								<Link
 									href="/login"
@@ -747,7 +747,7 @@ export const Navbar = ({
 
 								<Button
 									asChild
-									className="bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-zinc-700 dark:hover:bg-zinc-200 font-medium w-full md:w-fit"
+									className="w-full bg-primary font-bold text-primary-foreground hover:opacity-90 md:w-fit"
 								>
 									<AuthLink href="/signup">Get Started</AuthLink>
 								</Button>

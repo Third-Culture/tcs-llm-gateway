@@ -13,8 +13,8 @@ interface AdminShellProps {
 
 export function AdminShell({ user, children }: AdminShellProps) {
 	return (
-		<div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-500/[0.07] via-background to-background">
-			<header className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur-md">
+		<div className="min-h-screen bg-background">
+			<header className="sticky top-0 z-20 border-b border-border bg-background">
 				<div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
 					<div className="flex items-center gap-4">
 						<Link
@@ -26,7 +26,7 @@ export function AdminShell({ user, children }: AdminShellProps) {
 						</Link>
 						<div className="hidden h-4 w-px bg-border sm:block" />
 						<div className="flex items-center gap-2">
-							<div className="flex size-8 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-500">
+							<div className="flex size-8 items-center justify-center rounded-[var(--tcs-radius-sm)] border border-border bg-muted text-primary">
 								<LineChart className="size-4" />
 							</div>
 							<div>

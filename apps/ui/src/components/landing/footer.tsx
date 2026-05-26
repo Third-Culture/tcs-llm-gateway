@@ -9,6 +9,7 @@ import Logo from "@/lib/icons/Logo";
 import { XIcon } from "@/lib/icons/XIcon";
 
 import { providers as providerDefinitions } from "@llmgateway/models";
+import { Wordmark } from "@llmgateway/shared/components";
 
 export default function Footer() {
 	const config = useAppConfig();
@@ -17,20 +18,17 @@ export default function Footer() {
 	);
 
 	return (
-		<footer className="relative py-12 bg-background">
-			{/* Gradient separator */}
-			<div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+		<footer className="relative bg-background py-12">
+			<div className="absolute inset-x-0 top-0 h-px bg-border" />
 
 			<div className="container mx-auto px-4">
 				<Newsletter />
 
 				<div className="flex flex-col md:flex-row md:justify-between md:items-start">
 					<div className="mb-6 md:mb-0">
-						<div className="flex items-center space-x-2">
-							<Logo className="h-8 w-8 rounded-full text-black dark:text-white" />
-							<span className="font-display text-lg font-bold tracking-tight text-foreground">
-								LLM Gateway
-							</span>
+						<div className="flex items-center gap-3">
+							<Logo className="h-7 w-auto text-foreground" />
+							<Wordmark className="h-4 w-auto text-foreground" />
 						</div>
 						<div className="flex items-center space-x-4 mt-4">
 							<a

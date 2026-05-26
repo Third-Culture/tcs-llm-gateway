@@ -9,6 +9,8 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./styles/tcs-shadcn-theme.css": "./styles/tcs-shadcn-theme.css",
+		"./styles/tokens-brand.css": "./styles/tokens-brand.css",
 		"./gcs": {
 			"types": "./dist/gcs.d.ts",
 			"import": "./dist/gcs.js"
@@ -29,7 +31,8 @@
 	"module": "./dist/index.js",
 	"types": "./dist/index.d.ts",
 	"files": [
-		"dist/"
+		"dist/",
+		"styles/"
 	],
 	"scripts": {
 		"build": "rm -rf dist tsconfig.tsbuildinfo && tsc && resolve-tspaths",
@@ -58,6 +61,7 @@
 		"@radix-ui/react-tabs": "^1.1.13",
 		"@radix-ui/react-tooltip": "^1.2.8",
 		"@radix-ui/react-use-controllable-state": "1.2.2",
+		"@third-culture/brand-pack": "file:../../../tcs-brand-pack",
 		"class-variance-authority": "0.7.1",
 		"clsx": "^2.1.1",
 		"cmdk": "^1.1.1",

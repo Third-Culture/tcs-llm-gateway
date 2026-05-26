@@ -192,7 +192,7 @@ export function Footer() {
 										rel="noopener noreferrer"
 										className="text-sm hover:underline underline-offset-4 hover:text-foreground"
 									>
-										LLM Gateway
+										Third Culture
 									</a>
 								</li>
 							</ul>
@@ -276,7 +276,8 @@ export function Footer() {
 
 				<div className="border-t border-border/50 pt-8 mt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
 					<p className="text-muted-foreground text-sm">
-						&copy; {new Date().getFullYear()} LLM Gateway. All rights reserved.
+						&copy; {new Date().getFullYear()} Third Culture. All rights
+						reserved.
 					</p>
 					<div className="flex items-center gap-6">
 						<a

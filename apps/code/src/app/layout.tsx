@@ -1,5 +1,3 @@
-import { Inter, Geist_Mono } from "next/font/google";
-
 import { Providers } from "@/components/providers";
 import { getConfig } from "@/lib/config-server";
 
@@ -8,30 +6,18 @@ import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-const inter = Inter({
-	variable: "--font-inter",
-	subsets: ["latin"],
-	display: "swap",
-});
-
-const geistMono = Geist_Mono({
-	variable: "--font-mono",
-	subsets: ["latin"],
-	display: "swap",
-});
-
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
 	metadataBase: new URL("https://code.llmgateway.io"),
 	title: {
-		default: "DevPass by LLM Gateway - All-Access Dev Plans for AI Coding",
-		template: "%s | DevPass by LLM Gateway",
+		default: "DevPass by Third Culture — All-Access Dev Plans for AI Coding",
+		template: "%s | DevPass by Third Culture",
 	},
 	description:
 		"One subscription, every coding model. Fixed-price dev plans for Claude Code, Cursor, Cline, and any OpenAI-compatible tool. 200+ models, one API key.",
 	icons: {
-		icon: "/favicon/favicon.ico?v=2",
+		icon: [{ url: "/brand/tc-mark-on-light.svg?v=1", type: "image/svg+xml" }],
 	},
 	alternates: {
 		canonical: "./",
@@ -48,35 +34,34 @@ export const metadata: Metadata = {
 		},
 	},
 	openGraph: {
-		title: "DevPass by LLM Gateway - All-Access Dev Plans for AI Coding",
+		title: "DevPass by Third Culture — All-Access Dev Plans for AI Coding",
 		description:
 			"One subscription, every coding model. Fixed-price dev plans for Claude Code, Cursor, Cline, and any OpenAI-compatible tool.",
 		images: ["/opengraph.png?v=1"],
 		type: "website",
 		url: "https://code.llmgateway.io",
-		siteName: "DevPass by LLM Gateway",
+		siteName: "DevPass by Third Culture",
 		locale: "en_US",
 	},
 	twitter: {
 		card: "summary_large_image",
-		title: "DevPass by LLM Gateway - All-Access Dev Plans for AI Coding",
+		title: "DevPass by Third Culture — All-Access Dev Plans for AI Coding",
 		description:
 			"One subscription, every coding model. Fixed-price dev plans for Claude Code, Cursor, and 200+ models.",
 		images: ["/opengraph.png?v=1"],
-		creator: "@llmgateway",
 	},
 };
 
 const webSiteSchema = {
 	"@context": "https://schema.org",
 	"@type": "WebSite",
-	name: "DevPass by LLM Gateway",
+	name: "DevPass by Third Culture",
 	url: "https://code.llmgateway.io",
 	description:
 		"Fixed-price dev plans for AI-powered coding with Claude Code, Cursor, Cline, and any OpenAI-compatible tool. One subscription, every model.",
 	publisher: {
 		"@type": "Organization",
-		name: "LLM Gateway",
+		name: "Third Culture.",
 		url: "https://llmgateway.io",
 	},
 };
@@ -95,7 +80,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 					}}
 				/>
 			</head>
-			<body className={`${inter.variable} ${geistMono.variable} antialiased`}>
+			<body className="font-sans antialiased">
 				<Providers config={config}>{children}</Providers>
 			</body>
 		</html>

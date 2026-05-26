@@ -1,11 +1,13 @@
 "use client";
 
-import { Code, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useAppConfig } from "@/lib/config";
+
+import { Logo, ThemeToggle } from "@llmgateway/shared/components";
 
 export function Header() {
 	const config = useAppConfig();
@@ -14,18 +16,19 @@ export function Header() {
 	return (
 		<header className="border-b border-border/50">
 			<div className="container mx-auto px-4 py-4 flex items-center justify-between">
-				<Link href="/" className="flex items-center gap-2">
-					<div className="flex h-7 w-7 items-center justify-center rounded-lg bg-foreground text-background">
-						<Code className="h-4 w-4" />
+				<Link href="/" className="flex items-center gap-3">
+					<Logo className="h-6 w-auto text-foreground" />
+					<div className="flex flex-col">
+						<span className="text-lg font-bold leading-none">DevPass</span>
+						<span className="hidden text-xs text-muted-foreground sm:inline">
+							by Third Culture.
+						</span>
 					</div>
-					<span className="font-semibold text-lg">DevPass</span>
-					<span className="hidden sm:inline text-xs text-muted-foreground">
-						by LLM Gateway
-					</span>
 				</Link>
 
 				{/* Desktop nav */}
 				<div className="hidden sm:flex items-center gap-3">
+					<ThemeToggle variant="pill" />
 					<Button variant="ghost" size="sm" asChild>
 						<a
 							href={`${config.uiUrl}/models`}
