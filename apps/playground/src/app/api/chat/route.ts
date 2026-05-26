@@ -813,17 +813,17 @@ export async function POST(req: Request) {
 			sendReasoning: true,
 			sendSources: true,
 			messageMetadata: ({ part }) => {
-				if (part.type !== "finish") {
+				if (part.type !== "finish-step") {
 					return undefined;
 				}
 
-				const finishPart = part as typeof part & {
+				const stepPart = part as typeof part & {
 					providerMetadata?: Parameters<
 						typeof extractGatewayCostFromProviderMetadata
 					>[0];
 				};
 				const stepCost = extractGatewayCostFromProviderMetadata(
-					finishPart.providerMetadata,
+					stepPart.providerMetadata,
 				);
 				if (stepCost !== undefined) {
 					accumulatedCost += stepCost;

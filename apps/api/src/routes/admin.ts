@@ -23,6 +23,7 @@ import {
 	tables,
 	projectHourlyStats,
 	projectHourlyModelStats,
+	apiKeyHourlyStats,
 	modelProviderMappingHistory,
 	modelHistory,
 } from "@llmgateway/db";
@@ -5339,6 +5340,73 @@ admin.openapi(getGlobalCostByModel, async (c) => {
 		totalCost,
 		totalRequests,
 	});
+});
+
+// Global cost by API key (service)
+const costByKeyResponseSchema = z.object({
+	window: tokenWindowSchema,
+	keys: z.array(
+		z.object({
+			apiKeyId: z.string(),
+			description: z.string().nullable(),
+			cost: z.number(),
+			requestCount: z.number(),
+		}),
+	),
+	totalCost: z.number(),
+});
+
+const getGlobalCostByKey = createRoute({
+	method: "get",
+	path: "/metrics/cost-by-key",
+	request: {
+		query: z.object({
+			window: tokenWindowSchema.default("7d").optional(),
+		}),
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: costByKeyResponseSchema.openapi({}),
+				},
+			},
+			description: "Global cost breakdown by API key (service).",
+		},
+	},
+});
+
+admin.openapi(getGlobalCostByKey, async (c) => {
+	const query = c.req.valid("query");
+	const window = query.window ?? "7d";
+	const startDate = getTokenWindowStartDate(window);
+
+	const rows = await db
+		.select({
+			apiKeyId: apiKeyHourlyStats.apiKeyId,
+			description: tables.apiKey.description,
+			cost: sql<number>`COALESCE(SUM(${apiKeyHourlyStats.cost}), 0)`.as("cost"),
+			requestCount:
+				sql<number>`COALESCE(SUM(${apiKeyHourlyStats.requestCount}), 0)`.as(
+					"request_count",
+				),
+		})
+		.from(apiKeyHourlyStats)
+		.leftJoin(tables.apiKey, eq(apiKeyHourlyStats.apiKeyId, tables.apiKey.id))
+		.where(gte(apiKeyHourlyStats.hourTimestamp, startDate))
+		.groupBy(apiKeyHourlyStats.apiKeyId, tables.apiKey.description)
+		.orderBy(desc(sql`cost`));
+
+	const keys = rows.map((r) => ({
+		apiKeyId: r.apiKeyId,
+		description: r.description ?? null,
+		cost: Number(r.cost),
+		requestCount: Number(r.requestCount),
+	}));
+
+	const totalCost = keys.reduce((sum, k) => sum + k.cost, 0);
+
+	return c.json({ window, keys, totalCost });
 });
 
 // Org cost by model
