@@ -9,56 +9,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     gnupg \
     lsb-release \
-    build-essential \
-    curl \
     bash \
     tar \
     xz-utils \
     supervisor \
     tini \
     gosu \
-    dpkg-dev \
-    gcc \
-    g++ \
-    libc6-dev \
-    libssl-dev \
-    make \
-    wget \
     git \
-    cmake \
-    unzip \
+    redis-server \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
     && echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update && apt-get install -y --no-install-recommends \
     postgresql-17 \
     postgresql-contrib-17 \
     postgresql-client-17 \
-    && cd /usr/src \
-    && wget -O redis-stable.tar.gz https://github.com/redis/redis/archive/refs/tags/8.2.1.tar.gz \
-    && tar xf redis-stable.tar.gz \
-    && cd redis-8.2.1 \
-    && export BUILD_TLS=yes \
-    && make -j "$(nproc)" all \
-    && make install \
-    && cd / \
-    && rm -rf /usr/src/redis* \
-    && adduser --system --group --no-create-home redis \
-    && \
-    # Install asdf version manager before cleanup
-    ARCH=$(uname -m) && \
-    if [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi && \
-    if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; fi && \
-    ASDF_VERSION=v0.18.0 && \
-    ASDF_DIR=/root/.asdf && \
-    wget -q https://github.com/asdf-vm/asdf/releases/download/${ASDF_VERSION}/asdf-${ASDF_VERSION}-linux-${ARCH}.tar.gz -O /tmp/asdf.tar.gz && \
-    mkdir -p $ASDF_DIR && \
-    tar -xzf /tmp/asdf.tar.gz -C $ASDF_DIR && \
-    rm /tmp/asdf.tar.gz && \
-    # Clean up after asdf installation
-    apt-get remove -y build-essential wget gnupg lsb-release dpkg-dev gcc g++ libc6-dev libssl-dev make cmake \
-    && apt-get autoremove -y \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ARCH=$(uname -m) \
+    && if [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi \
+    && if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; fi \
+    && ASDF_VERSION=v0.18.0 \
+    && ASDF_DIR=/root/.asdf \
+    && wget -q https://github.com/asdf-vm/asdf/releases/download/${ASDF_VERSION}/asdf-${ASDF_VERSION}-linux-${ARCH}.tar.gz -O /tmp/asdf.tar.gz \
+    && mkdir -p $ASDF_DIR \
+    && tar -xzf /tmp/asdf.tar.gz -C $ASDF_DIR \
+    && rm /tmp/asdf.tar.gz
 
 # Set asdf environment variables
 ENV ASDF_VERSION=v0.18.0
