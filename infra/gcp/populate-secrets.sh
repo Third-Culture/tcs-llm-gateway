@@ -27,6 +27,7 @@ MAPPINGS=(
   "LLM_WANDB_API_KEY|di-accounts|Weights and Biases|credential"
   "LLM_FIREWORKS_API_KEY|TCS Team|Fireworks AI|credential"
   "LLM_PARASAIL_API_KEY|TCS Team|Parasail|credential"
+  "LLM_GOOGLE_AI_STUDIO_API_KEY|di-accounts|Gemini|credential"
   "LLM_GOOGLE_VERTEX_API_KEY|||"
   "LLM_MOONSHOT_API_KEY|TCS Team|Moonshot|credential"
   "LLM_MINIMAX_API_KEY|TCS Team|MiniMax|credential"
