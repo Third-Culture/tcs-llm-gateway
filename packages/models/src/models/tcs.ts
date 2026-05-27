@@ -33,7 +33,7 @@ export const tcsModels = [
 		name: "TCS Cheap",
 		aliases: ["tcs-fast", "tcs-low"],
 		description:
-			"Third Culture cheap tier: near-zero-cost, fast model for bulk classification, extraction, and short summaries. Primary: DeepSeek V4-Flash on W&B Inference (CoreWeave) at $0.01/$0.01 per 1M tokens; fallbacks: Gemini 3.1 Flash Lite on Vertex, MiMo V2 Flash on Canopywave, MiniMax M2.7 Highspeed, Llama 4 Maverick on DeepInfra.",
+			"Third Culture cheap tier: near-zero-cost, fast model for bulk classification, extraction, and short summaries. Primary: DeepSeek V4-Flash on W&B Inference (CoreWeave) at $0.01/$0.01 per 1M tokens; fallbacks: Gemini 3.1 Flash Lite on Google AI Studio, MiMo V2 Flash on Canopywave, MiniMax M2.7 Highspeed, Llama 4 Maverick on DeepInfra.",
 		family: "tcs",
 		releasedAt: new Date("2026-04-22"),
 		providers: [
@@ -54,8 +54,8 @@ export const tcsModels = [
 				stability: "beta",
 			},
 			{
-				providerId: "google-vertex",
-				modelName: "gemini-3.1-flash-lite-preview",
+				providerId: "google-ai-studio",
+				modelName: "gemini-3.1-flash-lite",
 				inputPrice: 0.25 / 1e6,
 				cachedInputPrice: 0.025 / 1e6,
 				outputPrice: 1.5 / 1e6,
@@ -119,7 +119,7 @@ export const tcsModels = [
 		name: "TCS Balanced",
 		aliases: ["tcs-default"],
 		description:
-			"Third Culture balanced tier: the default workhorse for most services. Primary: DeepSeek V4-Flash on W&B Inference — same model as tcs-cheap, but with a deeper fallback chain for reliability. Fallbacks: Gemini 3.1 Flash Lite on Vertex, MiniMax M2.7 on Fireworks/Together/Novita/MiniMax-direct, then Llama 4 Maverick on DeepInfra.",
+			"Third Culture balanced tier: the default workhorse for most services. Primary: DeepSeek V4-Flash on W&B Inference — same model as tcs-cheap, but with a deeper fallback chain for reliability. Fallbacks: Gemini 3.1 Flash Lite on Google AI Studio, MiniMax M2.7 on Fireworks/Together/Novita/MiniMax-direct, then Llama 4 Maverick on DeepInfra.",
 		family: "tcs",
 		releasedAt: new Date("2026-04-22"),
 		providers: [
@@ -140,8 +140,8 @@ export const tcsModels = [
 				stability: "beta",
 			},
 			{
-				providerId: "google-vertex",
-				modelName: "gemini-3.1-flash-lite-preview",
+				providerId: "google-ai-studio",
+				modelName: "gemini-3.1-flash-lite",
 				inputPrice: 0.25 / 1e6,
 				cachedInputPrice: 0.025 / 1e6,
 				outputPrice: 1.5 / 1e6,

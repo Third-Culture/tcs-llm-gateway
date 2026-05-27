@@ -736,6 +736,33 @@ export const googleModels = [
 		],
 	},
 	{
+		id: "gemini-3.1-flash-lite",
+		name: "Gemini 3.1 Flash Lite",
+		description:
+			"Generally available ultra-lightweight Gemini 3.1 Flash Lite for high-volume, cost-sensitive tasks.",
+		family: "google",
+		releasedAt: new Date("2026-05-07"),
+		providers: [
+			{
+				providerId: "google-ai-studio",
+				modelName: "gemini-3.1-flash-lite",
+				inputPrice: 0.25 / 1e6,
+				outputPrice: 1.5 / 1e6,
+				cachedInputPrice: 0.025 / 1e6,
+				requestPrice: 0,
+				contextSize: 1048576,
+				maxOutput: 65536,
+				streaming: true,
+				vision: true,
+				reasoning: true,
+				reasoningMaxTokens: true,
+				tools: true,
+				jsonOutput: true,
+				jsonOutputSchema: true,
+			},
+		],
+	},
+	{
 		id: "gemini-3.1-flash-lite-preview",
 		name: "Gemini 3.1 Flash Lite (Preview)",
 		description:
