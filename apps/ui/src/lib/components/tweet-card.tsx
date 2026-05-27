@@ -234,6 +234,48 @@ export const TweetMedia = ({ tweet }: { tweet: EnrichedTweet }) => {
 	);
 };
 
+const normalizeTweetEntities = (tweet: Tweet): Tweet => {
+	const entities = tweet.entities as Tweet["entities"] | undefined;
+	const normalizedEntities: Tweet["entities"] = {
+		hashtags: Array.isArray(entities?.hashtags) ? entities.hashtags : [],
+		urls: Array.isArray(entities?.urls) ? entities.urls : [],
+		user_mentions: Array.isArray(entities?.user_mentions)
+			? entities.user_mentions
+			: [],
+		symbols: Array.isArray(entities?.symbols) ? entities.symbols : [],
+		...(Array.isArray(entities?.media) ? { media: entities.media } : {}),
+	};
+
+	return {
+		...tweet,
+		entities: normalizedEntities,
+		quoted_tweet: tweet.quoted_tweet
+			? {
+					...tweet.quoted_tweet,
+					entities: {
+						hashtags: Array.isArray(tweet.quoted_tweet.entities?.hashtags)
+							? tweet.quoted_tweet.entities.hashtags
+							: [],
+						urls: Array.isArray(tweet.quoted_tweet.entities?.urls)
+							? tweet.quoted_tweet.entities.urls
+							: [],
+						user_mentions: Array.isArray(
+							tweet.quoted_tweet.entities?.user_mentions,
+						)
+							? tweet.quoted_tweet.entities.user_mentions
+							: [],
+						symbols: Array.isArray(tweet.quoted_tweet.entities?.symbols)
+							? tweet.quoted_tweet.entities.symbols
+							: [],
+						...(Array.isArray(tweet.quoted_tweet.entities?.media)
+							? { media: tweet.quoted_tweet.entities.media }
+							: {}),
+					},
+				}
+			: undefined,
+	};
+};
+
 export const MagicTweet = ({
 	tweet,
 	className,
@@ -243,7 +285,8 @@ export const MagicTweet = ({
 	components?: TwitterComponents;
 	className?: string;
 }) => {
-	const enrichedTweet = enrichTweet(tweet);
+	const normalizedTweet = normalizeTweetEntities(tweet);
+	const enrichedTweet = enrichTweet(normalizedTweet);
 	return (
 		<div
 			className={cn(
