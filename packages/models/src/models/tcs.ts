@@ -10,13 +10,13 @@ import type { ModelDefinition } from "@/models.js";
  *
  * Tier philosophy (revise by editing this file; see whatllm.org/explore):
  *   tcs-cheap       -> bulk classification/extraction at near-zero cost
- *                      (DeepSeek V4-Flash on W&B at $0.01/$0.01 per 1M)
+ *                      (DeepSeek V4-Flash primary, Gemini Flash Lite fallback)
  *   tcs-balanced    -> default workhorse for most TCS services
- *                      (DeepSeek V4-Flash primary, MiniMax M2.7 fallback for
- *                      capability headroom)
+ *                      (DeepSeek V4-Flash primary, Gemini Flash Lite + MiniMax
+ *                      M2.7 fallbacks for capability headroom)
  *   tcs-reasoning   -> deeper thinking for complex multi-step tasks
- *                      (Kimi K2.6 primary, Qwen3 235B Thinking + W&B Kimi
- *                      fallbacks)
+ *                      (Kimi K2.6 primary, DeepInfra Kimi + Qwen3 235B
+ *                      Thinking fallbacks)
  *   tcs-premium     -> highest quality, large context, world knowledge
  *                      (Gemini 3.1 Pro Preview on Vertex)
  *   tcs-vision      -> image understanding (receipts, screenshots, diagrams)
@@ -33,7 +33,7 @@ export const tcsModels = [
 		name: "TCS Cheap",
 		aliases: ["tcs-fast", "tcs-low"],
 		description:
-			"Third Culture cheap tier: near-zero-cost, fast model for bulk classification, extraction, and short summaries. Primary: DeepSeek V4-Flash on W&B Inference (CoreWeave) at $0.01/$0.01 per 1M tokens; fallbacks: MiMo V2 Flash on Canopywave, MiniMax M2.7 Highspeed, Llama 4 Maverick on DeepInfra.",
+			"Third Culture cheap tier: near-zero-cost, fast model for bulk classification, extraction, and short summaries. Primary: DeepSeek V4-Flash on W&B Inference (CoreWeave) at $0.01/$0.01 per 1M tokens; fallbacks: Gemini 3.1 Flash Lite on Vertex, MiMo V2 Flash on Canopywave, MiniMax M2.7 Highspeed, Llama 4 Maverick on DeepInfra.",
 		family: "tcs",
 		releasedAt: new Date("2026-04-22"),
 		providers: [
@@ -48,6 +48,22 @@ export const tcsModels = [
 				streaming: true,
 				reasoning: true,
 				vision: false,
+				tools: true,
+				jsonOutput: true,
+				jsonOutputSchema: true,
+				stability: "beta",
+			},
+			{
+				providerId: "google-vertex",
+				modelName: "gemini-3.1-flash-lite-preview",
+				inputPrice: 0.25 / 1e6,
+				cachedInputPrice: 0.025 / 1e6,
+				outputPrice: 1.5 / 1e6,
+				requestPrice: 0,
+				contextSize: 1048576,
+				maxOutput: 65536,
+				streaming: true,
+				vision: true,
 				tools: true,
 				jsonOutput: true,
 				jsonOutputSchema: true,
@@ -103,7 +119,7 @@ export const tcsModels = [
 		name: "TCS Balanced",
 		aliases: ["tcs-default"],
 		description:
-			"Third Culture balanced tier: the default workhorse for most services. Primary: DeepSeek V4-Flash on W&B Inference — same model as tcs-cheap, but with a deeper fallback chain for reliability. Fallbacks: MiniMax M2.7 on Fireworks/Together/Novita/MiniMax-direct.",
+			"Third Culture balanced tier: the default workhorse for most services. Primary: DeepSeek V4-Flash on W&B Inference — same model as tcs-cheap, but with a deeper fallback chain for reliability. Fallbacks: Gemini 3.1 Flash Lite on Vertex, MiniMax M2.7 on Fireworks/Together/Novita/MiniMax-direct, then Llama 4 Maverick on DeepInfra.",
 		family: "tcs",
 		releasedAt: new Date("2026-04-22"),
 		providers: [
@@ -118,6 +134,22 @@ export const tcsModels = [
 				streaming: true,
 				reasoning: true,
 				vision: false,
+				tools: true,
+				jsonOutput: true,
+				jsonOutputSchema: true,
+				stability: "beta",
+			},
+			{
+				providerId: "google-vertex",
+				modelName: "gemini-3.1-flash-lite-preview",
+				inputPrice: 0.25 / 1e6,
+				cachedInputPrice: 0.025 / 1e6,
+				outputPrice: 1.5 / 1e6,
+				requestPrice: 0,
+				contextSize: 1048576,
+				maxOutput: 65536,
+				streaming: true,
+				vision: true,
 				tools: true,
 				jsonOutput: true,
 				jsonOutputSchema: true,
@@ -187,6 +219,20 @@ export const tcsModels = [
 				tools: false,
 				jsonOutput: false,
 			},
+			{
+				providerId: "deepinfra",
+				modelName: "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+				inputPrice: 0.2 / 1e6,
+				cachedInputPrice: 0.04 / 1e6,
+				outputPrice: 0.6 / 1e6,
+				requestPrice: 0,
+				contextSize: 1048576,
+				maxOutput: 8192,
+				streaming: true,
+				vision: true,
+				tools: true,
+				jsonOutput: true,
+			},
 		],
 	},
 	{
@@ -194,7 +240,7 @@ export const tcsModels = [
 		name: "TCS Reasoning",
 		aliases: ["tcs-thinking"],
 		description:
-			"Third Culture reasoning tier: extended thinking for multi-step agent tasks, evidence verification, and long-form analysis. Primary: Kimi K2.6 on Parasail; fallbacks: Moonshot direct, W&B Kimi K2.6, Qwen3 235B Thinking on W&B (cheap), Canopywave, Novita.",
+			"Third Culture reasoning tier: extended thinking for multi-step agent tasks, evidence verification, and long-form analysis. Primary: Kimi K2.6 on Parasail; fallbacks: Kimi K2.6 on DeepInfra/Moonshot/W&B, Qwen3 235B Thinking on W&B (cheap), Canopywave, Novita.",
 		family: "tcs",
 		releasedAt: new Date("2026-04-22"),
 		providers: [
@@ -213,6 +259,22 @@ export const tcsModels = [
 				tools: true,
 				jsonOutput: true,
 				stability: "beta",
+			},
+			{
+				providerId: "deepinfra",
+				modelName: "moonshotai/Kimi-K2.6",
+				inputPrice: 0.75 / 1e6,
+				cachedInputPrice: 0.15 / 1e6,
+				outputPrice: 3.5 / 1e6,
+				requestPrice: 0,
+				contextSize: 262144,
+				maxOutput: 16384,
+				streaming: true,
+				reasoning: true,
+				vision: true,
+				tools: true,
+				jsonOutput: true,
+				jsonOutputSchema: true,
 			},
 			{
 				providerId: "moonshot",
@@ -296,7 +358,7 @@ export const tcsModels = [
 		name: "TCS Premium",
 		aliases: ["tcs-best"],
 		description:
-			"Third Culture premium tier: highest quality with 1M context. Primary: Gemini 3.1 Pro Preview on Google Vertex (runs in our own GCP project); fallbacks: Kimi K2.6 on Moonshot, GLM 5.1 on W&B.",
+			"Third Culture premium tier: highest quality with 1M context. Primary: Gemini 3.1 Pro Preview on Google Vertex (runs in our own GCP project); fallbacks: Kimi K2.6 on Moonshot/DeepInfra, GLM 5.1 on W&B.",
 		family: "tcs",
 		releasedAt: new Date("2026-04-22"),
 		providers: [
@@ -350,6 +412,22 @@ export const tcsModels = [
 				vision: true,
 				tools: true,
 				jsonOutput: true,
+			},
+			{
+				providerId: "deepinfra",
+				modelName: "moonshotai/Kimi-K2.6",
+				inputPrice: 0.75 / 1e6,
+				cachedInputPrice: 0.15 / 1e6,
+				outputPrice: 3.5 / 1e6,
+				requestPrice: 0,
+				contextSize: 262144,
+				maxOutput: 16384,
+				streaming: true,
+				reasoning: true,
+				vision: true,
+				tools: true,
+				jsonOutput: true,
+				jsonOutputSchema: true,
 			},
 			{
 				providerId: "wandb",

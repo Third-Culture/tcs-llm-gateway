@@ -57,4 +57,31 @@ export const deepinfraModels = [
 			},
 		],
 	},
+	{
+		id: "deepinfra-kimi-k2.6",
+		name: "Kimi K2.6 (DeepInfra)",
+		aliases: ["kimi-k2.6-deepinfra"],
+		description:
+			"Moonshot AI Kimi K2.6 served on DeepInfra. Native multimodal, agentic, and tool-capable, with cached-token pricing that makes it a strong production fallback for reasoning workloads.",
+		family: "moonshot",
+		releasedAt: new Date("2026-04-20"),
+		providers: [
+			{
+				providerId: "deepinfra",
+				modelName: "moonshotai/Kimi-K2.6",
+				inputPrice: 0.75 / 1e6,
+				cachedInputPrice: 0.15 / 1e6,
+				outputPrice: 3.5 / 1e6,
+				requestPrice: 0,
+				contextSize: 262144,
+				maxOutput: 16384,
+				streaming: true,
+				reasoning: true,
+				vision: true,
+				tools: true,
+				jsonOutput: true,
+				jsonOutputSchema: true,
+			},
+		],
+	},
 ] as const satisfies ModelDefinition[];
