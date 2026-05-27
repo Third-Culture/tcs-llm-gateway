@@ -6,6 +6,8 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Switch } from "@/components/ui/switch";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
+import { Logo, Wordmark } from "@llmgateway/shared/components";
+
 import type { McpServer } from "@/hooks/useMcpServers";
 import type { ApiModel, ApiProvider } from "@/lib/fetch-models";
 
@@ -43,9 +45,13 @@ export const ChatHeader = ({
 	onToggleMcpServer,
 }: ChatHeaderProps) => {
 	return (
-		<header className="bg-background flex items-center border-b p-4">
+		<header className="bg-background flex items-center border-b px-4 py-3">
 			<div className="flex min-w-0 flex-1 items-center gap-3">
 				<SidebarTrigger />
+				<div className="flex shrink-0 items-center gap-2 md:hidden">
+					<Logo className="h-5 w-auto text-foreground" />
+					<Wordmark className="h-3.5 w-auto text-foreground" />
+				</div>
 				{showGlobalModelSelector ? (
 					<div className="flex w-full min-w-0 max-w-[360px] items-center gap-2 sm:max-w-[420px]">
 						<ModelSelector
@@ -81,19 +87,7 @@ export const ChatHeader = ({
 						onCheckedChange={onComparisonEnabledChange}
 					/>
 				</div>
-				<ThemeToggle />
-				<a
-					href={
-						process.env.NODE_ENV === "development"
-							? "http://localhost:3002/dashboard"
-							: "https://llmgateway.io/dashboard"
-					}
-					target="_blank"
-					rel="noopener noreferrer"
-					className="hidden sm:inline"
-				>
-					<span className="text-nowrap">Dashboard</span>
-				</a>
+				<ThemeToggle variant="pill" className="hidden sm:inline-flex" />
 			</div>
 		</header>
 	);

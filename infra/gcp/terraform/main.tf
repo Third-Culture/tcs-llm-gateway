@@ -402,8 +402,11 @@ resource "google_cloud_run_v2_service" "ui" {
     containers {
       image = "${local.image_base}:${var.image_tag}"
 
+      # llm.thirdculture.systems is the TCS chat surface. The unified image
+      # also runs the dashboard UI on 3002, but this service intentionally
+      # serves the playground chat app on 3003.
       ports {
-        container_port = 3002
+        container_port = 3003
       }
 
       resources {

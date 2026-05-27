@@ -339,12 +339,12 @@ export function ChatSidebar({
 					<div className="flex flex-col items-center gap-4 mb-4">
 						<Link
 							href="/"
-							className="flex self-start items-center gap-2 my-2"
+							className="flex self-start items-center gap-3 my-2"
 							prefetch={true}
 						>
-							<Logo className="h-6 w-auto text-foreground" />
-							<Wordmark className="h-4 w-auto text-foreground" />
-							<Badge>Chat</Badge>
+							<Logo className="h-7 w-auto text-foreground" />
+							<Wordmark className="h-5 w-auto text-foreground" />
+							<Badge className="rounded-[var(--tcs-radius-sm)]">Chat</Badge>
 						</Link>
 						<div className="w-full rounded-md border p-4 text-sm">
 							<div className="font-medium mb-2">Sign in required</div>
@@ -385,7 +385,7 @@ export function ChatSidebar({
 								<div className="flex aspect-square size-8 items-center justify-center">
 									<Logo className="size-6 text-foreground" />
 								</div>
-								<Wordmark className="h-4 w-auto text-foreground" />
+								<Wordmark className="h-5 w-auto text-foreground" />
 							</Link>
 						</SidebarMenuButton>
 					</SidebarMenuItem>
