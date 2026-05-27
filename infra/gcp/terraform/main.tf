@@ -168,6 +168,7 @@ locals {
     GATEWAY_API_KEY_HASH_SECRET  = "GATEWAY_API_KEY_HASH_SECRET"
     LLM_FIREWORKS_API_KEY        = "LLM_FIREWORKS_API_KEY"
     LLM_PARASAIL_API_KEY         = "LLM_PARASAIL_API_KEY"
+    LLM_GOOGLE_AI_STUDIO_API_KEY = "LLM_GOOGLE_AI_STUDIO_API_KEY"
     LLM_DEEPINFRA_API_KEY        = "LLM_DEEPINFRA_API_KEY"
     LLM_WANDB_API_KEY            = "LLM_WANDB_API_KEY"
     LLM_GOOGLE_VERTEX_API_KEY    = "LLM_GOOGLE_VERTEX_API_KEY"
@@ -402,11 +403,8 @@ resource "google_cloud_run_v2_service" "ui" {
     containers {
       image = "${local.image_base}:${var.image_tag}"
 
-      # llm.thirdculture.systems is the TCS chat surface. The unified image
-      # also runs the dashboard UI on 3002, but this service intentionally
-      # serves the playground chat app on 3003.
       ports {
-        container_port = 3003
+        container_port = 3002
       }
 
       resources {

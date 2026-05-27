@@ -105,12 +105,12 @@ jobs:
           gcloud run deploy llmgateway-ui \
             --region=${{ env.GCP_REGION }} \
             --image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }} \
-            --port=3003 \
+            --port=3002 \
             --quiet
 
       - name: Summary
         run: |
           echo "### tcs-llm-gateway rollout" >> "$GITHUB_STEP_SUMMARY"
           echo "- image: \`${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- services: llmgateway-gateway, llmgateway-api, llmgateway-ui (playground on port 3003)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- services: llmgateway-gateway, llmgateway-api, llmgateway-ui" >> "$GITHUB_STEP_SUMMARY"
           echo "- region: ${{ env.GCP_REGION }}" >> "$GITHUB_STEP_SUMMARY"
