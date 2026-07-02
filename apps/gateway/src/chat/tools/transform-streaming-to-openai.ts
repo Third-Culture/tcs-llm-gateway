@@ -1218,6 +1218,10 @@ export function transformStreamingToOpenai(
 		case "canopywave":
 		case "inference.net":
 		case "together-ai":
+		case "fireworks":
+		case "parasail":
+		case "deepinfra":
+		case "wandb":
 		case "custom":
 		case "nanogpt":
 		case "bytedance":

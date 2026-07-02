@@ -111,7 +111,7 @@ export function getUnifiedFinishReason(
 			}
 			break;
 		default: // OpenAI format (also used by inference.net and other providers)
-			if (finishReason === "stop") {
+			if (finishReason === "stop" || finishReason === "end_turn") {
 				return UnifiedFinishReason.COMPLETED;
 			}
 			if (finishReason === "length" || finishReason === "incomplete") {
@@ -120,7 +120,7 @@ export function getUnifiedFinishReason(
 			if (finishReason === "content_filter") {
 				return UnifiedFinishReason.CONTENT_FILTER;
 			}
-			if (finishReason === "tool_calls") {
+			if (finishReason === "tool_calls" || finishReason === "tool_use") {
 				return UnifiedFinishReason.TOOL_CALLS;
 			}
 			break;

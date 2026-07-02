@@ -82,6 +82,15 @@ export function mapFinishReasonToOpenai(
 			if (!finishReason) {
 				return hasToolCalls ? "tool_calls" : "stop";
 			}
+			if (finishReason === "end_turn" || finishReason === "stop_sequence") {
+				return "stop";
+			}
+			if (finishReason === "tool_use") {
+				return "tool_calls";
+			}
+			if (finishReason === "max_tokens") {
+				return "length";
+			}
 			return finishReason;
 	}
 }

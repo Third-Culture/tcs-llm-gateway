@@ -200,4 +200,92 @@ describe("transformStreamingToOpenai", () => {
 		expect(result).toBeNull();
 		expect(warn).not.toHaveBeenCalled();
 	});
+
+	it.each(["wandb", "deepinfra", "fireworks", "parasail"] as const)(
+		"remaps end_turn to stop for %s provider",
+		(provider) => {
+			warn.mockClear();
+
+			const result = transformStreamingToOpenai(
+				provider as any,
+				"test-model",
+				{
+					id: "chatcmpl-123",
+					object: "chat.completion.chunk",
+					created: 1234567890,
+					model: "test-model",
+					choices: [
+						{
+							index: 0,
+							delta: {},
+							finish_reason: "end_turn",
+						},
+					],
+				},
+				[],
+			);
+
+			expect(result).not.toBeNull();
+			expect(result.choices[0].finish_reason).toBe("stop");
+			expect(warn).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each(["wandb", "deepinfra", "fireworks", "parasail"] as const)(
+		"remaps tool_use to tool_calls for %s provider",
+		(provider) => {
+			warn.mockClear();
+
+			const result = transformStreamingToOpenai(
+				provider as any,
+				"test-model",
+				{
+					id: "chatcmpl-123",
+					object: "chat.completion.chunk",
+					created: 1234567890,
+					model: "test-model",
+					choices: [
+						{
+							index: 0,
+							delta: {},
+							finish_reason: "tool_use",
+						},
+					],
+				},
+				[],
+			);
+
+			expect(result).not.toBeNull();
+			expect(result.choices[0].finish_reason).toBe("tool_calls");
+			expect(warn).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each(["wandb", "deepinfra", "fireworks", "parasail"] as const)(
+		"does not warn for %s provider (known OpenAI-compatible)",
+		(provider) => {
+			warn.mockClear();
+
+			transformStreamingToOpenai(
+				provider as any,
+				"test-model",
+				{
+					id: "chatcmpl-123",
+					object: "chat.completion.chunk",
+					created: 1234567890,
+					model: "test-model",
+					choices: [
+						{
+							index: 0,
+							delta: { content: "Hello" },
+							finish_reason: null,
+						},
+					],
+				},
+				[],
+			);
+
+			expect(warn).not.toHaveBeenCalled();
+		},
+	);
 });

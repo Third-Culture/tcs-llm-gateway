@@ -106,6 +106,31 @@ describe("getUnifiedFinishReason", () => {
 		);
 	});
 
+	it("maps end_turn and tool_use for OpenAI-compatible providers", () => {
+		const providers = [
+			"wandb",
+			"deepinfra",
+			"fireworks",
+			"parasail",
+			"together-ai",
+			"nebius",
+		];
+		for (const provider of providers) {
+			expect(getUnifiedFinishReason("end_turn", provider)).toBe(
+				UnifiedFinishReason.COMPLETED,
+			);
+			expect(getUnifiedFinishReason("tool_use", provider)).toBe(
+				UnifiedFinishReason.TOOL_CALLS,
+			);
+			expect(getUnifiedFinishReason("stop", provider)).toBe(
+				UnifiedFinishReason.COMPLETED,
+			);
+			expect(getUnifiedFinishReason("tool_calls", provider)).toBe(
+				UnifiedFinishReason.TOOL_CALLS,
+			);
+		}
+	});
+
 	it("handles special cases", () => {
 		expect(getUnifiedFinishReason("canceled", "any-provider")).toBe(
 			UnifiedFinishReason.CANCELED,

@@ -574,6 +574,82 @@ export const providers = [
 		website: "https://www.embercloud.ai",
 		announcement: null,
 	},
+	{
+		id: "fireworks",
+		name: "Fireworks AI",
+		description:
+			"Fireworks AI provides fast inference for open-source models via an OpenAI-compatible API.",
+		env: {
+			required: {
+				apiKey: "LLM_FIREWORKS_API_KEY",
+			},
+			optional: {
+				baseUrl: "LLM_FIREWORKS_BASE_URL",
+			},
+		},
+		streaming: true,
+		cancellation: true,
+		color: "#FF4500",
+		website: "https://fireworks.ai",
+		announcement: null,
+	},
+	{
+		id: "parasail",
+		name: "Parasail",
+		description:
+			"Parasail provides GPU inference for open-source models via an OpenAI-compatible API.",
+		env: {
+			required: {
+				apiKey: "LLM_PARASAIL_API_KEY",
+			},
+			optional: {
+				baseUrl: "LLM_PARASAIL_BASE_URL",
+			},
+		},
+		streaming: true,
+		cancellation: true,
+		color: "#0088CC",
+		website: "https://parasail.io",
+		announcement: null,
+	},
+	{
+		id: "deepinfra",
+		name: "DeepInfra",
+		description:
+			"DeepInfra provides serverless inference for open-source models via an OpenAI-compatible API.",
+		env: {
+			required: {
+				apiKey: "LLM_DEEPINFRA_API_KEY",
+			},
+			optional: {
+				baseUrl: "LLM_DEEPINFRA_BASE_URL",
+			},
+		},
+		streaming: true,
+		cancellation: true,
+		color: "#6366F1",
+		website: "https://deepinfra.com",
+		announcement: null,
+	},
+	{
+		id: "wandb",
+		name: "W&B Inference",
+		description:
+			"Weights & Biases Inference provides fast model serving via an OpenAI-compatible API on CoreWeave infrastructure.",
+		env: {
+			required: {
+				apiKey: "LLM_WANDB_API_KEY",
+			},
+			optional: {
+				baseUrl: "LLM_WANDB_BASE_URL",
+			},
+		},
+		streaming: true,
+		cancellation: true,
+		color: "#FFBE00",
+		website: "https://wandb.ai",
+		announcement: null,
+	},
 ] as const satisfies ProviderDefinition[];
 
 export type ProviderId = (typeof providers)[number]["id"];
