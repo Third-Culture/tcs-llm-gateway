@@ -5,8 +5,10 @@ import { logger } from "@llmgateway/logger";
 import {
 	models as modelsList,
 	providers,
+	hasProviderEnvironmentToken,
 	type ProviderModelMapping,
 	type ModelDefinition,
+	type Provider,
 } from "@llmgateway/models";
 
 import type { ServerTypes } from "@/vars.js";
@@ -120,6 +122,11 @@ modelsApi.openapi(listModels, async (c) => {
 		const includeDeactivated = query.include_deactivated || false;
 		const excludeDeprecated = query.exclude_deprecated || false;
 		const currentDate = new Date();
+		// When enabled, hides models/provider mappings for providers without a configured
+		// pooled API key. Intended for self-hosted deployments that only run a subset of
+		// providers rather than the full multi-provider catalog.
+		const onlyListConfiguredProviders =
+			process.env.TCS_ONLY_LIST_CONFIGURED_MODELS === "true";
 
 		// Filter models based on deactivation and deprecation status of their provider mappings
 		const filteredModels = modelsList.filter((model: ModelDefinition) => {
@@ -147,10 +154,27 @@ modelsApi.openapi(listModels, async (c) => {
 				return false;
 			}
 
+			// Filter out models with no provider backed by a configured pooled key
+			if (
+				onlyListConfiguredProviders &&
+				!model.providers.some((provider) =>
+					hasProviderEnvironmentToken(provider.providerId as Provider),
+				)
+			) {
+				return false;
+			}
+
 			return true;
 		});
 
 		const modelData = filteredModels.map((model: ModelDefinition) => {
+			// Only expose provider mappings that are actually usable in this deployment
+			const modelProviders = onlyListConfiguredProviders
+				? model.providers.filter((provider) =>
+						hasProviderEnvironmentToken(provider.providerId as Provider),
+					)
+				: model.providers;
+			model = { ...model, providers: modelProviders };
 			// Determine input modalities (if model supports images)
 			const inputModalities: ("text" | "image" | "video")[] = ["text"];
 

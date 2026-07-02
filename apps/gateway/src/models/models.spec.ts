@@ -1,8 +1,74 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
 import { app } from "@/app.js";
 
+import { hasProviderEnvironmentToken } from "@llmgateway/models";
+
 describe("Models API", () => {
+	afterEach(() => {
+		delete process.env.TCS_ONLY_LIST_CONFIGURED_MODELS;
+	});
+
+	test("GET /v1/models with TCS_ONLY_LIST_CONFIGURED_MODELS=true only lists models with a configured provider", async () => {
+		const originalOpenAiKey = process.env.LLM_OPENAI_API_KEY;
+		const originalAzureKey = process.env.LLM_AZURE_API_KEY;
+		const originalWandbKey = process.env.LLM_WANDB_API_KEY;
+		delete process.env.LLM_OPENAI_API_KEY;
+		delete process.env.LLM_AZURE_API_KEY;
+		process.env.LLM_WANDB_API_KEY = "test-wandb-key";
+		process.env.TCS_ONLY_LIST_CONFIGURED_MODELS = "true";
+
+		try {
+			const res = await app.request("/v1/models?include_deactivated=true");
+			expect(res.status).toBe(200);
+
+			const json = await res.json();
+			expect(json.data.length).toBeGreaterThan(0);
+
+			// gpt-4o-mini is only backed by openai/azure, neither of which has a
+			// configured env key here, so it must be hidden entirely.
+			const gpt4oMini = json.data.find(
+				(model: any) => model.id === "gpt-4o-mini",
+			);
+			expect(gpt4oMini).toBeUndefined();
+
+			// A model backed by wandb (which does have a configured key) must remain.
+			const wandbModel = json.data.find(
+				(model: any) => model.id === "wandb-deepseek-v4-flash",
+			);
+			expect(wandbModel).toBeDefined();
+			expect(
+				wandbModel.providers.every(
+					(provider: any) => provider.providerId === "wandb",
+				),
+			).toBe(true);
+
+			// Every remaining provider mapping across every model must be backed
+			// by a configured env key.
+			for (const model of json.data) {
+				for (const provider of model.providers) {
+					expect(hasProviderEnvironmentToken(provider.providerId)).toBe(true);
+				}
+			}
+		} finally {
+			if (originalOpenAiKey === undefined) {
+				delete process.env.LLM_OPENAI_API_KEY;
+			} else {
+				process.env.LLM_OPENAI_API_KEY = originalOpenAiKey;
+			}
+			if (originalAzureKey === undefined) {
+				delete process.env.LLM_AZURE_API_KEY;
+			} else {
+				process.env.LLM_AZURE_API_KEY = originalAzureKey;
+			}
+			if (originalWandbKey === undefined) {
+				delete process.env.LLM_WANDB_API_KEY;
+			} else {
+				process.env.LLM_WANDB_API_KEY = originalWandbKey;
+			}
+		}
+	});
+
 	test("GET /v1/models should return a list of models", async () => {
 		const res = await app.request("/v1/models");
 

@@ -11,8 +11,10 @@ import { parseApiToken } from "@/lib/extract-api-token.js";
 import { logger } from "@llmgateway/logger";
 import {
 	models as modelsList,
+	hasProviderEnvironmentToken,
 	type ModelDefinition,
 	type ProviderModelMapping,
+	type Provider,
 } from "@llmgateway/models";
 
 import type { ServerTypes } from "@/vars.js";
@@ -262,6 +264,15 @@ function createMcpServer(apiKey: string): McpServer {
 						return false;
 					}
 
+					if (
+						process.env.TCS_ONLY_LIST_CONFIGURED_MODELS === "true" &&
+						!model.providers.some((provider) =>
+							hasProviderEnvironmentToken(provider.providerId as Provider),
+						)
+					) {
+						return false;
+					}
+
 					return true;
 				});
 
@@ -278,7 +289,14 @@ function createMcpServer(apiKey: string): McpServer {
 
 				// Format models for display
 				const modelData = filteredModels.map((model: ModelDefinition) => {
-					const firstProviderWithPricing = model.providers.find(
+					const modelProviders =
+						process.env.TCS_ONLY_LIST_CONFIGURED_MODELS === "true"
+							? model.providers.filter((provider) =>
+									hasProviderEnvironmentToken(provider.providerId as Provider),
+								)
+							: model.providers;
+
+					const firstProviderWithPricing = modelProviders.find(
 						(p: ProviderModelMapping) =>
 							p.inputPrice !== undefined || p.outputPrice !== undefined,
 					);
@@ -289,16 +307,16 @@ function createMcpServer(apiKey: string): McpServer {
 						firstProviderWithPricing?.outputPrice?.toString() ?? "0";
 
 					// Check capabilities
-					const hasVision = model.providers.some((p) => p.vision);
-					const hasTools = model.providers.some((p) => p.tools);
-					const hasReasoning = model.providers.some((p) => p.reasoning);
-					const hasStreaming = model.providers.some((p) => p.streaming);
-					const hasImageGeneration = model.providers.some(
+					const hasVision = modelProviders.some((p) => p.vision);
+					const hasTools = modelProviders.some((p) => p.tools);
+					const hasReasoning = modelProviders.some((p) => p.reasoning);
+					const hasStreaming = modelProviders.some((p) => p.streaming);
+					const hasImageGeneration = modelProviders.some(
 						(p) => (p as ProviderModelMapping).imageGenerations,
 					);
 
 					const providerIds = [
-						...new Set(model.providers.map((p) => p.providerId)),
+						...new Set(modelProviders.map((p) => p.providerId)),
 					];
 
 					return {
@@ -318,7 +336,7 @@ function createMcpServer(apiKey: string): McpServer {
 							output: `$${outputPrice}/1M tokens`,
 						},
 						context_length:
-							Math.max(...model.providers.map((p) => p.contextSize ?? 0)) ??
+							Math.max(...modelProviders.map((p) => p.contextSize ?? 0)) ??
 							undefined,
 						free: model.free ?? false,
 					};

@@ -16,7 +16,9 @@ import {
 } from "@llmgateway/db";
 import {
 	models as modelDefinitions,
+	hasProviderEnvironmentToken,
 	type ProviderModelMapping,
+	type Provider,
 } from "@llmgateway/models";
 
 import type { ServerTypes } from "@/vars.js";
@@ -119,6 +121,11 @@ const getModelsRoute = createRoute({
 
 internalModels.openapi(getModelsRoute, async (c) => {
 	const now = new Date();
+	// When enabled, hides models/provider mappings for providers without a configured
+	// pooled API key. Intended for self-hosted deployments that only run a subset of
+	// providers rather than the full multi-provider catalog.
+	const onlyListConfiguredProviders =
+		process.env.TCS_ONLY_LIST_CONFIGURED_MODELS === "true";
 
 	const [models, globalDiscounts] = await Promise.all([
 		db.query.model.findMany({
@@ -197,49 +204,59 @@ internalModels.openapi(getModelsRoute, async (c) => {
 	};
 
 	// Transform and apply effective discount
-	const transformedModels = models.map((model) => ({
-		...model,
-		mappings: model.modelProviderMappings.map((mapping) => {
-			const sharedMapping: ProviderModelMapping | null =
-				modelDefinitions
-					.find((modelDefinition) => modelDefinition.id === model.id)
-					?.providers.find(
-						(provider) => provider.providerId === mapping.providerId,
-					) ?? null;
-			const globalDiscount = getGlobalDiscount(
-				mapping.providerId,
-				model.id,
-				mapping.modelName,
-			);
-			// Global discount takes precedence over hardcoded mapping discount
-			const effectiveDiscount = globalDiscount ?? mapping.discount;
-			return {
-				...mapping,
-				discount: effectiveDiscount,
-				imageOutputPrice:
-					sharedMapping?.imageOutputPrice !== undefined
-						? String(sharedMapping.imageOutputPrice)
+	const transformedModels = models
+		.map((model) => ({
+			...model,
+			modelProviderMappings: onlyListConfiguredProviders
+				? model.modelProviderMappings.filter((mapping) =>
+						hasProviderEnvironmentToken(mapping.providerId as Provider),
+					)
+				: model.modelProviderMappings,
+		}))
+		.filter((model) => model.modelProviderMappings.length > 0)
+		.map((model) => ({
+			...model,
+			mappings: model.modelProviderMappings.map((mapping) => {
+				const sharedMapping: ProviderModelMapping | null =
+					modelDefinitions
+						.find((modelDefinition) => modelDefinition.id === model.id)
+						?.providers.find(
+							(provider) => provider.providerId === mapping.providerId,
+						) ?? null;
+				const globalDiscount = getGlobalDiscount(
+					mapping.providerId,
+					model.id,
+					mapping.modelName,
+				);
+				// Global discount takes precedence over hardcoded mapping discount
+				const effectiveDiscount = globalDiscount ?? mapping.discount;
+				return {
+					...mapping,
+					discount: effectiveDiscount,
+					imageOutputPrice:
+						sharedMapping?.imageOutputPrice !== undefined
+							? String(sharedMapping.imageOutputPrice)
+							: null,
+					imageInputTokensByResolution:
+						sharedMapping?.imageInputTokensByResolution ?? null,
+					imageOutputTokensByResolution:
+						sharedMapping?.imageOutputTokensByResolution ?? null,
+					supportedVideoSizes: sharedMapping?.supportedVideoSizes ?? null,
+					supportedVideoDurationsSeconds:
+						sharedMapping?.supportedVideoDurationsSeconds ?? null,
+					supportsVideoAudio: sharedMapping?.supportsVideoAudio ?? null,
+					supportsVideoWithoutAudio:
+						sharedMapping?.supportsVideoWithoutAudio ?? null,
+					perSecondPrice: sharedMapping?.perSecondPrice
+						? Object.fromEntries(
+								Object.entries(sharedMapping.perSecondPrice).map(
+									([key, price]) => [key, price.toString()],
+								),
+							)
 						: null,
-				imageInputTokensByResolution:
-					sharedMapping?.imageInputTokensByResolution ?? null,
-				imageOutputTokensByResolution:
-					sharedMapping?.imageOutputTokensByResolution ?? null,
-				supportedVideoSizes: sharedMapping?.supportedVideoSizes ?? null,
-				supportedVideoDurationsSeconds:
-					sharedMapping?.supportedVideoDurationsSeconds ?? null,
-				supportsVideoAudio: sharedMapping?.supportsVideoAudio ?? null,
-				supportsVideoWithoutAudio:
-					sharedMapping?.supportsVideoWithoutAudio ?? null,
-				perSecondPrice: sharedMapping?.perSecondPrice
-					? Object.fromEntries(
-							Object.entries(sharedMapping.perSecondPrice).map(
-								([key, price]) => [key, price.toString()],
-							),
-						)
-					: null,
-			};
-		}),
-	}));
+				};
+			}),
+		}));
 
 	return c.json({ models: transformedModels });
 });
@@ -276,7 +293,15 @@ internalModels.openapi(getProvidersRoute, async (c) => {
 		},
 	});
 
-	return c.json({ providers });
+	const onlyListConfiguredProviders =
+		process.env.TCS_ONLY_LIST_CONFIGURED_MODELS === "true";
+	const filteredProviders = onlyListConfiguredProviders
+		? providers.filter((provider) =>
+				hasProviderEnvironmentToken(provider.id as Provider),
+			)
+		: providers;
+
+	return c.json({ providers: filteredProviders });
 });
 
 // GET /internal/models/{modelId}/benchmarks - Per-provider performance stats
