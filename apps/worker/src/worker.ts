@@ -46,6 +46,7 @@ import {
 	calculateMinutelyHistory,
 } from "./services/stats-calculator.js";
 import { syncProvidersAndModels } from "./services/sync-models.js";
+import { runTcsTierRoutingChecksLoop } from "./services/tcs-tier-routing-checks.js";
 import {
 	processPendingVideoJobs,
 	processPendingWebhookDeliveries,
@@ -165,7 +166,9 @@ const schema = z.object({
 	cost: z.number().nullable(),
 	cached: z.boolean(),
 	api_key_id: z.string(),
-	project_mode: z.enum(["api-keys", "credits", "hybrid"]),
+	// Nullable: the project may have been deleted since the log was written.
+	// This field is informational only (billing uses `used_mode` below).
+	project_mode: z.enum(["api-keys", "credits", "hybrid"]).nullable(),
 	used_mode: z.enum(["api-keys", "credits"]),
 	duration: z.number(),
 	requested_model: z.string(),
@@ -1706,6 +1709,9 @@ export async function startWorker() {
 	logger.info(
 		"- Follow-up emails: runs every hour to check for lifecycle emails",
 	);
+	logger.info(
+		"- TCS tier routing checks: runs hourly when TCS_TIER_CHECK_ENABLED=true",
+	);
 
 	void runMinutelyHistoryLoop();
 	void runCurrentMinuteHistoryLoop();
@@ -1718,6 +1724,18 @@ export async function startWorker() {
 	void runBatchProcessLoop();
 	void runDataRetentionLoop();
 	void runFollowUpEmailsLoop({
+		shouldStop: () => shouldStop,
+		acquireLock,
+		releaseLock,
+		interruptibleSleep,
+		registerLoop: () => {
+			activeLoops++;
+		},
+		unregisterLoop: () => {
+			activeLoops--;
+		},
+	});
+	void runTcsTierRoutingChecksLoop({
 		shouldStop: () => shouldStop,
 		acquireLock,
 		releaseLock,

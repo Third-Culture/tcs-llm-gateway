@@ -574,6 +574,49 @@ export const providers = [
 		website: "https://www.embercloud.ai",
 		announcement: null,
 	},
+	{
+		id: "deepinfra",
+		name: "DeepInfra",
+		description:
+			"DeepInfra provides OpenAI-compatible inference for a wide catalog of open-weight models (Llama, DeepSeek, GLM, Qwen, etc.).",
+		env: {
+			required: {
+				apiKey: "LLM_DEEPINFRA_API_KEY",
+			},
+			optional: {
+				baseUrl: "LLM_DEEPINFRA_BASE_URL",
+			},
+		},
+		streaming: true,
+		cancellation: true,
+		color: "#6366f1",
+		website: "https://deepinfra.com",
+		announcement: null,
+		apiKeyInstructions:
+			"Create a key at https://deepinfra.com/dash/api_keys. Base URL defaults to https://api.deepinfra.com/v1/openai.",
+	},
+	{
+		id: "wandb",
+		name: "W&B Inference (CoreWeave)",
+		description:
+			"Weights & Biases Inference (powered by CoreWeave) provides OpenAI-compatible inference for open-weight models — including DeepSeek V4 Flash, DeepSeek R1, Llama, and Qwen — at very competitive prices.",
+		env: {
+			required: {
+				apiKey: "LLM_WANDB_API_KEY",
+			},
+			optional: {
+				baseUrl: "LLM_WANDB_BASE_URL",
+				project: "LLM_WANDB_PROJECT",
+			},
+		},
+		streaming: true,
+		cancellation: true,
+		color: "#fcb316",
+		website: "https://wandb.ai",
+		announcement: null,
+		apiKeyInstructions:
+			"Create a key at https://wandb.ai/authorize. Base URL defaults to https://api.inference.wandb.ai/v1. Optionally set LLM_WANDB_PROJECT to '<team>/<project>' to attribute usage in W&B.",
+	},
 ] as const satisfies ProviderDefinition[];
 
 export type ProviderId = (typeof providers)[number]["id"];

@@ -25,8 +25,9 @@ import {
 	projectHourlyModelStats,
 	modelProviderMappingHistory,
 	modelHistory,
+	tcsTierRoutingStatus,
 } from "@llmgateway/db";
-import { models, providers } from "@llmgateway/models";
+import { listTcsRoutingTiers, models, providers } from "@llmgateway/models";
 import {
 	getResendClient,
 	fromEmail,
@@ -6925,6 +6926,88 @@ admin.openapi(getPaymentFailures, async (c) => {
 			})),
 		},
 		totalCount: Number(totalCountResult?.count ?? 0),
+	});
+});
+
+const tcsTierProviderMappingSchema = z.object({
+	providerId: z.string(),
+	modelName: z.string(),
+});
+
+const tcsTierRoutingStatusSchema = z.object({
+	tierId: z.string(),
+	tierName: z.string(),
+	description: z.string().optional(),
+	status: z.enum(["ok", "error", "unknown"]),
+	selectedProvider: z.string().nullable(),
+	selectedModel: z.string().nullable(),
+	primaryProvider: z.string(),
+	primaryModel: z.string(),
+	fallbackProviders: z.array(tcsTierProviderMappingSchema),
+	lastCheckedAt: z.string().nullable(),
+	lastSuccessAt: z.string().nullable(),
+	lastError: z.string().nullable(),
+	latencyMs: z.number().nullable(),
+});
+
+const getTcsTierRoutingStatus = createRoute({
+	method: "get",
+	path: "/tcs-tier-routing-status",
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({
+						tiers: z.array(tcsTierRoutingStatusSchema),
+						checkedAt: z.string().nullable(),
+					}),
+				},
+			},
+			description: "Current TCS tier routing health status",
+		},
+	},
+});
+
+admin.openapi(getTcsTierRoutingStatus, async (c) => {
+	const tiers = listTcsRoutingTiers();
+	const statusRows = await db.select().from(tcsTierRoutingStatus);
+	const statusByTierId = new Map(statusRows.map((row) => [row.tierId, row]));
+
+	const responseTiers = tiers.map((tier) => {
+		const status = statusByTierId.get(tier.id);
+		const tierStatus: "ok" | "error" | "unknown" =
+			status?.status === "ok"
+				? "ok"
+				: status?.status === "error"
+					? "error"
+					: "unknown";
+		return {
+			tierId: tier.id,
+			tierName: tier.name,
+			description: tier.description,
+			status: tierStatus,
+			selectedProvider: status?.selectedProvider ?? null,
+			selectedModel: status?.selectedModel ?? null,
+			primaryProvider: tier.primaryProvider,
+			primaryModel: tier.primaryModel,
+			fallbackProviders: tier.providers.slice(1),
+			lastCheckedAt: status?.lastCheckedAt?.toISOString() ?? null,
+			lastSuccessAt: status?.lastSuccessAt?.toISOString() ?? null,
+			lastError: status?.lastError ?? null,
+			latencyMs: status?.latencyMs ?? null,
+		};
+	});
+
+	const latestCheck = statusRows.reduce<Date | null>((latest, row) => {
+		if (!latest || row.lastCheckedAt > latest) {
+			return row.lastCheckedAt;
+		}
+		return latest;
+	}, null);
+
+	return c.json({
+		tiers: responseTiers,
+		checkedAt: latestCheck?.toISOString() ?? null,
 	});
 });
 

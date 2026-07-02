@@ -268,6 +268,22 @@ export function getProviderEndpoint(
 			case "embercloud":
 				url = "https://api.embercloud.ai";
 				break;
+			case "deepinfra":
+				url =
+					envValueOrDefault(
+						"deepinfra",
+						"baseUrl",
+						"https://api.deepinfra.com",
+					) ?? "https://api.deepinfra.com";
+				break;
+			case "wandb":
+				url =
+					envValueOrDefault(
+						"wandb",
+						"baseUrl",
+						"https://api.inference.wandb.ai",
+					) ?? "https://api.inference.wandb.ai";
+				break;
 			case "custom":
 				if (!baseUrl) {
 					throw new Error(`Custom provider requires a baseUrl`);
@@ -453,7 +469,11 @@ export function getProviderEndpoint(
 		case "canopywave":
 		case "minimax":
 		case "embercloud":
+		case "wandb":
 		case "custom":
+			return `${url}/v1/chat/completions`;
+		case "deepinfra":
+			return `${url}/v1/openai/chat/completions`;
 		default:
 			return `${url}/v1/chat/completions`;
 	}

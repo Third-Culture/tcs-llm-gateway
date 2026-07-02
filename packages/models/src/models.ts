@@ -1,6 +1,7 @@
 import { alibabaModels } from "./models/alibaba.js";
 import { anthropicModels } from "./models/anthropic.js";
 import { bytedanceModels } from "./models/bytedance.js";
+import { deepinfraModels } from "./models/deepinfra.js";
 import { deepseekModels } from "./models/deepseek.js";
 import { googleModels } from "./models/google.js";
 import { llmgatewayModels } from "./models/llmgateway.js";
@@ -13,6 +14,8 @@ import { moonshotModels } from "./models/moonshot.js";
 import { nousresearchModels } from "./models/nousresearch.js";
 import { openaiModels } from "./models/openai.js";
 import { perplexityModels } from "./models/perplexity.js";
+import { tcsModels } from "./models/tcs.js";
+import { wandbModels } from "./models/wandb.js";
 import { xaiModels } from "./models/xai.js";
 import { zaiModels } from "./models/zai.js";
 
@@ -407,4 +410,7 @@ export const models = [
 	...bytedanceModels,
 	...nousresearchModels,
 	...zaiModels,
+	...deepinfraModels,
+	...wandbModels,
+	...tcsModels,
 ] as const satisfies ModelDefinition[];

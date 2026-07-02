@@ -6,3 +6,8 @@ export * from "./types.js";
 export * from "./type-guards.js";
 export * from "./helpers.js";
 export * from "./region-helpers.js";
+export {
+	listTcsRoutingTiers,
+	type TcsRoutingTier,
+	type TcsTierProviderMapping,
+} from "./models/tcs.js";

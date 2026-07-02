@@ -13,6 +13,7 @@ import {
 	Menu,
 	MessageCircle,
 	Percent,
+	Route,
 	Server,
 } from "lucide-react";
 import Link from "next/link";
@@ -91,6 +92,7 @@ export function AdminShell({ children }: AdminShellProps) {
 	const isContactSubmissions = pathname.startsWith("/contact-submissions");
 	const isChatSupportLogs = pathname.startsWith("/chat-support-logs");
 	const isPaymentFailures = pathname.startsWith("/payment-failures");
+	const isTcsTierRouting = pathname.startsWith("/tcs-tier-routing");
 
 	const handleSignOut = async () => {
 		await signOut({
@@ -208,6 +210,14 @@ export function AdminShell({ children }: AdminShellProps) {
 									<SidebarMenuButton isActive={isPaymentFailures} size="lg">
 										<AlertTriangle className="h-4 w-4" />
 										<span>Payment Failures</span>
+									</SidebarMenuButton>
+								</Link>
+							</SidebarMenuItem>
+							<SidebarMenuItem>
+								<Link href="/tcs-tier-routing" className="block">
+									<SidebarMenuButton isActive={isTcsTierRouting} size="lg">
+										<Route className="h-4 w-4" />
+										<span>TCS Tier Routing</span>
 									</SidebarMenuButton>
 								</Link>
 							</SidebarMenuItem>

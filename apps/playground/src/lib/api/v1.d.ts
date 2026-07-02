@@ -4304,6 +4304,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/tcs-tier-routing-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current TCS tier routing health status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            tiers: {
+                                tierId: string;
+                                tierName: string;
+                                description?: string;
+                                /** @enum {string} */
+                                status: "ok" | "error" | "unknown";
+                                selectedProvider: string | null;
+                                selectedModel: string | null;
+                                primaryProvider: string;
+                                primaryModel: string;
+                                fallbackProviders: {
+                                    providerId: string;
+                                    modelName: string;
+                                }[];
+                                lastCheckedAt: string | null;
+                                lastSuccessAt: string | null;
+                                lastError: string | null;
+                                latencyMs: number | null;
+                            }[];
+                            checkedAt: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/keys/api": {
         parameters: {
             query?: never;
