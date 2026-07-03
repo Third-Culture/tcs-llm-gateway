@@ -200,4 +200,62 @@ describe("transformStreamingToOpenai", () => {
 		expect(result).toBeNull();
 		expect(warn).not.toHaveBeenCalled();
 	});
+
+	it.each(["deepinfra", "wandb"] as const)(
+		"remaps end_turn to stop for %s without logging a warning",
+		(provider) => {
+			warn.mockClear();
+
+			const result = transformStreamingToOpenai(
+				provider,
+				"some-model",
+				{
+					id: "chatcmpl-test",
+					object: "chat.completion.chunk",
+					created: 1234567890,
+					model: "some-model",
+					choices: [
+						{
+							index: 0,
+							delta: { role: "assistant" },
+							finish_reason: "end_turn",
+						},
+					],
+				},
+				[],
+			);
+
+			expect(result?.choices?.[0]?.finish_reason).toBe("stop");
+			expect(warn).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each(["deepinfra", "wandb"] as const)(
+		"remaps tool_use to tool_calls for %s without logging a warning",
+		(provider) => {
+			warn.mockClear();
+
+			const result = transformStreamingToOpenai(
+				provider,
+				"some-model",
+				{
+					id: "chatcmpl-test",
+					object: "chat.completion.chunk",
+					created: 1234567890,
+					model: "some-model",
+					choices: [
+						{
+							index: 0,
+							delta: { role: "assistant" },
+							finish_reason: "tool_use",
+						},
+					],
+				},
+				[],
+			);
+
+			expect(result?.choices?.[0]?.finish_reason).toBe("tool_calls");
+			expect(warn).not.toHaveBeenCalled();
+		},
+	);
 });

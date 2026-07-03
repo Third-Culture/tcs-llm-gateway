@@ -106,6 +106,24 @@ describe("getUnifiedFinishReason", () => {
 		);
 	});
 
+	it.each(["deepinfra", "wandb"])(
+		"maps end_turn to COMPLETED for %s (defense-in-depth)",
+		(provider) => {
+			expect(getUnifiedFinishReason("end_turn", provider)).toBe(
+				UnifiedFinishReason.COMPLETED,
+			);
+		},
+	);
+
+	it.each(["deepinfra", "wandb"])(
+		"maps tool_use to TOOL_CALLS for %s (defense-in-depth)",
+		(provider) => {
+			expect(getUnifiedFinishReason("tool_use", provider)).toBe(
+				UnifiedFinishReason.TOOL_CALLS,
+			);
+		},
+	);
+
 	it("handles special cases", () => {
 		expect(getUnifiedFinishReason("canceled", "any-provider")).toBe(
 			UnifiedFinishReason.CANCELED,

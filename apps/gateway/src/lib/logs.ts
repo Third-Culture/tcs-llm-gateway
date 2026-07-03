@@ -123,6 +123,12 @@ export function getUnifiedFinishReason(
 			if (finishReason === "tool_calls") {
 				return UnifiedFinishReason.TOOL_CALLS;
 			}
+			if (finishReason === "end_turn" || finishReason === "stop_sequence") {
+				return UnifiedFinishReason.COMPLETED;
+			}
+			if (finishReason === "tool_use") {
+				return UnifiedFinishReason.TOOL_CALLS;
+			}
 			break;
 	}
 

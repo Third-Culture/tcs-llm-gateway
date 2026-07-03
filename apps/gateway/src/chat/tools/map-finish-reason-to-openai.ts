@@ -77,11 +77,19 @@ export function mapFinishReasonToOpenai(
 					return "stop";
 			}
 		default:
-			// OpenAI-format providers already emit canonical values
-			// (the idempotency switch above handles the canonical cases)
 			if (!finishReason) {
 				return hasToolCalls ? "tool_calls" : "stop";
 			}
-			return finishReason;
+			switch (finishReason) {
+				case "end_turn":
+				case "stop_sequence":
+					return "stop";
+				case "tool_use":
+					return "tool_calls";
+				case "max_tokens":
+					return "length";
+				default:
+					return finishReason;
+			}
 	}
 }
