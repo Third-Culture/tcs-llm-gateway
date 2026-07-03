@@ -1,0 +1,26 @@
+{
+	"compilerOptions": {
+		"noImplicitAny": true,
+		"target": "es2022",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"esModuleInterop": true,
+		"removeComments": true,
+		"skipLibCheck": true,
+		"strict": true,
+		"strictNullChecks": true,
+		"strictFunctionTypes": true,
+		"strictBindCallApply": true,
+		"strictPropertyInitialization": true,
+		"noImplicitThis": true,
+		"alwaysStrict": true,
+		"sourceMap": true,
+		"noFallthroughCasesInSwitch": true,
+		"forceConsistentCasingInFileNames": true,
+		"noImplicitReturns": true,
+		"declaration": true,
+		"baseUrl": ".",
+		"outDir": "./dist/"
+	},
+	"include": ["./src/**/*.ts"]
+}

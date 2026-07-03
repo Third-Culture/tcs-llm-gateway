@@ -40,16 +40,12 @@ Backing services per environment:
 
 ## Environments
 
-We run three environments. Each is its own GCP project to keep IAM,
-quota, and incident blast radius small:
-
-- `tcs-llm-gateway-dev` — local-style development.
-- `tcs-llm-gateway-staging` — pre-prod, used for the Greshi smoke test.
-- `tcs-llm-gateway-prod` — production.
-
-Database, Redis, secrets, and Artifact Registry repos are duplicated
-per project. Service accounts are also per-project; no service account
-is shared across environments.
+There is currently one live environment, running in the `third-culture`
+GCP project (`us-central1`). There is no separate dev/staging/prod
+project split today — the sections below describing multiple projects
+and a staging domain are aspirational/legacy and do not reflect what
+is actually deployed. See "Production deployment in `third-culture`"
+for the verified, current state.
 
 ## Required secrets
 
@@ -80,8 +76,10 @@ project's Cloud SQL connection name.
 - [`cloudrun-llmgateway-multicontainer.yaml`](./cloudrun-llmgateway-multicontainer.yaml)
   — single Cloud Run service that runs `gateway`, `worker`, and
   `redis` side-by-side. Inter-container traffic stays on `localhost`,
-  Postgres lives in Cloud SQL. This is the manifest currently deployed
-  in `williams-452112` for the Greshi integration.
+  Postgres lives in Cloud SQL. This manifest is a reference only — it
+  is not what is currently deployed (see "Production deployment in
+  `third-culture`" below for the live setup, which is Terraform-managed
+  and split into separate `ui` / `api` / `gateway` services instead).
 - [`cloudrun-gateway.yaml`](./cloudrun-gateway.yaml) — gateway-only
   reference (kept for environments that prefer split services).
 - [`cloudrun-api.yaml`](./cloudrun-api.yaml)
@@ -108,8 +106,9 @@ DATABASE_URL=postgres://llmgateway_app:...@<cloud-sql-ip>:5432/llmgateway \
 node packages/db/dist/seed-prod.js
 ```
 
-Store the generated `SEED_GATEWAY_API_KEY` in Secret Manager (we use
-`llmgateway-greshi-api-key`) and reference it from the consuming
+Store the generated `SEED_GATEWAY_API_KEY` in Secret Manager (in the
+live `third-culture` deployment, consumer keys are named
+`tcs-llm-key-<consumer>`) and reference it from the consuming
 service's deployment manifest.
 
 ## Health checks
@@ -154,11 +153,13 @@ collect them on GCP:
 
 ## Smoke test
 
-Run [`smoke-test.sh`](./smoke-test.sh) after every deploy:
+Run [`smoke-test.sh`](./smoke-test.sh) after every deploy, against the
+real gateway URL (see "Production deployment in `third-culture`"
+below — there is no separate staging domain):
 
 ```bash
-GATEWAY_URL="https://gateway-staging.thirdculture.world" \
-GATEWAY_API_KEY="<staging-key>" \
+GATEWAY_URL="https://llmgateway-gateway-303980490211.us-central1.run.app" \
+GATEWAY_API_KEY="<a tcs-llm-key-* key>" \
 ./infra/gcp/smoke-test.sh
 ```
 
@@ -171,58 +172,60 @@ The script asserts:
    selected model, provider, and reason.
 
 A non-zero exit means the smoke test failed; the deploy should be
-rolled back or held back from promotion.
+rolled back.
 
-## Greshi staging integration
+## Production deployment in `third-culture`
 
-The Greshi backend (`/Users/di/Desktop/greshi`) speaks to the gateway
-via the OpenAI Python client. Configure these env vars on the Greshi
-service in staging:
+_Verified directly against live GCP resources on 2026-07-02 — trust
+this section, not any older references to `williams-452112` elsewhere
+in this repo's history, which described a deployment that does not
+actually exist._
 
-```
-LLM_GATEWAY_BASE_URL=https://gateway-staging.thirdculture.world
-LLM_GATEWAY_API_KEY=<staging-key>
-LLM_GATEWAY_MODEL=auto
-```
+The live LLM Gateway platform runs in the `third-culture` GCP project
+(`us-central1`), provisioned by Terraform (not tracked in this repo —
+`goog-terraform-provisioned: true` on every service, so do not manage
+these services by hand with `gcloud run services replace` without
+syncing back to the Terraform source of truth). It is a single
+environment; there is no separate staging/dev deployment today.
 
-When `LLM_GATEWAY_API_KEY` is unset the Greshi adapter falls back to
-direct Gemini, so partial rollouts (e.g. switching one workflow at a
-time) are safe.
+| Service              | URL                                                      | Port | Scaling (min/max) | Notes                              |
+| --------------------- | -------------------------------------------------------- | ---- | ------------------ | ----------------------------------- |
+| `llmgateway-ui`       | https://llmgateway-ui-303980490211.us-central1.run.app      | 3002 | 0 / 3               | Next.js dashboard (our UI)          |
+| `llmgateway-api`      | https://llmgateway-api-303980490211.us-central1.run.app     | 4002 | 1 / 5               | Management API, runs migrations on boot (`RUN_MIGRATIONS=true`) |
+| `llmgateway-gateway`  | https://llmgateway-gateway-303980490211.us-central1.run.app | 4001 | 1 / 10              | LLM routing entrypoint              |
 
-## Production deployment in `williams-452112`
+There is no `playground` or `docs` Cloud Run service deployed for this
+project. No custom domain is mapped to any of the three services —
+they are only reachable on their default `*.run.app` URLs.
 
-A live deployment of the LLM Gateway platform runs in the
-`williams-452112` GCP project (us-central1). It is the upstream for the
-Greshi `company_refresh` workflow and the long-term landing place for
-every other internal service that needs cost-aware LLM routing.
-
-The full platform is split across five Cloud Run services that are
-self-contained (every dependency outside of Cloud SQL Postgres lives
-inside the same Cloud Run service via container sidecars):
-
-| Service      | URL                                                 | Manifest                                                                             | Notes                                             |
-| ------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| `llmgateway` | https://llmgateway-231857096432.us-central1.run.app | [cloudrun-llmgateway-multicontainer.yaml](./cloudrun-llmgateway-multicontainer.yaml) | gateway + worker + redis sidecars                 |
-| `api`        | https://api-231857096432.us-central1.run.app        | [cloudrun-api-multicontainer.yaml](./cloudrun-api-multicontainer.yaml)               | management API + redis sidecar                    |
-| `ui`         | https://ui-231857096432.us-central1.run.app         | [cloudrun-ui-deployed.yaml](./cloudrun-ui-deployed.yaml)                             | Next.js dashboard (server-side talks to `api`)    |
-| `playground` | https://playground-231857096432.us-central1.run.app | [cloudrun-playground-deployed.yaml](./cloudrun-playground-deployed.yaml)             | Next.js playground (server-side talks to gateway) |
-| `docs`       | https://docs-231857096432.us-central1.run.app       | [cloudrun-docs-deployed.yaml](./cloudrun-docs-deployed.yaml)                         | Fumadocs static site                              |
-
-All five are publicly invokable. `llmgateway` and `api` are the
-authenticated entrypoints; `ui`, `playground`, and `docs` are
-unauthenticated front-ends that delegate auth to `api`.
+All three services run from the same container image
+(`us-central1-docker.pkg.dev/third-culture/tcs/llm-gateway`, pinned by
+digest) under the `tcs-llm-gateway@third-culture.iam.gserviceaccount.com`
+runtime service account, attached to the `tcs-llm-connector` VPC
+connector (`private-ranges-only` egress) so they can reach private
+backing services.
 
 Shared backing infrastructure:
 
-- **Database**: Cloud SQL Postgres 15 instance `llmgateway-pg`
-  (db-f1-micro, public IP, schema applied via `pnpm --filter db
-migrate`). Same instance is reused by both `llmgateway` and `api`.
-- **Cache**: Redis 7-alpine sidecars co-located in `llmgateway` and
-  `api`. Inter-container traffic stays on `localhost`, no Memorystore
-  required.
-- **Secrets**: `llmgateway-auth-secret`, `llmgateway-api-key-hash-secret`,
-  `llmgateway-database-url`, `llmgateway-db-app-password`, and
-  `llmgateway-greshi-api-key`, all in Secret Manager.
+- **Database**: Cloud SQL Postgres 16 instance `tcs-llm-postgres`
+  (db-g1-small, private IP only, `10.28.1.3`). Reused by `llmgateway-api`
+  and `llmgateway-gateway`.
+- **Cache**: Redis reachable at `10.28.0.3:6379` over the VPC
+  connector (not a sidecar).
+- **Secrets** (Secret Manager, referenced by the services above):
+  `TCS_LLM_AUTH_SECRET`, `GATEWAY_API_KEY_HASH_SECRET`,
+  `TCS_LLM_DATABASE_URL`, `TCS_LLM_INTERNAL_STATS_TOKEN`,
+  `TCS_LLM_REDIS_PASSWORD`, `LLM_GOOGLE_AI_STUDIO_API_KEY`,
+  `LLM_DEEPINFRA_API_KEY`, `LLM_WANDB_API_KEY`, `TCS_LINEAR_API_KEY`,
+  `TCS_LINEAR_BUDGET_TEAM_ID`, `TCS_SLACK_BUDGET_WEBHOOK_URL`.
+- **Consumers**: internal gateway API keys exist per consumer —
+  `tcs-llm-key-dev-shared`, `tcs-llm-key-salesforce-digify-sync`,
+  `tcs-llm-key-tcs-linear-automations`, `tcs-llm-key-tcs-metabase`,
+  `tcs-llm-key-tcs-williams-services` (Secret Manager, `third-culture`
+  project). Note: Greshi (`greshi-backend` in `williams-452112`) is
+  **not** currently wired to this gateway — it calls Gemini directly
+  via `GEMINI_API_KEY`, despite older docs in this file describing a
+  planned Greshi integration.
 
 ### Auth + cookies on `*.run.app`
 
@@ -230,96 +233,47 @@ migrate`). Same instance is reused by both `llmgateway` and `api`.
 explicit `Domain` attribute on its session cookie. The runtime config
 in `apps/api/src/auth/config.ts` therefore:
 
-1. Treats `COOKIE_DOMAIN` as optional. If unset, host-only cookies are
-   used (this is what the deployed `api` service does — see the
-   manifest, which sets `COOKIE_DOMAIN: ""`).
+1. Treats `COOKIE_DOMAIN` as optional. The deployed `llmgateway-api`
+   sets it to `llmgateway-api-303980490211.us-central1.run.app`
+   (host-only for that domain).
 2. Forces `SameSite=None; Secure` whenever the cookie is host-only and
    the API is served over HTTPS, so cross-origin requests from
-   `ui-231857096432.us-central1.run.app` to
-   `api-231857096432.us-central1.run.app` carry the auth cookie.
+   `llmgateway-ui-303980490211.us-central1.run.app` to
+   `llmgateway-api-303980490211.us-central1.run.app` carry the auth
+   cookie.
 
 Verify after a deploy by signing up against the API and checking the
 `Set-Cookie` header:
 
 ```bash
-curl -i -H "Origin: https://ui-231857096432.us-central1.run.app" \
+curl -i -H "Origin: https://llmgateway-ui-303980490211.us-central1.run.app" \
   -H "Content-Type: application/json" \
   -X POST \
   -d '{"email":"smoke@example.com","password":"long-test-password","name":"smoke"}' \
-  https://api-231857096432.us-central1.run.app/auth/sign-up/email \
+  https://llmgateway-api-303980490211.us-central1.run.app/auth/sign-up/email \
   | grep -i "set-cookie"
 # Expect: __Secure-better-auth.session_token=...; SameSite=None; Secure; ...
 ```
 
 ### Deploying the platform
 
-The reference manifests use `REPLACE_*` placeholders to keep secrets and
-project-specific values out of git. Render and apply with:
+These services are Terraform-managed outside this repo. Do not apply
+the `cloudrun-*.yaml` reference manifests in this directory against
+`third-culture` — they describe a different (sidecar-based) topology
+than what's actually running and will drift from the Terraform state.
+To ship a new image, update the digest in the Terraform config and
+apply from there; to inspect current live config, use:
 
 ```bash
-PROJECT=williams-452112
-REGION=us-central1
-SA=github-actions
-REGISTRY=us-central1-docker.pkg.dev
-REPO=greshi-repo
-TAG=$(git rev-parse --short=8 HEAD)
-GATEWAY_URL=https://llmgateway-231857096432.us-central1.run.app
-API_URL=https://api-231857096432.us-central1.run.app
-UI_URL=https://ui-231857096432.us-central1.run.app
-PLAYGROUND_URL=https://playground-231857096432.us-central1.run.app
-DOCS_URL=https://docs-231857096432.us-central1.run.app
-ORIGIN_URLS="$UI_URL,$PLAYGROUND_URL,$DOCS_URL,$GATEWAY_URL"
-
-for tpl in cloudrun-api-multicontainer.yaml \
-           cloudrun-ui-deployed.yaml \
-           cloudrun-playground-deployed.yaml \
-           cloudrun-docs-deployed.yaml; do
-  sed \
-    -e "s|REPLACE_PROJECT|$PROJECT|g" \
-    -e "s|REPLACE_REGION|$REGION|g" \
-    -e "s|REPLACE_SA|$SA|g" \
-    -e "s|REPLACE_REGISTRY|$REGISTRY|g" \
-    -e "s|REPLACE_REPO|$REPO|g" \
-    -e "s|REPLACE_TAG|$TAG|g" \
-    -e "s|REPLACE_SQL_INSTANCE|llmgateway-pg|g" \
-    -e "s|REPLACE_GATEWAY_URL_V1|$GATEWAY_URL/v1|g" \
-    -e "s|REPLACE_GATEWAY_URL|$GATEWAY_URL|g" \
-    -e "s|REPLACE_API_URL|$API_URL|g" \
-    -e "s|REPLACE_UI_URL|$UI_URL|g" \
-    -e "s|REPLACE_PLAYGROUND_URL|$PLAYGROUND_URL|g" \
-    -e "s|REPLACE_DOCS_URL|$DOCS_URL|g" \
-    -e "s|REPLACE_ORIGIN_URLS|$ORIGIN_URLS|g" \
-    infra/gcp/$tpl > /tmp/llmgw-deploy/$tpl
-  gcloud run services replace /tmp/llmgw-deploy/$tpl \
-    --region=$REGION --project=$PROJECT
-done
+gcloud run services describe llmgateway-gateway \
+  --project=third-culture --region=us-central1
 ```
 
-`llmgateway` (the routing service) keeps its own image and manifest;
-the snippet above only handles the four "platform" services that were
-added on top of it.
-
-### Greshi env wiring
-
-Greshi (the canonical first internal consumer) is wired with:
-
-- `LLM_GATEWAY_BASE_URL=https://llmgateway-231857096432.us-central1.run.app`
-- `LLM_GATEWAY_API_KEY` ← secret `llmgateway-greshi-api-key:latest`
-- `LLM_GATEWAY_MODEL=auto`
-
-The `greshi-backend` runtime SA
-(`231857096432-compute@developer.gserviceaccount.com`) holds
-`roles/secretmanager.secretAccessor` on `llmgateway-greshi-api-key`.
-
-## Promotion checklist
-
-Before promoting a deploy from staging → prod:
+## Checklist before shipping a change
 
 1. `pnpm test:unit` green in CI.
 2. `pnpm test:e2e` (gateway routing subset) green in CI.
-3. `infra/gcp/smoke-test.sh` against staging exits 0.
-4. Greshi pytest suite (`tests/unit/backend/test_llm_gateway.py` and
-   `tests/integration/test_llm_gateway_integration.py`) green.
-5. One real Greshi company refresh end-to-end against the staging
-   gateway, verified in Salesforce.
-6. New gateway version pinned by image digest, not tag.
+3. `pnpm build` succeeds.
+4. `infra/gcp/smoke-test.sh` against the live gateway URL exits 0.
+5. New image version pinned by digest, not tag, in the Terraform
+   config that manages `third-culture`.

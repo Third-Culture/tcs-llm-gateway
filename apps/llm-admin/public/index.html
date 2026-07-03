@@ -1,0 +1,1451 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>TCS LLM Gateway</title>
+		<link rel="icon" type="image/svg+xml" href="/brand/tc-mark-on-light.svg" />
+		<link rel="stylesheet" href="/brand/tokens.css" />
+		<script src="https://accounts.google.com/gsi/client" async defer></script>
+		<style>
+			*,
+			*::before,
+			*::after {
+				box-sizing: border-box;
+				margin: 0;
+				padding: 0;
+			}
+
+			:root {
+				--bg: var(--tcs-color-cream);
+				--surface: var(--tcs-color-white);
+				--surface-2: var(--tcs-color-icon);
+				--border: var(--tcs-color-silver);
+				--border-strong: var(--tcs-color-secondary);
+				--text: var(--tcs-color-ink);
+				--muted: var(--tcs-color-muted);
+				--brand: var(--tcs-color-brand);
+				--brand-soft: rgba(26, 88, 187, 0.08);
+				--red: #b42318;
+				--green: #067647;
+				--orange: #b54708;
+				--font: var(--tcs-font-family);
+				--mono: "Helvetica", "Helvetica Neue", Arial, sans-serif;
+				--radius: var(--tcs-radius-sm);
+			}
+
+			html[data-theme="dark"] {
+				--bg: var(--tcs-color-ink);
+				--surface: #1c1c1c;
+				--surface-2: #252525;
+				--border: #2a2a2a;
+				--border-strong: #3a3a3a;
+				--text: var(--tcs-color-cream);
+				--muted: var(--tcs-color-secondary);
+				--brand: var(--tcs-color-brand);
+				--brand-soft: rgba(26, 88, 187, 0.18);
+				--red: #f97066;
+				--green: #6ce9a6;
+				--orange: #fdb022;
+			}
+
+			html,
+			body {
+				height: 100%;
+				background: var(--bg);
+				color: var(--text);
+				font-family: var(--font);
+				-webkit-font-smoothing: antialiased;
+				-moz-osx-font-smoothing: grayscale;
+			}
+
+			body {
+				overflow: hidden;
+			}
+
+			button {
+				font-family: inherit;
+			}
+			a {
+				color: inherit;
+			}
+
+			/* ── Login screen ─────────────────────────────────────────── */
+
+			#login-screen {
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				height: 100vh;
+				gap: 1.5rem;
+				padding: 2rem;
+				text-align: center;
+			}
+
+			.login-mark {
+				width: 48px;
+				height: 48px;
+				color: var(--text);
+			}
+
+			.login-wordmark {
+				font-size: 0.7rem;
+				font-weight: 700;
+				letter-spacing: 0.22em;
+				text-transform: uppercase;
+				color: var(--muted);
+			}
+
+			.login-title {
+				font-size: 2rem;
+				font-weight: 700;
+				letter-spacing: -0.02em;
+				line-height: 1.1;
+			}
+
+			.login-sub {
+				font-size: 0.95rem;
+				color: var(--muted);
+				max-width: 28rem;
+			}
+
+			.login-divider {
+				width: 240px;
+				height: 1px;
+				background: var(--border);
+			}
+
+			#broker-signin {
+				background: var(--brand);
+				color: var(--tcs-color-cream);
+				border: 0;
+				border-radius: var(--radius);
+				padding: 0.65rem 1.2rem;
+				font: 700 0.9rem var(--font);
+				cursor: pointer;
+				letter-spacing: -0.01em;
+			}
+			#broker-signin:hover {
+				opacity: 0.92;
+			}
+
+			#login-error {
+				font-size: 0.78rem;
+				color: var(--red);
+				display: none;
+			}
+
+			/* ── App shell ────────────────────────────────────────────── */
+
+			#app {
+				display: none;
+				height: 100vh;
+				flex-direction: column;
+			}
+
+			.topbar {
+				display: flex;
+				align-items: center;
+				gap: 0.75rem;
+				padding: 0 1.25rem;
+				height: 56px;
+				border-bottom: 1px solid var(--border);
+				flex-shrink: 0;
+				background: var(--bg);
+			}
+
+			.topbar-brand {
+				display: flex;
+				align-items: center;
+				gap: 0.6rem;
+				padding-right: 0.6rem;
+				border-right: 1px solid var(--border);
+				margin-right: 0.4rem;
+			}
+
+			.topbar-mark {
+				width: 22px;
+				height: 22px;
+				color: var(--text);
+			}
+			.topbar-wordmark {
+				height: 14px;
+				width: auto;
+				color: var(--text);
+				display: block;
+			}
+			.topbar-sub {
+				font-size: 0.7rem;
+				letter-spacing: 0.18em;
+				text-transform: uppercase;
+				color: var(--muted);
+			}
+
+			.topbar-sep {
+				flex: 1;
+			}
+
+			.tab-btn {
+				background: none;
+				border: 0;
+				color: var(--muted);
+				font: 700 0.8rem var(--font);
+				cursor: pointer;
+				padding: 0.35rem 0.75rem;
+				border-radius: var(--radius);
+				letter-spacing: -0.005em;
+				transition:
+					color 0.12s,
+					background 0.12s;
+			}
+			.tab-btn:hover {
+				color: var(--text);
+			}
+			.tab-btn.active {
+				color: var(--tcs-color-cream);
+				background: var(--brand);
+			}
+
+			.theme-toggle {
+				display: inline-flex;
+				align-items: center;
+				gap: 0;
+				border: 1px solid var(--border);
+				border-radius: var(--radius);
+				padding: 2px;
+				background: var(--surface);
+			}
+			.theme-toggle button {
+				background: none;
+				border: 0;
+				color: var(--muted);
+				width: 28px;
+				height: 24px;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				cursor: pointer;
+				border-radius: 2px;
+				padding: 0;
+			}
+			.theme-toggle button[aria-pressed="true"] {
+				background: var(--brand);
+				color: var(--tcs-color-cream);
+			}
+			.theme-toggle svg {
+				width: 14px;
+				height: 14px;
+				stroke-width: 1.75;
+			}
+
+			.session-cost {
+				font-size: 0.72rem;
+				color: var(--muted);
+				white-space: nowrap;
+				font-variant-numeric: tabular-nums;
+			}
+			.session-cost strong {
+				color: var(--text);
+				font-weight: 700;
+			}
+
+			.user-badge {
+				display: flex;
+				align-items: center;
+				gap: 0.6rem;
+				font-size: 0.78rem;
+				color: var(--muted);
+			}
+
+			.logout-btn {
+				background: none;
+				border: 1px solid var(--border);
+				color: var(--muted);
+				font: 400 0.75rem var(--font);
+				padding: 0.25rem 0.6rem;
+				border-radius: var(--radius);
+				cursor: pointer;
+				transition:
+					color 0.12s,
+					border-color 0.12s;
+			}
+			.logout-btn:hover {
+				color: var(--text);
+				border-color: var(--border-strong);
+			}
+
+			/* ── Panels ───────────────────────────────────────────────── */
+
+			.panel {
+				display: none;
+				flex: 1;
+				overflow: hidden;
+			}
+			.panel.active {
+				display: flex;
+				flex-direction: column;
+			}
+
+			/* ── Chat panel ───────────────────────────────────────────── */
+
+			.chat-header {
+				display: flex;
+				align-items: center;
+				gap: 0.6rem;
+				padding: 0.75rem 1.25rem;
+				border-bottom: 1px solid var(--border);
+				flex-shrink: 0;
+				background: var(--bg);
+			}
+
+			.chat-header label {
+				font-size: 0.7rem;
+				letter-spacing: 0.18em;
+				text-transform: uppercase;
+				color: var(--muted);
+				white-space: nowrap;
+			}
+
+			.model-select {
+				background: var(--surface);
+				border: 1px solid var(--border);
+				color: var(--text);
+				font: 400 0.85rem var(--font);
+				padding: 0.35rem 0.6rem;
+				border-radius: var(--radius);
+				outline: none;
+				cursor: pointer;
+			}
+			.model-select:focus {
+				border-color: var(--brand);
+			}
+
+			.system-toggle,
+			.clear-btn {
+				background: none;
+				border: 1px solid var(--border);
+				color: var(--muted);
+				font: 400 0.75rem var(--font);
+				padding: 0.3rem 0.6rem;
+				border-radius: var(--radius);
+				cursor: pointer;
+				transition:
+					color 0.12s,
+					border-color 0.12s;
+			}
+			.system-toggle {
+				margin-left: auto;
+			}
+			.system-toggle:hover,
+			.clear-btn:hover {
+				color: var(--text);
+				border-color: var(--border-strong);
+			}
+			.clear-btn:hover {
+				color: var(--red);
+				border-color: var(--red);
+			}
+
+			.system-prompt-row {
+				display: none;
+				padding: 0.6rem 1.25rem;
+				border-bottom: 1px solid var(--border);
+				gap: 0.6rem;
+				align-items: flex-start;
+				flex-shrink: 0;
+				background: var(--surface);
+			}
+			.system-prompt-row.visible {
+				display: flex;
+			}
+
+			.system-prompt-row label {
+				font-size: 0.7rem;
+				letter-spacing: 0.18em;
+				text-transform: uppercase;
+				color: var(--muted);
+				padding-top: 0.55rem;
+				white-space: nowrap;
+			}
+
+			#system-prompt {
+				flex: 1;
+				background: var(--bg);
+				border: 1px solid var(--border);
+				color: var(--text);
+				font: 400 0.85rem var(--font);
+				padding: 0.5rem 0.65rem;
+				border-radius: var(--radius);
+				resize: none;
+				outline: none;
+				height: 64px;
+			}
+			#system-prompt:focus {
+				border-color: var(--brand);
+			}
+
+			.messages {
+				flex: 1;
+				overflow-y: auto;
+				padding: 1.5rem 1.25rem;
+				display: flex;
+				flex-direction: column;
+				gap: 1.1rem;
+				scrollbar-width: thin;
+				scrollbar-color: var(--border-strong) transparent;
+			}
+
+			.msg {
+				display: flex;
+				gap: 0.75rem;
+				max-width: 820px;
+				width: 100%;
+				align-self: flex-start;
+			}
+			.msg.user {
+				align-self: flex-end;
+				flex-direction: row-reverse;
+			}
+
+			.msg-avatar {
+				width: 30px;
+				height: 30px;
+				border-radius: var(--radius);
+				flex-shrink: 0;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-size: 0.65rem;
+				font-weight: 700;
+				letter-spacing: 0.04em;
+			}
+
+			.msg.assistant .msg-avatar {
+				background: var(--brand);
+				color: var(--tcs-color-cream);
+			}
+
+			.msg.user .msg-avatar {
+				background: var(--surface-2);
+				color: var(--text);
+				border: 1px solid var(--border);
+			}
+
+			.msg-body {
+				display: flex;
+				flex-direction: column;
+				gap: 0.3rem;
+				min-width: 0;
+			}
+
+			.msg-role {
+				font-size: 0.62rem;
+				font-weight: 700;
+				letter-spacing: 0.14em;
+				text-transform: uppercase;
+				color: var(--muted);
+			}
+			.msg.user .msg-role {
+				text-align: right;
+			}
+
+			.msg-text {
+				background: var(--surface);
+				border: 1px solid var(--border);
+				border-radius: var(--radius);
+				padding: 0.7rem 0.9rem;
+				font-size: 0.9rem;
+				line-height: 1.6;
+				white-space: pre-wrap;
+				word-break: break-word;
+			}
+
+			.msg.user .msg-text {
+				background: var(--brand);
+				color: var(--tcs-color-cream);
+				border-color: var(--brand);
+			}
+
+			.msg-thinking {
+				font-size: 0.78rem;
+				color: var(--muted);
+				font-style: italic;
+				background: var(--surface-2);
+				border: 1px solid var(--border);
+				border-radius: var(--radius);
+				padding: 0.45rem 0.65rem;
+				max-height: 120px;
+				overflow-y: auto;
+				white-space: pre-wrap;
+				word-break: break-word;
+				scrollbar-width: thin;
+			}
+
+			.msg-thinking-label {
+				font-size: 0.6rem;
+				font-weight: 700;
+				letter-spacing: 0.16em;
+				text-transform: uppercase;
+				color: var(--muted);
+				margin-bottom: 0.25rem;
+			}
+
+			.msg-cost {
+				font-size: 0.68rem;
+				color: var(--muted);
+				font-variant-numeric: tabular-nums;
+				padding: 0 0.1rem;
+			}
+			.msg.user .msg-cost {
+				text-align: right;
+			}
+
+			.cursor-blink {
+				display: inline-block;
+				width: 2px;
+				height: 0.95em;
+				background: var(--brand);
+				vertical-align: text-bottom;
+				animation: blink 0.8s step-end infinite;
+				margin-left: 1px;
+			}
+
+			@keyframes blink {
+				0%,
+				100% {
+					opacity: 1;
+				}
+				50% {
+					opacity: 0;
+				}
+			}
+
+			.empty-state {
+				flex: 1;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				gap: 0.75rem;
+				color: var(--muted);
+			}
+
+			.empty-mark {
+				width: 40px;
+				height: 40px;
+				color: var(--border-strong);
+			}
+			.empty-state p {
+				font-size: 0.9rem;
+			}
+
+			.input-row {
+				display: flex;
+				gap: 0.6rem;
+				padding: 0.85rem 1.25rem;
+				border-top: 1px solid var(--border);
+				flex-shrink: 0;
+				align-items: flex-end;
+				background: var(--surface);
+			}
+
+			#chat-input {
+				flex: 1;
+				background: var(--bg);
+				border: 1px solid var(--border);
+				color: var(--text);
+				font: 400 0.9rem var(--font);
+				padding: 0.65rem 0.85rem;
+				border-radius: var(--radius);
+				resize: none;
+				outline: none;
+				line-height: 1.5;
+				max-height: 160px;
+				transition: border-color 0.12s;
+			}
+			#chat-input:focus {
+				border-color: var(--brand);
+			}
+
+			.send-btn {
+				background: var(--brand);
+				border: 0;
+				color: var(--tcs-color-cream);
+				font: 700 0.85rem var(--font);
+				padding: 0.6rem 1rem;
+				border-radius: var(--radius);
+				cursor: pointer;
+				display: flex;
+				align-items: center;
+				gap: 0.4rem;
+				white-space: nowrap;
+				letter-spacing: -0.005em;
+			}
+			.send-btn:hover {
+				opacity: 0.92;
+			}
+			.send-btn:disabled {
+				opacity: 0.4;
+				cursor: not-allowed;
+			}
+
+			/* ── Stats panel ──────────────────────────────────────────── */
+
+			#stats-panel {
+				overflow-y: auto;
+				padding: 1.75rem 1.5rem;
+				gap: 1.5rem;
+				flex-direction: column;
+				scrollbar-width: thin;
+				scrollbar-color: var(--border-strong) transparent;
+			}
+
+			.stats-section-title {
+				font-size: 0.65rem;
+				font-weight: 700;
+				letter-spacing: 0.2em;
+				text-transform: uppercase;
+				color: var(--muted);
+				margin-bottom: 0.9rem;
+			}
+
+			.stat-cards {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+				gap: 0.85rem;
+				margin-bottom: 1.5rem;
+			}
+
+			.stat-card {
+				background: var(--surface);
+				border: 1px solid var(--border);
+				border-radius: var(--radius);
+				padding: 1.1rem 1.2rem;
+			}
+
+			.stat-card-label {
+				font-size: 0.68rem;
+				letter-spacing: 0.16em;
+				text-transform: uppercase;
+				color: var(--muted);
+				margin-bottom: 0.5rem;
+			}
+
+			.stat-card-value {
+				font-size: 1.9rem;
+				font-weight: 700;
+				letter-spacing: -0.03em;
+				line-height: 1;
+			}
+
+			.stat-card-sub {
+				font-size: 0.7rem;
+				color: var(--muted);
+				margin-top: 0.4rem;
+			}
+
+			.bar-chart {
+				background: var(--surface);
+				border: 1px solid var(--border);
+				border-radius: var(--radius);
+				padding: 1rem 1.2rem;
+				margin-bottom: 1.5rem;
+			}
+
+			.bar-chart-rows {
+				display: flex;
+				flex-direction: column;
+				gap: 0.55rem;
+			}
+
+			.bar-row {
+				display: flex;
+				align-items: center;
+				gap: 0.6rem;
+			}
+
+			.bar-label {
+				font-size: 0.7rem;
+				color: var(--muted);
+				width: 60px;
+				flex-shrink: 0;
+				text-align: right;
+			}
+
+			.bar-track {
+				flex: 1;
+				height: 16px;
+				background: var(--surface-2);
+				border-radius: 2px;
+				overflow: hidden;
+			}
+
+			.bar-fill {
+				height: 100%;
+				background: var(--brand);
+				border-radius: 2px;
+				transition: width 0.5s ease;
+			}
+
+			.bar-val {
+				font-size: 0.7rem;
+				color: var(--muted);
+				width: 60px;
+				flex-shrink: 0;
+			}
+
+			.stats-loading {
+				display: flex;
+				align-items: center;
+				gap: 0.5rem;
+				color: var(--muted);
+				font-size: 0.82rem;
+			}
+
+			.spinner {
+				width: 14px;
+				height: 14px;
+				border: 2px solid var(--border);
+				border-top-color: var(--brand);
+				border-radius: 50%;
+				animation: spin 0.7s linear infinite;
+			}
+			@keyframes spin {
+				to {
+					transform: rotate(360deg);
+				}
+			}
+
+			/* ── Toasts ───────────────────────────────────────────────── */
+
+			#toast {
+				position: fixed;
+				bottom: 1.5rem;
+				left: 50%;
+				transform: translateX(-50%) translateY(4rem);
+				background: var(--surface);
+				border: 1px solid var(--border-strong);
+				color: var(--text);
+				padding: 0.65rem 1.2rem;
+				border-radius: var(--radius);
+				font-size: 0.82rem;
+				transition: transform 0.25s ease;
+				pointer-events: none;
+				z-index: 99;
+			}
+			#toast.show {
+				transform: translateX(-50%) translateY(0);
+			}
+			#toast.error {
+				border-color: var(--red);
+				color: var(--red);
+			}
+		</style>
+	</head>
+	<body>
+		<!-- Shared icon sprite (avoids repeating the TC mark path data on every use) -->
+		<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+			<symbol id="tc-mark" viewBox="0 0 243 141">
+				<path
+					d="M114.66 110.98C103.54 123.1 87.6 130.48 70.24 130.48C37.02 130.48 10 103.46 10 70.24C10 37.02 37.02 10 70.24 10C87.57 10 103.51 17.32 114.66 29.49C117.02 32.07 119.17 34.86 121.07 37.85C122.97 34.88 125.13 32.09 127.51 29.5C125.55 26.75 123.41 24.15 121.1 21.73C108.15 8.14 89.96 0 70.24 0C31.51 0 0 31.51 0 70.24C0 108.97 31.51 140.48 70.24 140.48C90 140.48 108.18 132.28 121.09 118.74C123.41 116.32 125.55 113.72 127.5 110.97C125.12 108.38 122.97 105.59 121.07 102.63C119.17 105.61 117.03 108.41 114.66 110.98Z"
+					fill="currentColor"
+				/>
+				<path
+					d="M97.75 36.47V48.43H77.43V104H63.14V48.43H42.72V36.47H97.75Z"
+					fill="currentColor"
+				/>
+				<path
+					d="M171.84 0C151.91 0 133.89 8.34 121.1 21.73C118.78 24.15 116.63 26.75 114.66 29.49C106.45 40.99 101.61 55.06 101.61 70.24C101.61 85.42 106.44 99.48 114.66 110.98C116.62 113.72 118.77 116.32 121.09 118.74C133.89 132.13 151.9 140.48 171.84 140.48C210.57 140.48 242.08 108.97 242.08 70.24C242.08 31.51 210.57 0 171.84 0ZM171.84 130.48C154.31 130.48 138.51 122.96 127.5 110.97C125.12 108.38 122.97 105.59 121.07 102.63C115.08 93.27 111.61 82.15 111.61 70.24C111.61 58.33 115.08 47.21 121.07 37.85C122.97 34.88 125.13 32.09 127.51 29.5C138.52 17.52 154.32 10 171.84 10C205.06 10 232.08 37.02 232.08 70.24C232.08 103.46 205.06 130.48 171.84 130.48Z"
+					fill="currentColor"
+				/>
+				<path
+					d="M192.41 99.54C187.34 104.15 180.86 106.46 172.96 106.46C163.19 106.46 155.51 103.35 149.92 97.11C144.33 90.85 141.53 82.27 141.53 71.36C141.53 59.57 144.71 50.48 151.07 44.1C156.6 38.54 163.64 35.76 172.18 35.76C183.61 35.76 191.97 39.49 197.25 46.94C200.17 51.12 201.74 55.32 201.95 59.54H187.76C186.84 56.3 185.66 53.86 184.21 52.21C181.63 49.28 177.8 47.81 172.73 47.81C167.66 47.81 163.5 49.89 160.52 54.04C157.54 58.16 156.05 64.01 156.05 71.59C156.05 79.17 157.62 84.85 160.75 88.63C163.91 92.39 167.92 94.27 172.78 94.27C177.64 94.27 181.55 92.65 184.16 89.41C185.6 87.67 186.8 85.06 187.75 81.58H201.81C200.58 88.94 197.45 94.93 192.41 99.54Z"
+					fill="currentColor"
+				/>
+			</symbol>
+		</svg>
+
+		<!-- Login -->
+		<div id="login-screen">
+			<svg class="login-mark" aria-hidden="true">
+				<use href="#tc-mark"></use>
+			</svg>
+			<div class="login-wordmark">Third Culture</div>
+			<h1 class="login-title">LLM Gateway</h1>
+			<p class="login-sub">
+				Sign in with your @thirdculture.world account to continue.
+			</p>
+			<div class="login-divider"></div>
+			<div
+				id="g_id_onload"
+				data-client_id="__GOOGLE_CLIENT_ID__"
+				data-context="signin"
+				data-ux_mode="popup"
+				data-callback="handleGoogleSignIn"
+				data-auto_prompt="false"
+			></div>
+			<div
+				class="g_id_signin"
+				data-type="standard"
+				data-shape="rectangular"
+				data-theme="filled_blue"
+				data-text="sign_in_with"
+				data-size="large"
+				data-logo_alignment="left"
+			></div>
+			<button id="broker-signin" style="display: none">
+				Sign in with Google
+			</button>
+			<p id="login-error"></p>
+		</div>
+
+		<!-- App -->
+		<div id="app">
+			<div class="topbar">
+				<div class="topbar-brand">
+					<svg class="topbar-mark" aria-hidden="true">
+						<use href="#tc-mark"></use>
+					</svg>
+					<svg
+						class="topbar-wordmark"
+						viewBox="432 470 1060 140"
+						fill="none"
+						xmlns="http://www.w3.org/2000/svg"
+						role="img"
+						aria-label="Third Culture."
+					>
+						<path
+							d="M535.341 475.65V498.24H497.172V603.225H470.342V498.24H432V475.65H535.341Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M627.177 547.833V603.225H601.991V545.842C601.991 540.765 601.126 536.668 599.395 533.552C597.144 529.167 592.875 526.974 586.585 526.974C580.065 526.974 575.103 529.167 571.699 533.552C568.352 537.88 566.679 544.082 566.679 552.16V603.225H542.099V476.083H566.679V521.175C570.256 515.694 574.382 511.886 579.055 509.751C583.787 507.558 588.749 506.462 593.942 506.462C599.77 506.462 605.049 507.472 609.781 509.491C614.57 511.511 618.493 514.598 621.551 518.752C624.148 522.272 625.735 525.907 626.312 529.657C626.889 533.35 627.177 539.409 627.177 547.833Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M668.555 508.885V603.225H643.542V508.885H668.555ZM668.555 474.871V497.634H643.542V474.871H668.555Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M732.869 531.648C722.944 531.648 716.28 534.879 712.875 541.342C710.971 544.977 710.019 550.574 710.019 558.132V603.225H685.18V508.885H708.721V525.33C712.529 519.04 715.847 514.742 718.674 512.434C723.29 508.568 729.291 506.635 736.677 506.635C737.138 506.635 737.513 506.664 737.802 506.722C738.148 506.722 738.869 506.75 739.966 506.808V532.081C738.408 531.908 737.023 531.792 735.811 531.734C734.6 531.677 733.619 531.648 732.869 531.648Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M833.273 475.823V603.225H809.299V590.156C805.779 595.753 801.769 599.82 797.269 602.359C792.768 604.898 787.171 606.167 780.478 606.167C769.457 606.167 760.168 601.725 752.609 592.839C745.108 583.895 741.357 572.442 741.357 558.478C741.357 542.38 745.05 529.715 752.436 520.483C759.879 511.251 769.803 506.635 782.209 506.635C787.921 506.635 792.999 507.904 797.442 510.443C801.885 512.924 805.491 516.386 808.261 520.829V475.823H833.273ZM766.803 556.661C766.803 565.374 768.534 572.326 771.996 577.519C775.4 582.77 780.593 585.395 787.575 585.395C794.557 585.395 799.865 582.799 803.5 577.606C807.135 572.413 808.953 565.691 808.953 557.44C808.953 545.9 806.039 537.649 800.211 532.687C796.634 529.686 792.48 528.186 787.748 528.186C780.536 528.186 775.227 530.927 771.823 536.408C768.476 541.832 766.803 548.583 766.803 556.661Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M982.932 593.704C973.412 602.417 961.237 606.773 946.408 606.773C928.06 606.773 913.635 600.888 903.133 589.117C892.632 577.289 887.381 561.075 887.381 540.476C887.381 518.204 893.353 501.038 905.297 488.979C915.683 478.477 928.896 473.227 944.937 473.227C966.401 473.227 982.096 480.266 992.02 494.345C997.502 502.25 1000.44 510.184 1000.85 518.146H974.191C972.46 512.03 970.238 507.414 967.526 504.298C962.68 498.759 955.496 495.989 945.975 495.989C936.282 495.989 928.637 499.913 923.04 507.76C917.443 515.55 914.644 526.599 914.644 540.909C914.644 555.218 917.587 565.951 923.472 573.105C929.415 580.202 936.945 583.751 946.062 583.751C955.409 583.751 962.535 580.693 967.44 574.577C970.152 571.288 972.402 566.354 974.191 559.777H1000.59C998.28 573.682 992.395 584.992 982.932 593.704Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M1072.43 589.896C1072.2 590.185 1071.62 591.05 1070.7 592.493C1069.78 593.935 1068.68 595.204 1067.41 596.301C1063.55 599.763 1059.8 602.128 1056.16 603.398C1052.58 604.667 1048.37 605.302 1043.52 605.302C1029.56 605.302 1020.16 600.282 1015.31 590.242C1012.6 584.703 1011.24 576.539 1011.24 565.749V508.885H1036.51V565.749C1036.51 571.115 1037.15 575.154 1038.42 577.866C1040.67 582.655 1045.08 585.049 1051.66 585.049C1060.08 585.049 1065.85 581.645 1068.97 574.836C1070.59 571.144 1071.39 566.268 1071.39 560.209V508.885H1096.41V603.225H1072.43V589.896Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M1113.72 475.65H1138.39V603.225H1113.72V475.65Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M1198.64 585.655V604.09L1186.95 604.523C1175.3 604.927 1167.33 602.907 1163.06 598.465C1160.29 595.637 1158.91 591.281 1158.91 585.395V527.32H1145.75V509.751H1158.91V483.44H1183.32V509.751H1198.64V527.32H1183.32V577.173C1183.32 581.039 1183.81 583.463 1184.79 584.443C1185.77 585.367 1188.77 585.828 1193.79 585.828C1194.54 585.828 1195.32 585.828 1196.13 585.828C1196.99 585.771 1197.83 585.713 1198.64 585.655Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M1267.88 589.896C1267.65 590.185 1267.07 591.05 1266.15 592.493C1265.23 593.935 1264.13 595.204 1262.86 596.301C1259 599.763 1255.25 602.128 1251.61 603.398C1248.03 604.667 1243.82 605.302 1238.97 605.302C1225.01 605.302 1215.61 600.282 1210.76 590.242C1208.05 584.703 1206.69 576.539 1206.69 565.749V508.885H1231.96V565.749C1231.96 571.115 1232.6 575.154 1233.87 577.866C1236.12 582.655 1240.53 585.049 1247.11 585.049C1255.53 585.049 1261.3 581.645 1264.42 574.836C1266.04 571.144 1266.84 566.268 1266.84 560.209V508.885H1291.86V603.225H1267.88V589.896Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M1356.08 531.648C1346.16 531.648 1339.5 534.879 1336.09 541.342C1334.19 544.977 1333.23 550.574 1333.23 558.132V603.225H1308.39V508.885H1331.94V525.33C1335.74 519.04 1339.06 514.742 1341.89 512.434C1346.51 508.568 1352.51 506.635 1359.89 506.635C1360.35 506.635 1360.73 506.664 1361.02 506.722C1361.36 506.722 1362.08 506.75 1363.18 506.808V532.081C1361.62 531.908 1360.24 531.792 1359.03 531.734C1357.81 531.677 1356.83 531.648 1356.08 531.648Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M1451.38 575.529C1450.75 581.126 1447.83 586.809 1442.64 592.579C1434.56 601.753 1423.25 606.341 1408.71 606.341C1396.71 606.341 1386.12 602.475 1376.95 594.743C1367.78 587.011 1363.19 574.432 1363.19 557.007C1363.19 540.678 1367.31 528.157 1375.56 519.444C1383.87 510.732 1394.63 506.375 1407.85 506.375C1415.69 506.375 1422.76 507.847 1429.05 510.789C1435.34 513.732 1440.53 518.377 1444.63 524.724C1448.32 530.321 1450.72 536.812 1451.82 544.198C1452.45 548.525 1452.71 554.757 1452.59 562.892H1388.03C1388.37 572.355 1391.35 578.991 1396.94 582.799C1400.35 585.165 1404.44 586.348 1409.23 586.348C1414.31 586.348 1418.44 584.905 1421.61 582.02C1423.34 580.462 1424.87 578.298 1426.2 575.529H1451.38ZM1426.98 546.621C1426.57 540.101 1424.58 535.168 1421 531.821C1417.48 528.417 1413.1 526.715 1407.85 526.715C1402.14 526.715 1397.69 528.503 1394.52 532.081C1391.4 535.658 1389.44 540.505 1388.63 546.621H1426.98Z"
+							fill="currentColor"
+						/>
+						<path
+							d="M1461.78 577.433H1488V603.225H1461.78V577.433Z"
+							fill="currentColor"
+						/>
+					</svg>
+					<span class="topbar-sub">LLM</span>
+				</div>
+				<button
+					class="tab-btn active"
+					onclick="switchTab('chat')"
+					id="tab-chat"
+				>
+					Chat
+				</button>
+				<button class="tab-btn" onclick="switchTab('stats')" id="tab-stats">
+					Usage
+				</button>
+				<div class="topbar-sep"></div>
+				<div
+					class="session-cost"
+					id="session-cost"
+					title="Total cost of requests sent this session"
+				>
+					Session: <strong>$0.0000</strong>
+				</div>
+				<div class="theme-toggle" role="group" aria-label="Theme">
+					<button data-theme-set="light" aria-label="Light" title="Light">
+						<svg
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<circle cx="12" cy="12" r="4" />
+							<path
+								d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+							/>
+						</svg>
+					</button>
+					<button data-theme-set="dark" aria-label="Dark" title="Dark">
+						<svg
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+						</svg>
+					</button>
+					<button data-theme-set="system" aria-label="System" title="System">
+						<svg
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<rect x="2" y="3" width="20" height="14" rx="2" />
+							<path d="M8 21h8M12 17v4" />
+						</svg>
+					</button>
+				</div>
+				<div class="user-badge">
+					<span id="user-name"></span>
+					<button class="logout-btn" onclick="logout()">Sign out</button>
+				</div>
+			</div>
+
+			<!-- Chat panel -->
+			<div class="panel active" id="chat-panel">
+				<div class="chat-header">
+					<label>Model</label>
+					<select class="model-select" id="model-select">
+						<option value="tcs-cheap">
+							TCS Cheap — DeepSeek V4-Flash (bulk)
+						</option>
+						<option value="tcs-balanced" selected>
+							TCS Balanced — DeepSeek V4-Flash + fallbacks
+						</option>
+						<option value="tcs-reasoning">TCS Reasoning — Kimi K2.6</option>
+						<option value="tcs-premium">TCS Premium — Gemini 3.1 Pro</option>
+						<option value="tcs-vision">
+							TCS Vision — Gemini 3.1 Pro (multimodal)
+						</option>
+					</select>
+					<button class="system-toggle" onclick="toggleSystem()">
+						System prompt
+					</button>
+					<button class="clear-btn" onclick="clearChat()">Clear</button>
+				</div>
+				<div class="system-prompt-row" id="system-row">
+					<label>System</label>
+					<textarea
+						id="system-prompt"
+						placeholder="You are a helpful assistant…"
+					></textarea>
+				</div>
+				<div class="messages" id="messages">
+					<div class="empty-state" id="empty-state">
+						<svg class="empty-mark" aria-hidden="true">
+							<use href="#tc-mark"></use>
+						</svg>
+						<p>Start a conversation with the TCS LLM Gateway.</p>
+					</div>
+				</div>
+				<div class="input-row">
+					<textarea
+						id="chat-input"
+						rows="1"
+						placeholder="Message…"
+						onkeydown="handleKey(event)"
+						oninput="autoResize(this)"
+					></textarea>
+					<button class="send-btn" id="send-btn" onclick="sendMessage()">
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2.5"
+						>
+							<line x1="22" y1="2" x2="11" y2="13" />
+							<polygon points="22 2 15 22 11 13 2 9 22 2" />
+						</svg>
+						Send
+					</button>
+				</div>
+			</div>
+
+			<!-- Stats panel -->
+			<div class="panel" id="stats-panel">
+				<div>
+					<div class="stats-section-title">Last 7 days — gateway-wide</div>
+					<div class="stat-cards" id="stat-cards">
+						<div class="stats-loading">
+							<div class="spinner"></div>
+							Loading stats…
+						</div>
+					</div>
+				</div>
+				<div id="bar-chart-section" style="display: none">
+					<div class="stats-section-title">Daily requests</div>
+					<div class="bar-chart">
+						<div class="bar-chart-rows" id="bar-rows"></div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div id="toast"></div>
+
+		<script>
+			// ── Theme ──────────────────────────────────────────────────────────────────
+			const root = document.documentElement;
+			const THEME_KEY = "tcs-llm-theme";
+
+			function applyTheme(mode) {
+				const resolved =
+					mode === "system"
+						? matchMedia("(prefers-color-scheme: light)").matches
+							? "light"
+							: "dark"
+						: mode;
+				root.setAttribute("data-theme", resolved);
+				document.querySelectorAll(".theme-toggle button").forEach((btn) => {
+					btn.setAttribute(
+						"aria-pressed",
+						String(btn.dataset.themeSet === mode),
+					);
+				});
+			}
+
+			function initTheme() {
+				const stored = localStorage.getItem(THEME_KEY) || "system";
+				applyTheme(stored);
+				document.querySelectorAll(".theme-toggle button").forEach((btn) => {
+					btn.addEventListener("click", () => {
+						const mode = btn.dataset.themeSet;
+						localStorage.setItem(THEME_KEY, mode);
+						applyTheme(mode);
+					});
+				});
+				matchMedia("(prefers-color-scheme: light)").addEventListener(
+					"change",
+					() => {
+						if ((localStorage.getItem(THEME_KEY) || "system") === "system")
+							applyTheme("system");
+					},
+				);
+			}
+			initTheme();
+
+			// ── State ──────────────────────────────────────────────────────────────────
+			let messages = [];
+			let streaming = false;
+			let currentUser = null;
+			let sessionCost = 0;
+
+			// ── Auth ───────────────────────────────────────────────────────────────────
+
+			async function handleGoogleSignIn(response) {
+				const r = await fetch("auth/verify", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ credential: response.credential }),
+				});
+				const data = await r.json();
+				if (!r.ok) {
+					const el = document.getElementById("login-error");
+					el.textContent = data.error || "Login failed";
+					el.style.display = "block";
+					return;
+				}
+				currentUser = data;
+				showApp();
+			}
+
+			async function checkSession() {
+				if (location.hostname === "llm.thirdculture.systems") {
+					document
+						.querySelector(".g_id_signin")
+						?.setAttribute("style", "display:none");
+					document.getElementById("g_id_onload")?.remove();
+					const broker = document.getElementById("broker-signin");
+					broker.style.display = "inline-flex";
+					broker.onclick = () => {
+						const returnTo = encodeURIComponent(location.origin);
+						location.href = `https://thirdculture.systems/llm-login?return=${returnTo}`;
+					};
+				}
+
+				const r = await fetch("api/me");
+				if (r.ok) {
+					currentUser = await r.json();
+					showApp();
+				}
+			}
+
+			function showApp() {
+				document.getElementById("login-screen").style.display = "none";
+				document.getElementById("app").style.display = "flex";
+				document.getElementById("user-name").textContent =
+					currentUser.name || currentUser.email;
+				loadStats();
+			}
+
+			async function logout() {
+				await fetch("auth/logout", { method: "POST" });
+				location.reload();
+			}
+
+			// ── Tabs ───────────────────────────────────────────────────────────────────
+
+			function switchTab(tab) {
+				["chat", "stats"].forEach((t) => {
+					document
+						.getElementById(`tab-${t}`)
+						.classList.toggle("active", t === tab);
+					document
+						.getElementById(`${t}-panel`)
+						.classList.toggle("active", t === tab);
+				});
+			}
+
+			// ── Chat ───────────────────────────────────────────────────────────────────
+
+			function toggleSystem() {
+				document.getElementById("system-row").classList.toggle("visible");
+			}
+
+			function clearChat() {
+				messages = [];
+				sessionCost = 0;
+				updateSessionCostBadge();
+				const m = document.getElementById("messages");
+				m.innerHTML = "";
+				const empty = document.createElement("div");
+				empty.className = "empty-state";
+				empty.id = "empty-state";
+				empty.innerHTML = `
+      <svg class="empty-mark" aria-hidden="true"><use href="#tc-mark"></use></svg>
+      <p>Start a conversation with the TCS LLM Gateway.</p>`;
+				m.appendChild(empty);
+			}
+
+			function handleKey(e) {
+				if (e.key === "Enter" && !e.shiftKey) {
+					e.preventDefault();
+					sendMessage();
+				}
+			}
+
+			function autoResize(el) {
+				el.style.height = "auto";
+				el.style.height = Math.min(el.scrollHeight, 160) + "px";
+			}
+
+			function appendMessage(role, text, thinking) {
+				const empty = document.getElementById("empty-state");
+				if (empty) empty.remove();
+
+				const container = document.getElementById("messages");
+				const wrap = document.createElement("div");
+				wrap.className = `msg ${role}`;
+
+				const avatar = document.createElement("div");
+				avatar.className = "msg-avatar";
+				avatar.textContent = role === "user" ? "You" : "TC";
+
+				const body = document.createElement("div");
+				body.className = "msg-body";
+
+				const roleEl = document.createElement("div");
+				roleEl.className = "msg-role";
+				roleEl.textContent = role === "user" ? "You" : "Assistant";
+				body.appendChild(roleEl);
+
+				if (thinking) {
+					const thinkWrap = document.createElement("div");
+					const thinkLabel = document.createElement("div");
+					thinkLabel.className = "msg-thinking-label";
+					thinkLabel.textContent = "Thinking";
+					const thinkEl = document.createElement("div");
+					thinkEl.className = "msg-thinking";
+					thinkEl.textContent = thinking;
+					thinkWrap.appendChild(thinkLabel);
+					thinkWrap.appendChild(thinkEl);
+					body.appendChild(thinkWrap);
+				}
+
+				const textEl = document.createElement("div");
+				textEl.className = "msg-text";
+				textEl.textContent = text;
+				body.appendChild(textEl);
+
+				wrap.appendChild(avatar);
+				wrap.appendChild(body);
+				container.appendChild(wrap);
+				container.scrollTop = container.scrollHeight;
+				return { wrap, body, textEl };
+			}
+
+			// Renders the per-message cost line once a request's final usage/cost
+			// chunk has arrived from the gateway, and rolls it into the session total.
+			function appendCostBadge(body, usage) {
+				if (typeof usage.cost !== "number") return;
+
+				const el = document.createElement("div");
+				el.className = "msg-cost";
+				const parts = [`$${fmtCost(usage.cost)}`];
+				if (
+					typeof usage.prompt_tokens === "number" &&
+					typeof usage.completion_tokens === "number"
+				) {
+					parts.push(
+						`${fmtNum(usage.prompt_tokens)} in / ${fmtNum(usage.completion_tokens)} out`,
+					);
+				}
+				el.textContent = parts.join(" · ");
+				body.appendChild(el);
+
+				sessionCost += usage.cost;
+				updateSessionCostBadge();
+			}
+
+			function updateSessionCostBadge() {
+				const el = document.getElementById("session-cost");
+				el.innerHTML = `Session: <strong>$${fmtCost(sessionCost)}</strong>`;
+			}
+
+			async function sendMessage() {
+				if (streaming) return;
+				const input = document.getElementById("chat-input");
+				const text = input.value.trim();
+				if (!text) return;
+
+				const model = document.getElementById("model-select").value;
+				const systemText = document
+					.getElementById("system-prompt")
+					.value.trim();
+
+				messages.push({ role: "user", content: text });
+				appendMessage("user", text);
+				input.value = "";
+				input.style.height = "auto";
+
+				streaming = true;
+				document.getElementById("send-btn").disabled = true;
+
+				const payload = { model, messages: [...messages] };
+				if (systemText) {
+					payload.messages = [
+						{ role: "system", content: systemText },
+						...messages,
+					];
+				}
+
+				const { body: msgBody, textEl } = appendMessage("assistant", "");
+				const cursor = document.createElement("span");
+				cursor.className = "cursor-blink";
+				textEl.appendChild(cursor);
+
+				let assistantText = "";
+				let thinkingText = "";
+				let thinkingEl = null;
+				let usageInfo = null;
+
+				try {
+					const r = await fetch("api/chat", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(payload),
+					});
+
+					if (!r.ok) {
+						const err = await r.json();
+						textEl.textContent = `Error: ${err.error || r.statusText}`;
+						textEl.style.color = "var(--red)";
+						streaming = false;
+						document.getElementById("send-btn").disabled = false;
+						return;
+					}
+
+					const reader = r.body.getReader();
+					const decoder = new TextDecoder();
+					let buf = "";
+
+					while (true) {
+						const { done, value } = await reader.read();
+						if (done) break;
+						buf += decoder.decode(value, { stream: true });
+						const lines = buf.split("\n");
+						buf = lines.pop();
+
+						for (const line of lines) {
+							if (!line.startsWith("data: ")) continue;
+							const data = line.slice(6).trim();
+							if (data === "[DONE]") continue;
+							try {
+								const chunk = JSON.parse(data);
+
+								// The gateway appends a final SSE chunk carrying `usage` (incl.
+								// `usage.cost` in USD) right before [DONE]. It can arrive with
+								// an empty delta, so this check must not be gated on `delta`.
+								if (chunk.usage) {
+									usageInfo = chunk.usage;
+								}
+
+								const delta = chunk.choices?.[0]?.delta;
+								if (!delta) continue;
+
+								const thinkingChunk = delta.reasoning_content || delta.thinking;
+								const textChunk = delta.content;
+
+								if (thinkingChunk) {
+									thinkingText += thinkingChunk;
+									if (!thinkingEl) {
+										const thinkWrap = document.createElement("div");
+										const thinkLabel = document.createElement("div");
+										thinkLabel.className = "msg-thinking-label";
+										thinkLabel.textContent = "Thinking";
+										thinkingEl = document.createElement("div");
+										thinkingEl.className = "msg-thinking";
+										thinkWrap.appendChild(thinkLabel);
+										thinkWrap.appendChild(thinkingEl);
+										msgBody.insertBefore(thinkWrap, textEl);
+									}
+									thinkingEl.textContent = thinkingText;
+									thinkingEl.scrollTop = thinkingEl.scrollHeight;
+								}
+
+								if (textChunk) {
+									assistantText += textChunk;
+									textEl.textContent = assistantText;
+									textEl.appendChild(cursor);
+								}
+							} catch (_) {}
+						}
+						document.getElementById("messages").scrollTop =
+							document.getElementById("messages").scrollHeight;
+					}
+				} catch (err) {
+					textEl.textContent = `Network error: ${err.message}`;
+					textEl.style.color = "var(--red)";
+				}
+
+				cursor.remove();
+				if (usageInfo) {
+					appendCostBadge(msgBody, usageInfo);
+				}
+				messages.push({ role: "assistant", content: assistantText });
+				streaming = false;
+				document.getElementById("send-btn").disabled = false;
+				document.getElementById("messages").scrollTop =
+					document.getElementById("messages").scrollHeight;
+			}
+
+			// ── Stats ──────────────────────────────────────────────────────────────────
+
+			async function loadStats() {
+				try {
+					const r = await fetch("api/stats");
+					const data = await r.json();
+					renderStats(data);
+				} catch (err) {
+					document.getElementById("stat-cards").innerHTML =
+						`<p style="color:var(--muted);font-size:0.85rem;">Could not load stats: ${err.message}</p>`;
+				}
+			}
+
+			function renderStats({ totals, days, note }) {
+				const errorRate =
+					totals.requests > 0
+						? ((totals.errors / totals.requests) * 100).toFixed(1)
+						: "0.0";
+
+				document.getElementById("stat-cards").innerHTML = `
+      <div class="stat-card">
+        <div class="stat-card-label">Total requests</div>
+        <div class="stat-card-value">${fmtNum(totals.requests)}</div>
+        <div class="stat-card-sub">last 7 days</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Total cost</div>
+        <div class="stat-card-value">$${fmtCost(totals.cost)}</div>
+        <div class="stat-card-sub">last 7 days</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Errors</div>
+        <div class="stat-card-value" style="color:${totals.errors > 0 ? "var(--red)" : "var(--green)"}">${fmtNum(totals.errors)}</div>
+        <div class="stat-card-sub">${errorRate}% error rate</div>
+      </div>
+      ${note ? `<div class="stat-card"><div class="stat-card-label" style="color:var(--orange)">Note</div><div style="font-size:0.75rem;color:var(--muted)">${note}</div></div>` : ""}
+    `;
+
+				if (days && days.length > 0) {
+					document.getElementById("bar-chart-section").style.display = "block";
+					const maxReq = Math.max(...days.map((d) => d.requests || 0), 1);
+					document.getElementById("bar-rows").innerHTML = days
+						.map((d) => {
+							const label = d.day ? d.day.slice(5, 10) : "?";
+							const pct = (((d.requests || 0) / maxReq) * 100).toFixed(1);
+							return `
+          <div class="bar-row">
+            <div class="bar-label">${label}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+            <div class="bar-val">${fmtNum(d.requests || 0)} req</div>
+          </div>`;
+						})
+						.join("");
+				}
+			}
+
+			function fmtNum(n) {
+				if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+				if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+				return String(n);
+			}
+
+			function fmtCost(n) {
+				if (n < 0.01) return n.toFixed(4);
+				if (n < 1) return n.toFixed(3);
+				return n.toFixed(2);
+			}
+
+			// ── Toast ──────────────────────────────────────────────────────────────────
+
+			function toast(msg, isError = false) {
+				const el = document.getElementById("toast");
+				el.textContent = msg;
+				el.className = "show" + (isError ? " error" : "");
+				clearTimeout(el._t);
+				el._t = setTimeout(() => {
+					el.className = "";
+				}, 3000);
+			}
+
+			// ── Boot ───────────────────────────────────────────────────────────────────
+
+			checkSession();
+		</script>
+	</body>
+</html>
