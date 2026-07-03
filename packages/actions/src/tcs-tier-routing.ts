@@ -102,7 +102,11 @@ async function probeTier(
 			},
 			body: JSON.stringify({
 				model: tierId,
-				max_tokens: 16,
+				// Reasoning-capable tiers spend part of the token budget on
+				// hidden reasoning before emitting visible content, so this
+				// needs enough headroom to avoid a false-positive failure
+				// when finish_reason is "length" with empty content.
+				max_tokens: 300,
 				response_format: { type: "json_object" },
 				messages: [
 					{
