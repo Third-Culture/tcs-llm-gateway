@@ -6,7 +6,7 @@
 	"license": "SEE LICENSE IN ../../LICENSE",
 	"type": "module",
 	"scripts": {
-		"build": "tsc",
+		"build": "tsc -p tsconfig.build.json",
 		"dev": "tsc-watch --onSuccess \"node --enable-source-maps dist/server.js\"",
 		"format": "eslint --fix . && prettier --write .",
 		"lint": "eslint . && prettier --check .",

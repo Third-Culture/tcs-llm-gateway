@@ -6,7 +6,7 @@ FROM node:22-slim AS build
 WORKDIR /app
 COPY package.json ./
 RUN npm install
-COPY tsconfig.json ./
+COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npm run build
 
