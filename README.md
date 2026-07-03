@@ -21,6 +21,10 @@ You can use LLM Gateway in two ways:
 - **Hosted Version**: For immediate use without setup, visit [llmgateway.io](https://llmgateway.io) to create an account and get an API key.
 - **Self-Hosted**: Deploy LLM Gateway on your own infrastructure for complete control over your data and configuration.
 
+> Third Culture's own deployment runs on GCP Cloud Run and ships via GitHub
+> Actions (`.github/workflows/deploy-gcp.yml`) on every push to `main` — see
+> [`infra/gcp/README.md`](infra/gcp/README.md) for how that actually works.
+
 ### Self-Hosted With Docker
 
 Use Docker-managed volumes for the unified image. Do not bind-mount a host directory directly to `/var/lib/postgresql/data`, because PostgreSQL initialization inside the container needs to set permissions on that directory and that can fail depending on the host filesystem and ownership.

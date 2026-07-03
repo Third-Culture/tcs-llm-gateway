@@ -5,6 +5,11 @@ Google Cloud project. It covers the runtime topology, required services,
 secret management, health checks, observability, and a deterministic
 smoke test that proves a deployment is healthy end-to-end.
 
+**CI/CD**: the live `third-culture` deployment ships via
+[`.github/workflows/deploy-gcp.yml`](../../.github/workflows/deploy-gcp.yml)
+on every push to `main`. See "Deploying the platform" below — do not
+`docker push` / `gcloud run deploy` by hand.
+
 The repository ships two deploy paths:
 
 - **Helm on GKE** (`infra/helm/llmgateway/`). Recommended for production.
@@ -188,11 +193,11 @@ these services by hand with `gcloud run services replace` without
 syncing back to the Terraform source of truth). It is a single
 environment; there is no separate staging/dev deployment today.
 
-| Service              | URL                                                      | Port | Scaling (min/max) | Notes                              |
-| --------------------- | -------------------------------------------------------- | ---- | ------------------ | ----------------------------------- |
-| `llmgateway-ui`       | https://llmgateway-ui-303980490211.us-central1.run.app      | 3002 | 0 / 3               | Next.js dashboard (our UI)          |
-| `llmgateway-api`      | https://llmgateway-api-303980490211.us-central1.run.app     | 4002 | 1 / 5               | Management API, runs migrations on boot (`RUN_MIGRATIONS=true`) |
-| `llmgateway-gateway`  | https://llmgateway-gateway-303980490211.us-central1.run.app | 4001 | 1 / 10              | LLM routing entrypoint              |
+| Service              | URL                                                         | Port | Scaling (min/max) | Notes                                                           |
+| -------------------- | ----------------------------------------------------------- | ---- | ----------------- | --------------------------------------------------------------- |
+| `llmgateway-ui`      | https://llmgateway-ui-303980490211.us-central1.run.app      | 3002 | 0 / 3             | Next.js dashboard (our UI)                                      |
+| `llmgateway-api`     | https://llmgateway-api-303980490211.us-central1.run.app     | 4002 | 1 / 5             | Management API, runs migrations on boot (`RUN_MIGRATIONS=true`) |
+| `llmgateway-gateway` | https://llmgateway-gateway-303980490211.us-central1.run.app | 4001 | 1 / 10            | LLM routing entrypoint                                          |
 
 There is no `playground` or `docs` Cloud Run service deployed for this
 project. No custom domain is mapped to any of the three services —
@@ -204,6 +209,23 @@ digest) under the `tcs-llm-gateway@third-culture.iam.gserviceaccount.com`
 runtime service account, attached to the `tcs-llm-connector` VPC
 connector (`private-ranges-only` egress) so they can reach private
 backing services.
+
+**Deploy identity** (used by `deploy-gcp.yml`, not the runtime identity
+above): GitHub Actions authenticates as
+`tcs-llm-deployer@third-culture.iam.gserviceaccount.com` via Workload
+Identity Federation — no long-lived key. The trust chain:
+
+- WIF pool/provider:
+  `projects/303980490211/locations/global/workloadIdentityPools/tcs-github-pool/providers/tcs-github-provider`,
+  scoped to only accept tokens where
+  `assertion.repository=="Third-Culture/tcs-llm-gateway"`.
+- `tcs-llm-deployer` trusts that provider via `roles/iam.workloadIdentityUser`
+  and holds exactly `roles/artifactregistry.writer`, `roles/run.admin`, and
+  `roles/iam.serviceAccountUser` at the project level — enough to push
+  images and deploy Cloud Run, nothing more.
+- The provider resource name above is stored as the `WIF_PROVIDER` repo
+  secret (not sensitive on its own, but kept out of the workflow file for
+  easy rotation if the pool is ever recreated).
 
 Shared backing infrastructure:
 
@@ -257,12 +279,30 @@ curl -i -H "Origin: https://llmgateway-ui-303980490211.us-central1.run.app" \
 
 ### Deploying the platform
 
-These services are Terraform-managed outside this repo. Do not apply
-the `cloudrun-*.yaml` reference manifests in this directory against
-`third-culture` — they describe a different (sidecar-based) topology
-than what's actually running and will drift from the Terraform state.
-To ship a new image, update the digest in the Terraform config and
-apply from there; to inspect current live config, use:
+**Push to `main`.** [`.github/workflows/deploy-gcp.yml`](../../.github/workflows/deploy-gcp.yml)
+runs the full test suite, builds `infra/unified.dockerfile`, pushes it to
+Artifact Registry, then deploys that exact image (by digest) to all three
+Cloud Run services. You can also re-run it manually from the Actions tab
+(`workflow_dispatch`) to redeploy the current `main` without a new commit,
+which is the fastest way to "roll back" — re-run the workflow from a prior
+commit.
+
+Do not `docker push` / `gcloud run deploy` by hand, and do not apply the
+`cloudrun-*.yaml` reference manifests in this directory against
+`third-culture` — they describe a different (sidecar-based) topology than
+what's actually running and will drift from both the workflow and the
+Terraform state.
+
+Everything about these services _except_ the image reference (scaling,
+secrets, networking, IAM) is Terraform-managed outside this repo. That
+Terraform config isn't updated by `deploy-gcp.yml`, so whoever owns it
+should make sure it either doesn't manage the `image` field on these
+`google_cloud_run_v2_service` resources, or sets a
+`lifecycle { ignore_changes = [template[0].containers[0].image] }` block
+on it — otherwise a future `terraform apply` could revert a deploy back to
+an old image. This is a known gap; flag it if you touch that config.
+
+To inspect current live config:
 
 ```bash
 gcloud run services describe llmgateway-gateway \
@@ -271,9 +311,11 @@ gcloud run services describe llmgateway-gateway \
 
 ## Checklist before shipping a change
 
-1. `pnpm test:unit` green in CI.
-2. `pnpm test:e2e` (gateway routing subset) green in CI.
-3. `pnpm build` succeeds.
-4. `infra/gcp/smoke-test.sh` against the live gateway URL exits 0.
-5. New image version pinned by digest, not tag, in the Terraform
-   config that manages `third-culture`.
+1. `pnpm test:unit` and `pnpm build` pass locally (also re-run by
+   `deploy-gcp.yml` before it deploys, but faster to catch here).
+2. `pnpm test:e2e` (gateway routing subset) green, if the change touches
+   routing.
+3. Merge/push to `main` — `deploy-gcp.yml` builds, pushes (pinned by
+   digest), and deploys automatically. Watch the run in the Actions tab.
+4. Optionally run `infra/gcp/smoke-test.sh` against the live gateway URL
+   for a deeper check than the workflow's built-in health-check step.
