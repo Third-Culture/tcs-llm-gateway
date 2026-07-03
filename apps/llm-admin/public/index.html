@@ -798,6 +798,32 @@
 				flex-shrink: 0;
 			}
 
+			#consumer-stats-section {
+				margin-bottom: 1.5rem;
+			}
+
+			.consumer-share-track {
+				display: inline-block;
+				vertical-align: middle;
+				width: 70px;
+				height: 8px;
+				background: var(--surface-2);
+				border-radius: 2px;
+				overflow: hidden;
+				margin-right: 0.5rem;
+			}
+
+			.consumer-share-fill {
+				height: 100%;
+				background: var(--brand);
+				border-radius: 2px;
+			}
+
+			.consumer-share-pct {
+				font-size: 0.72rem;
+				color: var(--muted);
+			}
+
 			.stats-loading {
 				display: flex;
 				align-items: center;
@@ -1227,6 +1253,15 @@
 						<div class="bar-chart-rows" id="bar-rows"></div>
 					</div>
 				</div>
+				<div id="consumer-stats-section">
+					<div class="stats-section-title">Usage by application</div>
+					<div id="consumer-stats-content">
+						<div class="stats-loading">
+							<div class="spinner"></div>
+							Loading…
+						</div>
+					</div>
+				</div>
 			</div>
 
 			<!-- Tier routing panel -->
@@ -1347,6 +1382,7 @@
 				document.getElementById("user-name").textContent =
 					currentUser.name || currentUser.email;
 				loadStats();
+				loadConsumerStats();
 			}
 
 			async function logout() {
@@ -1759,7 +1795,11 @@
 				document.getElementById("stat-cards").innerHTML = `
       <div class="stats-loading"><div class="spinner"></div>Loading stats…</div>
     `;
+				document.getElementById("consumer-stats-content").innerHTML = `
+      <div class="stats-loading"><div class="spinner"></div>Loading…</div>
+    `;
 				loadStats();
+				loadConsumerStats();
 			}
 
 			function renderStats(data) {
@@ -1819,6 +1859,68 @@
 				if (n < 0.01) return n.toFixed(4);
 				if (n < 1) return n.toFixed(3);
 				return n.toFixed(2);
+			}
+
+			// ── Usage by application ──────────────────────────────────────────────────
+
+			async function loadConsumerStats() {
+				try {
+					const r = await fetch(`api/stats/consumers?days=${statsRangeDays}`);
+					const data = await r.json();
+					renderConsumerStats(data);
+				} catch (err) {
+					document.getElementById("consumer-stats-content").innerHTML =
+						`<p style="color:var(--muted);font-size:0.85rem;">Could not load usage by application: ${err.message}</p>`;
+				}
+			}
+
+			function renderConsumerStats(data) {
+				const consumers = data?.consumers || [];
+				const note = data?.note;
+				const el = document.getElementById("consumer-stats-content");
+
+				if (note) {
+					el.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;">${note}</p>`;
+					return;
+				}
+				if (consumers.length === 0) {
+					el.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;">No per-application usage recorded for this range.</p>`;
+					return;
+				}
+
+				const maxReq = Math.max(...consumers.map((c) => c.requests || 0), 1);
+				const rows = consumers
+					.map((c) => {
+						const pct = (((c.requests || 0) / maxReq) * 100).toFixed(1);
+						return `
+          <tr>
+            <td>
+              <div class="tier-name">${c.description}</div>
+              <div class="tier-desc">${c.projectName}</div>
+            </td>
+            <td>
+              <span class="consumer-share-track"><span class="consumer-share-fill" style="width:${pct}%"></span></span>
+              <span class="consumer-share-pct">${fmtNum(c.requests || 0)} req</span>
+            </td>
+            <td style="color:${c.errors > 0 ? "var(--red)" : "inherit"}">${fmtNum(c.errors || 0)}</td>
+            <td>$${fmtCost(c.cost || 0)}</td>
+          </tr>`;
+					})
+					.join("");
+
+				el.innerHTML = `
+      <table class="routing-table">
+        <thead>
+          <tr>
+            <th>Application</th>
+            <th>Requests</th>
+            <th>Errors</th>
+            <th>Cost</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
 			}
 
 			// ── Tier routing ───────────────────────────────────────────────────────────

@@ -27,6 +27,13 @@ depends on. See "Deployment" below for how it still gets shipped.
   (the management API), authenticated with a bearer token. Backed by the
   `project_hourly_stats` table, which is retained indefinitely; a range
   selector lets you switch between the last 7/30/90 days (defaults to 30).
+  A "Usage by application" table on the same tab proxies
+  `GET /internal/stats/by-consumer` and breaks that same window down per
+  API key (labeled with the key's `description` and its project's `name`),
+  backed by `api_key_hourly_stats`. Attribution is only as granular as how
+  keys were provisioned — each TCS consumer (`tcs-llm-key-*` in Secret
+  Manager) is expected to have its own dedicated API key/project, but if
+  multiple apps ever share one key, this view can't tell them apart.
 - A routing panel showing the health of each `tcs-*` virtual model tier
   (which provider/model it's currently routed to, fallback chain, last
   checked time, latency), proxying `GET /internal/tcs-tier-routing-status`

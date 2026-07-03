@@ -339,6 +339,77 @@ app.get(
 	},
 );
 
+interface ConsumerStats {
+	apiKeyId: string;
+	description: string;
+	projectId: string;
+	projectName: string;
+	requests: number;
+	errors: number;
+	cost: number;
+}
+
+interface ConsumerStatsResponse {
+	consumers: ConsumerStats[];
+	note?: string;
+}
+
+const EMPTY_CONSUMER_STATS: ConsumerStatsResponse = { consumers: [] };
+
+// Fetches usage-by-application (per API key) stats from the internal API
+// (see apps/api/src/routes/internal-stats.ts). Never throws: on any failure
+// it returns the empty shape with a human-readable `note` so the frontend
+// can render a degraded state instead of crashing on missing fields.
+export async function fetchConsumerStats(
+	days: number = DEFAULT_STATS_DAYS,
+): Promise<ConsumerStatsResponse> {
+	if (!LLM_INTERNAL_TOKEN) {
+		return {
+			...EMPTY_CONSUMER_STATS,
+			note: "LLM_INTERNAL_TOKEN not configured",
+		};
+	}
+	const windowDays = Math.min(
+		Math.max(Math.trunc(days) || DEFAULT_STATS_DAYS, 1),
+		MAX_STATS_DAYS,
+	);
+	try {
+		const r = await fetch(
+			`${LLM_INTERNAL_URL}/internal/stats/by-consumer?days=${windowDays}`,
+			{
+				headers: { Authorization: `Bearer ${LLM_INTERNAL_TOKEN}` },
+			},
+		);
+		const data = (await r.json()) as Partial<ConsumerStatsResponse> & {
+			message?: string;
+		};
+		if (!r.ok) {
+			console.error("Consumer stats upstream error:", r.status, data);
+			return {
+				...EMPTY_CONSUMER_STATS,
+				note:
+					typeof data.message === "string"
+						? data.message
+						: `Upstream consumer stats request failed (${r.status})`,
+			};
+		}
+		return { consumers: data.consumers ?? EMPTY_CONSUMER_STATS.consumers };
+	} catch (err) {
+		console.error("Consumer stats fetch error:", (err as Error).message);
+		return { ...EMPTY_CONSUMER_STATS, note: "Failed to fetch consumer stats" };
+	}
+}
+
+app.get(
+	"/api/stats/consumers",
+	requireAuth,
+	async (req: Request, res: Response): Promise<void> => {
+		const days = Number(req.query.days) || DEFAULT_STATS_DAYS;
+		const stats = await fetchConsumerStats(days);
+		res.json(stats);
+	},
+);
+
 // ── Tier routing status proxy ─────────────────────────────────────────────────
 
 interface TcsTierProviderMapping {

@@ -3,7 +3,17 @@ import { z } from "zod";
 
 import { requireInternalStatsToken } from "@/utils/internal-auth.js";
 
-import { db, gte, projectHourlyStats, sql } from "@llmgateway/db";
+import {
+	apiKey,
+	apiKeyHourlyStats,
+	db,
+	desc,
+	eq,
+	gte,
+	project,
+	projectHourlyStats,
+	sql,
+} from "@llmgateway/db";
 
 import type { ServerTypes } from "@/vars.js";
 
@@ -112,6 +122,95 @@ internalStats.openapi(getStatsRoute, async (c) => {
 		days: dailyRows.map((row) => ({
 			day: row.day,
 			requests: Number(row.requests),
+		})),
+	});
+});
+
+const consumerStatsSchema = z.object({
+	apiKeyId: z.string(),
+	description: z.string(),
+	projectId: z.string(),
+	projectName: z.string(),
+	requests: z.number(),
+	errors: z.number(),
+	cost: z.number(),
+});
+
+const consumerStatsResponseSchema = z.object({
+	consumers: z.array(consumerStatsSchema),
+});
+
+// GET /internal/stats/by-consumer - Usage broken down per API key ("consumer" /
+// application), joined against api_key.description and project.name for
+// display labels. Backed by api_key_hourly_stats, the api-key-grained sibling
+// of project_hourly_stats used by the gateway-wide /internal/stats route.
+// Note: attribution is only as granular as how keys were provisioned — if
+// multiple apps share one API key, they cannot be distinguished here.
+const getConsumerStatsRoute = createRoute({
+	operationId: "internal_get_stats_by_consumer",
+	summary: "Get usage stats broken down by API key (consumer/application)",
+	description: `Returns request counts, error counts, and cost per API key for the last N days (default ${DEFAULT_STATS_WINDOW_DAYS}, max ${MAX_STATS_WINDOW_DAYS}, via the \`days\` query param), labeled with the key's description and project name. Requires a Bearer token matching INTERNAL_STATS_TOKEN.`,
+	method: "get",
+	path: "/stats/by-consumer",
+	request: {
+		query: statsQuerySchema,
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: consumerStatsResponseSchema,
+				},
+			},
+			description: "Usage totals per API key (consumer)",
+		},
+	},
+});
+
+internalStats.openapi(getConsumerStatsRoute, async (c) => {
+	requireInternalStatsToken(c.req.header("Authorization"));
+
+	const { days } = c.req.valid("query");
+	const windowDays = days ?? DEFAULT_STATS_WINDOW_DAYS;
+	const STATS_WINDOW_MS = windowDays * 24 * 60 * 60 * 1000;
+	const since = new Date(Date.now() - STATS_WINDOW_MS);
+
+	const rows = await db
+		.select({
+			apiKeyId: apiKeyHourlyStats.apiKeyId,
+			description: apiKey.description,
+			projectId: apiKeyHourlyStats.projectId,
+			projectName: project.name,
+			requests:
+				sql<number>`COALESCE(SUM(${apiKeyHourlyStats.requestCount}), 0)`.as(
+					"requests",
+				),
+			errors: sql<number>`COALESCE(SUM(${apiKeyHourlyStats.errorCount}), 0)`.as(
+				"errors",
+			),
+			cost: sql<number>`COALESCE(SUM(${apiKeyHourlyStats.cost}), 0)`.as("cost"),
+		})
+		.from(apiKeyHourlyStats)
+		.innerJoin(apiKey, eq(apiKeyHourlyStats.apiKeyId, apiKey.id))
+		.innerJoin(project, eq(apiKeyHourlyStats.projectId, project.id))
+		.where(gte(apiKeyHourlyStats.hourTimestamp, since))
+		.groupBy(
+			apiKeyHourlyStats.apiKeyId,
+			apiKey.description,
+			apiKeyHourlyStats.projectId,
+			project.name,
+		)
+		.orderBy(desc(sql`COALESCE(SUM(${apiKeyHourlyStats.requestCount}), 0)`));
+
+	return c.json({
+		consumers: rows.map((row) => ({
+			apiKeyId: row.apiKeyId,
+			description: row.description,
+			projectId: row.projectId,
+			projectName: row.projectName,
+			requests: Number(row.requests),
+			errors: Number(row.errors),
+			cost: Number(row.cost),
 		})),
 	});
 });

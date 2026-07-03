@@ -161,6 +161,84 @@ describe("llm-admin server", () => {
 		});
 	});
 
+	test("GET /api/stats/consumers requires authentication", async () => {
+		const { app } = await freshServerModule();
+		server = app.listen(0);
+		const { port } = server.address() as AddressInfo;
+
+		const res = await fetch(`http://127.0.0.1:${port}/api/stats/consumers`);
+		expect(res.status).toBe(401);
+	});
+
+	test("fetchConsumerStats returns a note when LLM_INTERNAL_TOKEN is unset", async () => {
+		delete process.env.LLM_INTERNAL_TOKEN;
+		const { fetchConsumerStats } = await freshServerModule();
+
+		const stats = await fetchConsumerStats();
+
+		expect(stats).toEqual({
+			consumers: [],
+			note: "LLM_INTERNAL_TOKEN not configured",
+		});
+	});
+
+	test("fetchConsumerStats forwards the upstream payload on success", async () => {
+		process.env.LLM_INTERNAL_TOKEN = "test-internal-token";
+		process.env.LLM_INTERNAL_URL = "http://internal.example";
+		const upstreamBody = {
+			consumers: [
+				{
+					apiKeyId: "api-key-a",
+					description: "App A backend",
+					projectId: "project-a",
+					projectName: "App A",
+					requests: 42,
+					errors: 1,
+					cost: 3.14,
+				},
+			],
+		};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string, init?: RequestInit) => {
+				expect(url).toBe(
+					"http://internal.example/internal/stats/by-consumer?days=30",
+				);
+				expect((init?.headers as Record<string, string>).Authorization).toBe(
+					"Bearer test-internal-token",
+				);
+				return new Response(JSON.stringify(upstreamBody), { status: 200 });
+			}),
+		);
+
+		const { fetchConsumerStats } = await freshServerModule();
+		const stats = await fetchConsumerStats();
+
+		expect(stats).toEqual(upstreamBody);
+	});
+
+	test("fetchConsumerStats degrades gracefully when the upstream call fails", async () => {
+		process.env.LLM_INTERNAL_TOKEN = "test-internal-token";
+		process.env.LLM_INTERNAL_URL = "http://internal.example";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ message: "Unauthorized" }), {
+						status: 401,
+					}),
+			),
+		);
+
+		const { fetchConsumerStats } = await freshServerModule();
+		const stats = await fetchConsumerStats();
+
+		expect(stats).toEqual({
+			consumers: [],
+			note: "Unauthorized",
+		});
+	});
+
 	test("GET /api/tier-routing requires authentication", async () => {
 		const { app } = await freshServerModule();
 		server = app.listen(0);

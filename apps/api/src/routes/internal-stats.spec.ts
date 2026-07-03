@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { app } from "@/index.js";
-import { deleteAll } from "@/testing.js";
+import { createTestUser, deleteAll } from "@/testing.js";
 
-import { db, projectHourlyStats } from "@llmgateway/db";
+import {
+	apiKeyHourlyStats,
+	db,
+	projectHourlyStats,
+	tables,
+} from "@llmgateway/db";
 
 describe("internal stats endpoint", () => {
 	const originalToken = process.env.INTERNAL_STATS_TOKEN;
@@ -138,5 +143,127 @@ describe("internal stats endpoint", () => {
 			headers: { Authorization: "Bearer test-internal-stats-token" },
 		});
 		expect(res.status).toBe(400);
+	});
+});
+
+describe("internal stats by-consumer endpoint", () => {
+	const originalToken = process.env.INTERNAL_STATS_TOKEN;
+
+	beforeEach(async () => {
+		await deleteAll();
+		process.env.INTERNAL_STATS_TOKEN = "test-internal-stats-token";
+
+		await createTestUser();
+		await db.insert(tables.organization).values({
+			id: "test-org-id",
+			name: "Test Organization",
+			billingEmail: "test@example.com",
+		});
+		await db.insert(tables.project).values([
+			{
+				id: "project-a",
+				name: "Consumer App A",
+				organizationId: "test-org-id",
+			},
+			{
+				id: "project-b",
+				name: "Consumer App B",
+				organizationId: "test-org-id",
+			},
+		]);
+		await db.insert(tables.apiKey).values([
+			{
+				id: "api-key-a",
+				token: "token-a",
+				projectId: "project-a",
+				description: "App A backend",
+				createdBy: "test-user-id",
+			},
+			{
+				id: "api-key-b",
+				token: "token-b",
+				projectId: "project-b",
+				description: "App B backend",
+				createdBy: "test-user-id",
+			},
+		]);
+	});
+
+	afterEach(() => {
+		if (originalToken === undefined) {
+			delete process.env.INTERNAL_STATS_TOKEN;
+		} else {
+			process.env.INTERNAL_STATS_TOKEN = originalToken;
+		}
+	});
+
+	test("rejects requests without an Authorization header", async () => {
+		const res = await app.request("/internal/stats/by-consumer");
+		expect(res.status).toBe(401);
+	});
+
+	test("returns usage per API key, labeled with description and project name", async () => {
+		const today = new Date();
+		today.setUTCHours(12, 0, 0, 0);
+		const fortyDaysAgo = new Date(today);
+		fortyDaysAgo.setUTCDate(fortyDaysAgo.getUTCDate() - 40);
+
+		await db.insert(apiKeyHourlyStats).values([
+			{
+				id: "aks-1",
+				apiKeyId: "api-key-a",
+				projectId: "project-a",
+				hourTimestamp: today,
+				requestCount: 10,
+				errorCount: 1,
+				cost: 1.5,
+			},
+			{
+				id: "aks-2",
+				apiKeyId: "api-key-b",
+				projectId: "project-b",
+				hourTimestamp: today,
+				requestCount: 30,
+				errorCount: 0,
+				cost: 0.5,
+			},
+			// Outside the default 30-day window; must not be counted.
+			{
+				id: "aks-3",
+				apiKeyId: "api-key-a",
+				projectId: "project-a",
+				hourTimestamp: fortyDaysAgo,
+				requestCount: 1000,
+				errorCount: 1000,
+				cost: 1000,
+			},
+		]);
+
+		const res = await app.request("/internal/stats/by-consumer", {
+			headers: { Authorization: "Bearer test-internal-stats-token" },
+		});
+		expect(res.status).toBe(200);
+
+		const body = await res.json();
+		expect(body.consumers).toEqual([
+			{
+				apiKeyId: "api-key-b",
+				description: "App B backend",
+				projectId: "project-b",
+				projectName: "Consumer App B",
+				requests: 30,
+				errors: 0,
+				cost: 0.5,
+			},
+			{
+				apiKeyId: "api-key-a",
+				description: "App A backend",
+				projectId: "project-a",
+				projectName: "Consumer App A",
+				requests: 10,
+				errors: 1,
+				cost: 1.5,
+			},
+		]);
 	});
 });
