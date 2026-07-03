@@ -24,7 +24,9 @@ depends on. See "Deployment" below for how it still gets shipped.
   (parsed from the gateway's final SSE usage chunk) and a running session
   total.
 - A usage panel that proxies `GET /internal/stats` on `LLM_INTERNAL_URL`
-  (the management API), authenticated with a bearer token.
+  (the management API), authenticated with a bearer token. Backed by the
+  `project_hourly_stats` table, which is retained indefinitely; a range
+  selector lets you switch between the last 7/30/90 days (defaults to 30).
 - A routing panel showing the health of each `tcs-*` virtual model tier
   (which provider/model it's currently routed to, fallback chain, last
   checked time, latency), proxying `GET /internal/tcs-tier-routing-status`

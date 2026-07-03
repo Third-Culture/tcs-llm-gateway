@@ -9,7 +9,11 @@ import type { ServerTypes } from "@/vars.js";
 
 export const internalStats = new OpenAPIHono<ServerTypes>();
 
-const STATS_WINDOW_DAYS = 7;
+// projectHourlyStats rows are never purged, so history is available for as
+// long as the database keeps them; this just bounds how much of it a single
+// request can pull back.
+const DEFAULT_STATS_WINDOW_DAYS = 30;
+const MAX_STATS_WINDOW_DAYS = 90;
 
 const dailyStatsSchema = z.object({
 	day: z.string(),
@@ -25,18 +29,35 @@ const statsResponseSchema = z.object({
 	days: z.array(dailyStatsSchema),
 });
 
-// GET /internal/stats - Gateway-wide request/error/cost totals for the last
-// 7 days, used by internal tools (e.g. the llm-admin chat UI's Usage tab).
+const statsQuerySchema = z.object({
+	days: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(MAX_STATS_WINDOW_DAYS)
+		.optional()
+		.openapi({
+			description: `Number of days of history to return (max ${MAX_STATS_WINDOW_DAYS}). Defaults to ${DEFAULT_STATS_WINDOW_DAYS}.`,
+			example: DEFAULT_STATS_WINDOW_DAYS,
+		}),
+});
+
+// GET /internal/stats - Gateway-wide request/error/cost totals, used by
+// internal tools (e.g. the llm-admin chat UI's Usage tab). Backed by the
+// project_hourly_stats table, which is retained indefinitely (not subject to
+// the per-org log retention window), so history beyond the default window is
+// available via the `days` query param.
 // Deliberately not scoped to a single organization/project: this deployment
 // is TCS-internal only, so "gateway-wide" is the intended, safe scope.
 const getStatsRoute = createRoute({
 	operationId: "internal_get_stats",
 	summary: "Get gateway-wide usage stats",
-	description:
-		"Returns request counts, error counts, and cost aggregated across the whole gateway for the last 7 days. Requires a Bearer token matching INTERNAL_STATS_TOKEN.",
+	description: `Returns request counts, error counts, and cost aggregated across the whole gateway for the last N days (default ${DEFAULT_STATS_WINDOW_DAYS}, max ${MAX_STATS_WINDOW_DAYS}, via the \`days\` query param). Requires a Bearer token matching INTERNAL_STATS_TOKEN.`,
 	method: "get",
 	path: "/stats",
-	request: {},
+	request: {
+		query: statsQuerySchema,
+	},
 	responses: {
 		200: {
 			content: {
@@ -52,7 +73,9 @@ const getStatsRoute = createRoute({
 internalStats.openapi(getStatsRoute, async (c) => {
 	requireInternalStatsToken(c.req.header("Authorization"));
 
-	const STATS_WINDOW_MS = STATS_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+	const { days } = c.req.valid("query");
+	const windowDays = days ?? DEFAULT_STATS_WINDOW_DAYS;
+	const STATS_WINDOW_MS = windowDays * 24 * 60 * 60 * 1000;
 	const since = new Date(Date.now() - STATS_WINDOW_MS);
 
 	const dailyRows = await db

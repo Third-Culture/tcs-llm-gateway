@@ -282,18 +282,30 @@ const EMPTY_STATS: GatewayStats = {
 	totals: { requests: 0, errors: 0, cost: 0 },
 };
 
+const DEFAULT_STATS_DAYS = 30;
+const MAX_STATS_DAYS = 90;
+
 // Fetches gateway-wide usage stats from the internal API (see
 // apps/api/src/routes/internal-stats.ts). Never throws: on any failure it
 // returns the empty-stats shape with a human-readable `note` so the frontend
 // can render a degraded state instead of crashing on missing fields.
-export async function fetchGatewayStats(): Promise<GatewayStats> {
+export async function fetchGatewayStats(
+	days: number = DEFAULT_STATS_DAYS,
+): Promise<GatewayStats> {
 	if (!LLM_INTERNAL_TOKEN) {
 		return { ...EMPTY_STATS, note: "LLM_INTERNAL_TOKEN not configured" };
 	}
+	const windowDays = Math.min(
+		Math.max(Math.trunc(days) || DEFAULT_STATS_DAYS, 1),
+		MAX_STATS_DAYS,
+	);
 	try {
-		const r = await fetch(`${LLM_INTERNAL_URL}/internal/stats`, {
-			headers: { Authorization: `Bearer ${LLM_INTERNAL_TOKEN}` },
-		});
+		const r = await fetch(
+			`${LLM_INTERNAL_URL}/internal/stats?days=${windowDays}`,
+			{
+				headers: { Authorization: `Bearer ${LLM_INTERNAL_TOKEN}` },
+			},
+		);
 		const data = (await r.json()) as Partial<GatewayStats> & {
 			message?: string;
 		};
@@ -320,8 +332,9 @@ export async function fetchGatewayStats(): Promise<GatewayStats> {
 app.get(
 	"/api/stats",
 	requireAuth,
-	async (_req: Request, res: Response): Promise<void> => {
-		const stats = await fetchGatewayStats();
+	async (req: Request, res: Response): Promise<void> => {
+		const days = Number(req.query.days) || DEFAULT_STATS_DAYS;
+		const stats = await fetchGatewayStats(days);
 		res.json(stats);
 	},
 );

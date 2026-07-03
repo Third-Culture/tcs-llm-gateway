@@ -276,7 +276,7 @@ export interface paths {
         };
         /**
          * Get gateway-wide usage stats
-         * @description Returns request counts, error counts, and cost aggregated across the whole gateway for the last 7 days. Requires a Bearer token matching INTERNAL_STATS_TOKEN.
+         * @description Returns request counts, error counts, and cost aggregated across the whole gateway for the last N days (default 30, max 90, via the `days` query param). Requires a Bearer token matching INTERNAL_STATS_TOKEN.
          */
         get: operations["internal_get_stats"];
         put?: never;
@@ -8714,7 +8714,9 @@ export interface operations {
     };
     internal_get_stats: {
         parameters: {
-            query?: never;
+            query?: {
+                days?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;

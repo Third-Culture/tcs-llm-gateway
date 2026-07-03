@@ -41,13 +41,13 @@ describe("internal stats endpoint", () => {
 		expect(res.status).toBe(501);
 	});
 
-	test("aggregates request/error/cost totals across projects for the last 7 days", async () => {
+	test("aggregates request/error/cost totals across projects for the default 30-day window", async () => {
 		const today = new Date();
 		today.setUTCHours(12, 0, 0, 0);
 		const yesterday = new Date(today);
 		yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-		const tenDaysAgo = new Date(today);
-		tenDaysAgo.setUTCDate(tenDaysAgo.getUTCDate() - 10);
+		const fortyDaysAgo = new Date(today);
+		fortyDaysAgo.setUTCDate(fortyDaysAgo.getUTCDate() - 40);
 
 		await db.insert(projectHourlyStats).values([
 			{
@@ -74,11 +74,11 @@ describe("internal stats endpoint", () => {
 				errorCount: 2,
 				cost: 0.25,
 			},
-			// Outside the 7-day window; must not be counted.
+			// Outside the default 30-day window; must not be counted.
 			{
 				id: "phs-4",
 				projectId: "project-a",
-				hourTimestamp: tenDaysAgo,
+				hourTimestamp: fortyDaysAgo,
 				requestCount: 1000,
 				errorCount: 1000,
 				cost: 1000,
@@ -96,5 +96,47 @@ describe("internal stats endpoint", () => {
 		expect(body.days.map((d: { requests: number }) => d.requests)).toEqual([
 			3, 15,
 		]);
+	});
+
+	test("honors a custom `days` query param to look further back", async () => {
+		const today = new Date();
+		today.setUTCHours(12, 0, 0, 0);
+		const fortyDaysAgo = new Date(today);
+		fortyDaysAgo.setUTCDate(fortyDaysAgo.getUTCDate() - 40);
+
+		await db.insert(projectHourlyStats).values([
+			{
+				id: "phs-1",
+				projectId: "project-a",
+				hourTimestamp: today,
+				requestCount: 10,
+				errorCount: 1,
+				cost: 1.5,
+			},
+			{
+				id: "phs-2",
+				projectId: "project-a",
+				hourTimestamp: fortyDaysAgo,
+				requestCount: 7,
+				errorCount: 0,
+				cost: 0.7,
+			},
+		]);
+
+		const res = await app.request("/internal/stats?days=60", {
+			headers: { Authorization: "Bearer test-internal-stats-token" },
+		});
+		expect(res.status).toBe(200);
+
+		const body = await res.json();
+		expect(body.totals).toEqual({ requests: 17, errors: 1, cost: 2.2 });
+		expect(body.days).toHaveLength(2);
+	});
+
+	test("rejects a `days` value beyond the max window", async () => {
+		const res = await app.request("/internal/stats?days=91", {
+			headers: { Authorization: "Bearer test-internal-stats-token" },
+		});
+		expect(res.status).toBe(400);
 	});
 });

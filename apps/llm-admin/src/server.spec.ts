@@ -83,7 +83,7 @@ describe("llm-admin server", () => {
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async (url: string, init?: RequestInit) => {
-				expect(url).toBe("http://internal.example/internal/stats");
+				expect(url).toBe("http://internal.example/internal/stats?days=30");
 				expect((init?.headers as Record<string, string>).Authorization).toBe(
 					"Bearer test-internal-token",
 				);
@@ -93,6 +93,27 @@ describe("llm-admin server", () => {
 
 		const { fetchGatewayStats } = await freshServerModule();
 		const stats = await fetchGatewayStats();
+
+		expect(stats).toEqual(upstreamBody);
+	});
+
+	test("fetchGatewayStats forwards a custom days window", async () => {
+		process.env.LLM_INTERNAL_TOKEN = "test-internal-token";
+		process.env.LLM_INTERNAL_URL = "http://internal.example";
+		const upstreamBody = {
+			totals: { requests: 100, errors: 2, cost: 9.5 },
+			days: [{ day: "2026-06-01", requests: 100 }],
+		};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string) => {
+				expect(url).toBe("http://internal.example/internal/stats?days=90");
+				return new Response(JSON.stringify(upstreamBody), { status: 200 });
+			}),
+		);
+
+		const { fetchGatewayStats } = await freshServerModule();
+		const stats = await fetchGatewayStats(90);
 
 		expect(stats).toEqual(upstreamBody);
 	});

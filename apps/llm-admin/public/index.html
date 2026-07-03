@@ -758,6 +758,8 @@
 				display: flex;
 				flex-direction: column;
 				gap: 0.55rem;
+				max-height: 380px;
+				overflow-y: auto;
 			}
 
 			.bar-row {
@@ -1198,7 +1200,20 @@
 			<!-- Stats panel -->
 			<div class="panel" id="stats-panel">
 				<div>
-					<div class="stats-section-title">Last 7 days — gateway-wide</div>
+					<div class="routing-header">
+						<div class="stats-section-title" style="margin-bottom: 0">
+							Gateway-wide usage
+						</div>
+						<select
+							class="model-select"
+							id="stats-range-select"
+							onchange="onStatsRangeChange()"
+						>
+							<option value="7">Last 7 days</option>
+							<option value="30" selected>Last 30 days</option>
+							<option value="90">Last 90 days</option>
+						</select>
+					</div>
 					<div class="stat-cards" id="stat-cards">
 						<div class="stats-loading">
 							<div class="spinner"></div>
@@ -1725,15 +1740,26 @@
 
 			// ── Stats ──────────────────────────────────────────────────────────────────
 
+			let statsRangeDays = 30;
+
 			async function loadStats() {
 				try {
-					const r = await fetch("api/stats");
+					const r = await fetch(`api/stats?days=${statsRangeDays}`);
 					const data = await r.json();
 					renderStats(data);
 				} catch (err) {
 					document.getElementById("stat-cards").innerHTML =
 						`<p style="color:var(--muted);font-size:0.85rem;">Could not load stats: ${err.message}</p>`;
 				}
+			}
+
+			function onStatsRangeChange() {
+				const select = document.getElementById("stats-range-select");
+				statsRangeDays = Number(select.value) || 30;
+				document.getElementById("stat-cards").innerHTML = `
+      <div class="stats-loading"><div class="spinner"></div>Loading stats…</div>
+    `;
+				loadStats();
 			}
 
 			function renderStats(data) {
@@ -1744,17 +1770,18 @@
 					totals.requests > 0
 						? ((totals.errors / totals.requests) * 100).toFixed(1)
 						: "0.0";
+				const rangeLabel = `last ${statsRangeDays} days`;
 
 				document.getElementById("stat-cards").innerHTML = `
       <div class="stat-card">
         <div class="stat-card-label">Total requests</div>
         <div class="stat-card-value">${fmtNum(totals.requests)}</div>
-        <div class="stat-card-sub">last 7 days</div>
+        <div class="stat-card-sub">${rangeLabel}</div>
       </div>
       <div class="stat-card">
         <div class="stat-card-label">Total cost</div>
         <div class="stat-card-value">$${fmtCost(totals.cost)}</div>
-        <div class="stat-card-sub">last 7 days</div>
+        <div class="stat-card-sub">${rangeLabel}</div>
       </div>
       <div class="stat-card">
         <div class="stat-card-label">Errors</div>
