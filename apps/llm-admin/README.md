@@ -34,6 +34,16 @@ depends on. See "Deployment" below for how it still gets shipped.
   now" button that proxies `POST /internal/tcs-tier-routing-status/run` to
   trigger an on-demand check instead of waiting for the hourly worker job.
 
+## Branding
+
+`public/brand/` (`tokens.css`, `tc-mark-on-light.svg`) is vendored from the
+`Third-Culture/tcs-brand-pack` repo (`tokens/tokens.css` and
+`logos/mark/tc-mark-on-light.svg` respectively) — `public/index.html` and the
+login-broker page in `src/server.ts` both link to `/brand/tokens.css` and
+`/brand/tc-mark-on-light.svg`. These are generated/exported files in the
+brand pack, so don't hand-edit them here; re-copy them from `tcs-brand-pack`
+when the brand tokens or mark change.
+
 ## Environment variables
 
 | Variable             | Required | Description                                                                                                                                                   |

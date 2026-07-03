@@ -1,0 +1,45 @@
+/*
+ * GENERATED FILE — do not edit by hand.
+ * Source: tokens/tokens.json
+ * Regenerate with: npm run build:tokens
+ */
+
+:root {
+	--tcs-color-brand: #1a58bb;
+	--tcs-color-ink: #141414;
+	--tcs-color-cream: #f3f2f0;
+	--tcs-color-white: #ffffff;
+	--tcs-color-secondary: #cacaca;
+	--tcs-color-muted: #b3b3b3;
+	--tcs-color-silver: #dfdfe8;
+	--tcs-color-icon: #e8eaed;
+	--tcs-font-family: Helvetica, "Helvetica Neue", Arial, sans-serif;
+	--tcs-font-weight-regular: 400;
+	--tcs-font-weight-bold: 700;
+	--tcs-size-text-h1: 5em;
+	--tcs-size-text-h2: 2em;
+	--tcs-size-text-h3: 1.5em;
+	--tcs-size-text-h4: 1.25em;
+	--tcs-size-text-body: 1em;
+	--tcs-size-text-caption: 0.875em;
+	--tcs-tracking-h1: -0.03em;
+	--tcs-tracking-h2: -0.02em;
+	--tcs-tracking-h3: -0.01em;
+	--tcs-tracking-h4: 0;
+	--tcs-tracking-body: 0;
+	--tcs-tracking-caption: 0.02em;
+	--tcs-lineHeight-tight: 1.1;
+	--tcs-lineHeight-snug: 1.2;
+	--tcs-lineHeight-normal: 1.4;
+	--tcs-lineHeight-relaxed: 1.5;
+	--tcs-space-xs: 0.5rem;
+	--tcs-space-sm: 1rem;
+	--tcs-space-md: 1.5rem;
+	--tcs-space-lg: 2.5rem;
+	--tcs-space-xl: 4rem;
+	--tcs-space-2xl: 5rem;
+	--tcs-space-stack: 7.5rem;
+	--tcs-radius-none: 0;
+	--tcs-radius-sm: 2px;
+	--tcs-radius-md: 4px;
+}
