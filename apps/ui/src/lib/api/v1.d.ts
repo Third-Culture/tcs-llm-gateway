@@ -267,6 +267,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get gateway-wide usage stats
+         * @description Returns request counts, error counts, and cost aggregated across the whole gateway for the last 7 days. Requires a Bearer token matching INTERNAL_STATS_TOKEN.
+         */
+        get: operations["internal_get_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/tcs-tier-routing-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get TCS tier routing health status
+         * @description Returns the last recorded routing/health status for every tcs-* virtual model tier. Requires a Bearer token matching INTERNAL_STATS_TOKEN.
+         */
+        get: operations["internal_get_tcs_tier_routing_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/tcs-tier-routing-status/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run TCS tier routing health check now
+         * @description Probes every tcs-* virtual model tier immediately and returns the updated status. Requires a Bearer token matching INTERNAL_STATS_TOKEN.
+         */
+        post: operations["internal_run_tcs_tier_routing_status"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/public/discounts/model/{modelId}": {
         parameters: {
             query?: never;
@@ -4354,6 +4414,64 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/tcs-tier-routing-status/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Result of an on-demand TCS tier routing health check */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            tiers: {
+                                tierId: string;
+                                tierName: string;
+                                description?: string;
+                                /** @enum {string} */
+                                status: "ok" | "error" | "unknown";
+                                selectedProvider: string | null;
+                                selectedModel: string | null;
+                                primaryProvider: string;
+                                primaryModel: string;
+                                fallbackProviders: {
+                                    providerId: string;
+                                    modelName: string;
+                                }[];
+                                lastCheckedAt: string | null;
+                                lastSuccessAt: string | null;
+                                lastError: string | null;
+                                latencyMs: number | null;
+                            }[];
+                            checkedAt: string | null;
+                            ran: boolean;
+                            reason?: string;
+                        };
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -8589,6 +8707,120 @@ export interface operations {
                             source: string;
                             fetchedAt: string;
                         };
+                    };
+                };
+            };
+        };
+    };
+    internal_get_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gateway-wide usage totals and daily request counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        totals: {
+                            requests: number;
+                            errors: number;
+                            cost: number;
+                        };
+                        days: {
+                            day: string;
+                            requests: number;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    internal_get_tcs_tier_routing_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current TCS tier routing health status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tiers: {
+                            tierId: string;
+                            tierName: string;
+                            description?: string;
+                            /** @enum {string} */
+                            status: "ok" | "error" | "unknown";
+                            selectedProvider: string | null;
+                            selectedModel: string | null;
+                            primaryProvider: string;
+                            primaryModel: string;
+                            fallbackProviders: {
+                                providerId: string;
+                                modelName: string;
+                            }[];
+                            lastCheckedAt: string | null;
+                            lastSuccessAt: string | null;
+                            lastError: string | null;
+                            latencyMs: number | null;
+                        }[];
+                        checkedAt: string | null;
+                    };
+                };
+            };
+        };
+    };
+    internal_run_tcs_tier_routing_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result of an on-demand TCS tier routing health check */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tiers: {
+                            tierId: string;
+                            tierName: string;
+                            description?: string;
+                            /** @enum {string} */
+                            status: "ok" | "error" | "unknown";
+                            selectedProvider: string | null;
+                            selectedModel: string | null;
+                            primaryProvider: string;
+                            primaryModel: string;
+                            fallbackProviders: {
+                                providerId: string;
+                                modelName: string;
+                            }[];
+                            lastCheckedAt: string | null;
+                            lastSuccessAt: string | null;
+                            lastError: string | null;
+                            latencyMs: number | null;
+                        }[];
+                        checkedAt: string | null;
+                        ran: boolean;
+                        reason?: string;
                     };
                 };
             };

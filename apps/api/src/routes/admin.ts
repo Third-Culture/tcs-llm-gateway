@@ -4,6 +4,10 @@ import { z } from "zod";
 
 import { adminMiddleware } from "@/middleware/admin.js";
 
+import {
+	getTcsTierRoutingStatusSnapshot,
+	runTcsTierRoutingChecks,
+} from "@llmgateway/actions";
 import { logAuditEvent } from "@llmgateway/audit";
 import {
 	and,
@@ -25,9 +29,8 @@ import {
 	projectHourlyModelStats,
 	modelProviderMappingHistory,
 	modelHistory,
-	tcsTierRoutingStatus,
 } from "@llmgateway/db";
-import { listTcsRoutingTiers, models, providers } from "@llmgateway/models";
+import { models, providers } from "@llmgateway/models";
 import {
 	getResendClient,
 	fromEmail,
@@ -6950,6 +6953,11 @@ const tcsTierRoutingStatusSchema = z.object({
 	latencyMs: z.number().nullable(),
 });
 
+const tcsTierRoutingStatusResponseSchema = z.object({
+	tiers: z.array(tcsTierRoutingStatusSchema),
+	checkedAt: z.string().nullable(),
+});
+
 const getTcsTierRoutingStatus = createRoute({
 	method: "get",
 	path: "/tcs-tier-routing-status",
@@ -6957,10 +6965,7 @@ const getTcsTierRoutingStatus = createRoute({
 		200: {
 			content: {
 				"application/json": {
-					schema: z.object({
-						tiers: z.array(tcsTierRoutingStatusSchema),
-						checkedAt: z.string().nullable(),
-					}),
+					schema: tcsTierRoutingStatusResponseSchema,
 				},
 			},
 			description: "Current TCS tier routing health status",
@@ -6969,45 +6974,35 @@ const getTcsTierRoutingStatus = createRoute({
 });
 
 admin.openapi(getTcsTierRoutingStatus, async (c) => {
-	const tiers = listTcsRoutingTiers();
-	const statusRows = await db.select().from(tcsTierRoutingStatus);
-	const statusByTierId = new Map(statusRows.map((row) => [row.tierId, row]));
+	const snapshot = await getTcsTierRoutingStatusSnapshot();
+	return c.json(snapshot);
+});
 
-	const responseTiers = tiers.map((tier) => {
-		const status = statusByTierId.get(tier.id);
-		const tierStatus: "ok" | "error" | "unknown" =
-			status?.status === "ok"
-				? "ok"
-				: status?.status === "error"
-					? "error"
-					: "unknown";
-		return {
-			tierId: tier.id,
-			tierName: tier.name,
-			description: tier.description,
-			status: tierStatus,
-			selectedProvider: status?.selectedProvider ?? null,
-			selectedModel: status?.selectedModel ?? null,
-			primaryProvider: tier.primaryProvider,
-			primaryModel: tier.primaryModel,
-			fallbackProviders: tier.providers.slice(1),
-			lastCheckedAt: status?.lastCheckedAt?.toISOString() ?? null,
-			lastSuccessAt: status?.lastSuccessAt?.toISOString() ?? null,
-			lastError: status?.lastError ?? null,
-			latencyMs: status?.latencyMs ?? null,
-		};
-	});
+const runTcsTierRoutingStatusCheck = createRoute({
+	method: "post",
+	path: "/tcs-tier-routing-status/run",
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: tcsTierRoutingStatusResponseSchema.extend({
+						ran: z.boolean(),
+						reason: z.string().optional(),
+					}),
+				},
+			},
+			description: "Result of an on-demand TCS tier routing health check",
+		},
+	},
+});
 
-	const latestCheck = statusRows.reduce<Date | null>((latest, row) => {
-		if (!latest || row.lastCheckedAt > latest) {
-			return row.lastCheckedAt;
-		}
-		return latest;
-	}, null);
-
+admin.openapi(runTcsTierRoutingStatusCheck, async (c) => {
+	const summary = await runTcsTierRoutingChecks();
+	const snapshot = await getTcsTierRoutingStatusSnapshot();
 	return c.json({
-		tiers: responseTiers,
-		checkedAt: latestCheck?.toISOString() ?? null,
+		...snapshot,
+		ran: summary.ran,
+		reason: summary.reason,
 	});
 });
 

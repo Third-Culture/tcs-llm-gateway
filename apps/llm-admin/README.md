@@ -25,6 +25,12 @@ depends on. See "Deployment" below for how it still gets shipped.
   total.
 - A usage panel that proxies `GET /internal/stats` on `LLM_INTERNAL_URL`
   (the management API), authenticated with a bearer token.
+- A routing panel showing the health of each `tcs-*` virtual model tier
+  (which provider/model it's currently routed to, fallback chain, last
+  checked time, latency), proxying `GET /internal/tcs-tier-routing-status`
+  on `LLM_INTERNAL_URL` with the same bearer token. Includes a "Run check
+  now" button that proxies `POST /internal/tcs-tier-routing-status/run` to
+  trigger an on-demand check instead of waiting for the hourly worker job.
 
 ## Environment variables
 
@@ -33,7 +39,7 @@ depends on. See "Deployment" below for how it still gets shipped.
 | `GOOGLE_CLIENT_ID`   | yes      | Google OAuth client ID used for Sign-In With Google (no secret needed, GIS popup flow). Must allow `https://thirdculture.systems` as an authorized JS origin. |
 | `SESSION_SECRET`     | yes      | Random string (`openssl rand -hex 32`) used to sign session cookies and the login-broker transfer token.                                                      |
 | `LLM_API_KEY`        | yes      | A gateway API key (server-side only, never exposed to the browser) used for all chat completions sent through this tool.                                      |
-| `LLM_INTERNAL_TOKEN` | no       | Bearer token matching the gateway's `INTERNAL_STATS_TOKEN`. Without it, the Usage tab reports zeros with a note instead of erroring.                          |
+| `LLM_INTERNAL_TOKEN` | no       | Bearer token matching the management API's `INTERNAL_STATS_TOKEN`. Without it, the Usage and Routing tabs report empty state with a note instead of erroring. |
 | `LLM_GATEWAY_URL`    | no       | Base URL of the gateway. Defaults to the live `third-culture` deployment.                                                                                     |
 | `LLM_INTERNAL_URL`   | no       | Base URL of the management API. Defaults to the live `third-culture` deployment.                                                                              |
 | `PORT`               | no       | Defaults to `7070`.                                                                                                                                           |

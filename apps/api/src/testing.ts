@@ -6,6 +6,7 @@ import {
 	projectHourlyModelStats,
 	apiKeyHourlyStats,
 	apiKeyHourlyModelStats,
+	tcsTierRoutingStatus,
 } from "@llmgateway/db";
 
 import { app } from "./index.js";
@@ -29,6 +30,7 @@ export async function deleteAll() {
 		db.delete(projectHourlyModelStats),
 		db.delete(apiKeyHourlyStats),
 		db.delete(apiKeyHourlyModelStats),
+		db.delete(tcsTierRoutingStatus),
 	]);
 
 	await Promise.all([

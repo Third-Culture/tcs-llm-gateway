@@ -1030,6 +1030,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@llmgateway/actions':
+        specifier: workspace:*
+        version: link:../../packages/actions
       '@llmgateway/cache':
         specifier: workspace:*
         version: link:../../packages/cache
@@ -1265,6 +1268,9 @@ importers:
 
   packages/actions:
     dependencies:
+      '@llmgateway/cache':
+        specifier: workspace:*
+        version: link:../cache
       '@llmgateway/db':
         specifier: workspace:*
         version: link:../db
@@ -1274,6 +1280,9 @@ importers:
       '@llmgateway/models':
         specifier: workspace:*
         version: link:../models
+      '@llmgateway/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/cache:
     dependencies:

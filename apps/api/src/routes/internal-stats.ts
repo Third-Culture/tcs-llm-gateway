@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
-import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
+
+import { requireInternalStatsToken } from "@/utils/internal-auth.js";
 
 import { db, gte, projectHourlyStats, sql } from "@llmgateway/db";
 
@@ -9,21 +10,6 @@ import type { ServerTypes } from "@/vars.js";
 export const internalStats = new OpenAPIHono<ServerTypes>();
 
 const STATS_WINDOW_DAYS = 7;
-
-function requireInternalStatsToken(authorization: string | undefined): void {
-	const token = process.env.INTERNAL_STATS_TOKEN;
-	if (!token) {
-		throw new HTTPException(501, {
-			message: "INTERNAL_STATS_TOKEN is not configured on this deployment",
-		});
-	}
-	const provided = authorization?.startsWith("Bearer ")
-		? authorization.slice("Bearer ".length)
-		: undefined;
-	if (!provided || provided !== token) {
-		throw new HTTPException(401, { message: "Invalid internal stats token" });
-	}
-}
 
 const dailyStatsSchema = z.object({
 	day: z.string(),
