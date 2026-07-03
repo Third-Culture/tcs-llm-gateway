@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import express from "express";
 import session from "express-session";
 
-import type { NextFunction, Request, Response } from "express";
+import type { Express, NextFunction, Request, Response } from "express";
 
 declare module "express-session" {
 	interface SessionData {
@@ -58,7 +58,7 @@ const ALLOWED_DOMAIN = "thirdculture.world";
 const LLM_HOST = "llm.thirdculture.systems";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-const app = express();
+const app: Express = express();
 app.set("trust proxy", 1);
 app.use(express.json());
 
@@ -74,6 +74,25 @@ app.use(
 		},
 	}),
 );
+
+// Standardized health check contract shared across TCS services
+// (see Third-Culture/tcs-monitoring shared/health/README.md): 200 "ok" when
+// required config is present, 503 "degraded" otherwise. Used by the
+// tcs-monitoring uptime check for this service.
+const START_TIME = Date.now();
+
+app.get("/health", (_req: Request, res: Response): void => {
+	const checks: Record<string, string> = {
+		config: GOOGLE_CLIENT_ID && SESSION_SECRET && LLM_API_KEY ? "ok" : "fail",
+	};
+	const healthy = Object.values(checks).every((v) => v === "ok");
+	res.status(healthy ? 200 : 503).json({
+		status: healthy ? "ok" : "degraded",
+		service: "llm-admin",
+		uptime_seconds: Math.round((Date.now() - START_TIME) / 100) / 10,
+		checks,
+	});
+});
 
 function requireAuth(req: Request, res: Response, next: NextFunction): void {
 	if (req.session.user) {
@@ -252,28 +271,170 @@ app.get("/api/me", (req: Request, res: Response): void => {
 
 // ── Stats proxy ───────────────────────────────────────────────────────────────
 
+interface GatewayStats {
+	totals: { requests: number; errors: number; cost: number };
+	days: Array<{ day: string; requests: number }>;
+	note?: string;
+}
+
+const EMPTY_STATS: GatewayStats = {
+	days: [],
+	totals: { requests: 0, errors: 0, cost: 0 },
+};
+
+// Fetches gateway-wide usage stats from the internal API (see
+// apps/api/src/routes/internal-stats.ts). Never throws: on any failure it
+// returns the empty-stats shape with a human-readable `note` so the frontend
+// can render a degraded state instead of crashing on missing fields.
+export async function fetchGatewayStats(): Promise<GatewayStats> {
+	if (!LLM_INTERNAL_TOKEN) {
+		return { ...EMPTY_STATS, note: "LLM_INTERNAL_TOKEN not configured" };
+	}
+	try {
+		const r = await fetch(`${LLM_INTERNAL_URL}/internal/stats`, {
+			headers: { Authorization: `Bearer ${LLM_INTERNAL_TOKEN}` },
+		});
+		const data = (await r.json()) as Partial<GatewayStats> & {
+			message?: string;
+		};
+		if (!r.ok) {
+			console.error("Stats upstream error:", r.status, data);
+			return {
+				...EMPTY_STATS,
+				note:
+					typeof data.message === "string"
+						? data.message
+						: `Upstream stats request failed (${r.status})`,
+			};
+		}
+		return {
+			totals: data.totals ?? EMPTY_STATS.totals,
+			days: data.days ?? EMPTY_STATS.days,
+		};
+	} catch (err) {
+		console.error("Stats fetch error:", (err as Error).message);
+		return { ...EMPTY_STATS, note: "Failed to fetch stats" };
+	}
+}
+
 app.get(
 	"/api/stats",
 	requireAuth,
 	async (_req: Request, res: Response): Promise<void> => {
-		if (!LLM_INTERNAL_TOKEN) {
-			res.json({
-				days: [],
-				totals: { requests: 0, errors: 0, cost: 0 },
-				note: "LLM_INTERNAL_TOKEN not configured",
-			});
-			return;
+		const stats = await fetchGatewayStats();
+		res.json(stats);
+	},
+);
+
+// ── Tier routing status proxy ─────────────────────────────────────────────────
+
+interface TcsTierProviderMapping {
+	providerId: string;
+	modelName: string;
+}
+
+interface TcsTierRoutingStatusEntry {
+	tierId: string;
+	tierName: string;
+	description?: string;
+	status: "ok" | "error" | "unknown";
+	selectedProvider: string | null;
+	selectedModel: string | null;
+	primaryProvider: string;
+	primaryModel: string;
+	fallbackProviders: TcsTierProviderMapping[];
+	lastCheckedAt: string | null;
+	lastSuccessAt: string | null;
+	lastError: string | null;
+	latencyMs: number | null;
+}
+
+interface TcsTierRoutingStatusResponse {
+	tiers: TcsTierRoutingStatusEntry[];
+	checkedAt: string | null;
+	ran?: boolean;
+	reason?: string;
+	note?: string;
+}
+
+const EMPTY_TIER_ROUTING_STATUS: TcsTierRoutingStatusResponse = {
+	tiers: [],
+	checkedAt: null,
+};
+
+// Fetches/triggers TCS tier routing health checks via the internal API (see
+// apps/api/src/routes/internal-tcs-tier-routing.ts). Never throws: on any
+// failure it returns the empty-status shape with a human-readable `note` so
+// the frontend can render a degraded state instead of crashing.
+async function requestTierRoutingStatus(
+	method: "GET" | "POST",
+): Promise<TcsTierRoutingStatusResponse> {
+	if (!LLM_INTERNAL_TOKEN) {
+		return {
+			...EMPTY_TIER_ROUTING_STATUS,
+			note: "LLM_INTERNAL_TOKEN not configured",
+		};
+	}
+	try {
+		const path =
+			method === "POST"
+				? "/internal/tcs-tier-routing-status/run"
+				: "/internal/tcs-tier-routing-status";
+		const r = await fetch(`${LLM_INTERNAL_URL}${path}`, {
+			method,
+			headers: { Authorization: `Bearer ${LLM_INTERNAL_TOKEN}` },
+		});
+		const data = (await r.json()) as Partial<TcsTierRoutingStatusResponse> & {
+			message?: string;
+		};
+		if (!r.ok) {
+			console.error("Tier routing status upstream error:", r.status, data);
+			return {
+				...EMPTY_TIER_ROUTING_STATUS,
+				note:
+					typeof data.message === "string"
+						? data.message
+						: `Upstream tier routing request failed (${r.status})`,
+			};
 		}
-		try {
-			const r = await fetch(`${LLM_INTERNAL_URL}/internal/stats`, {
-				headers: { Authorization: `Bearer ${LLM_INTERNAL_TOKEN}` },
-			});
-			const data = await r.json();
-			res.json(data);
-		} catch (err) {
-			console.error("Stats fetch error:", (err as Error).message);
-			res.status(502).json({ error: "Failed to fetch stats" });
-		}
+		return {
+			tiers: data.tiers ?? EMPTY_TIER_ROUTING_STATUS.tiers,
+			checkedAt: data.checkedAt ?? null,
+			ran: data.ran,
+			reason: data.reason,
+		};
+	} catch (err) {
+		console.error("Tier routing status fetch error:", (err as Error).message);
+		return {
+			...EMPTY_TIER_ROUTING_STATUS,
+			note: "Failed to fetch tier routing status",
+		};
+	}
+}
+
+export function fetchTierRoutingStatus(): Promise<TcsTierRoutingStatusResponse> {
+	return requestTierRoutingStatus("GET");
+}
+
+export function runTierRoutingCheck(): Promise<TcsTierRoutingStatusResponse> {
+	return requestTierRoutingStatus("POST");
+}
+
+app.get(
+	"/api/tier-routing",
+	requireAuth,
+	async (_req: Request, res: Response): Promise<void> => {
+		const status = await fetchTierRoutingStatus();
+		res.json(status);
+	},
+);
+
+app.post(
+	"/api/tier-routing/run",
+	requireAuth,
+	async (_req: Request, res: Response): Promise<void> => {
+		const status = await runTierRoutingCheck();
+		res.json(status);
 	},
 );
 
@@ -445,6 +606,11 @@ app.get("/index.html", (req: Request, res: Response) =>
 );
 app.use(express.static(join(__dirname, "..", "public")));
 
-app.listen(Number(PORT), () => {
-	console.log(`LLM admin running on :${PORT}`);
-});
+export { app };
+
+/* istanbul ignore next -- exercised via manual/e2e testing, not unit tests */
+if (process.env.NODE_ENV !== "test") {
+	app.listen(Number(PORT), () => {
+		console.log(`LLM admin running on :${PORT}`);
+	});
+}

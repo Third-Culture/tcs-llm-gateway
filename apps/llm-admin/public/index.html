@@ -880,6 +880,13 @@
 				<button class="tab-btn" onclick="switchTab('stats')" id="tab-stats">
 					Usage
 				</button>
+				<button
+					class="tab-btn"
+					onclick="switchTab('routing')"
+					id="tab-routing"
+				>
+					Routing
+				</button>
 				<div class="topbar-sep"></div>
 				<div
 					class="session-cost"
@@ -1119,8 +1126,10 @@
 
 			// ── Tabs ───────────────────────────────────────────────────────────────────
 
+			let tierRoutingLoaded = false;
+
 			function switchTab(tab) {
-				["chat", "stats"].forEach((t) => {
+				["chat", "stats", "routing"].forEach((t) => {
 					document
 						.getElementById(`tab-${t}`)
 						.classList.toggle("active", t === tab);
@@ -1128,6 +1137,10 @@
 						.getElementById(`${t}-panel`)
 						.classList.toggle("active", t === tab);
 				});
+				if (tab === "routing" && !tierRoutingLoaded) {
+					tierRoutingLoaded = true;
+					loadTierRouting();
+				}
 			}
 
 			// ── Chat ───────────────────────────────────────────────────────────────────
@@ -1376,7 +1389,10 @@
 				}
 			}
 
-			function renderStats({ totals, days, note }) {
+			function renderStats(data) {
+				const totals = data?.totals || { requests: 0, errors: 0, cost: 0 };
+				const days = data?.days || [];
+				const note = data?.note;
 				const errorRate =
 					totals.requests > 0
 						? ((totals.errors / totals.requests) * 100).toFixed(1)
