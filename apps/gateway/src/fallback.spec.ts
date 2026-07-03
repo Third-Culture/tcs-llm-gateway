@@ -366,7 +366,9 @@ describe("fallback and error status code handling", () => {
 				}),
 			});
 
-			expect(res.status).toBe(500);
+			// Upstream rate limiting is surfaced to the client as 429 (not a
+			// generic 500) so well-behaved clients can back off/retry correctly.
+			expect(res.status).toBe(429);
 			const json = await res.json();
 			expect(json).toHaveProperty("error");
 			expect(json.error.type).toBe("upstream_error");

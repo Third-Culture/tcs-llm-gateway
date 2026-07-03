@@ -33,8 +33,16 @@ export function isRetryableErrorType(errorType: string): boolean {
 
 /**
  * Determines whether a failed request should be retried with a different provider.
- * Only retries when no specific provider was requested, the error is retryable,
- * retry count hasn't been exceeded, and alternative providers are available.
+ * Retries when the error is retryable, retry count hasn't been exceeded, fallback
+ * hasn't been disabled, and alternative providers are available.
+ *
+ * Note: this also applies when a specific provider was explicitly requested
+ * (e.g. "deepinfra/deepinfra-llama-4-maverick"). In that case `remainingProviders`
+ * is only > 0 when the caller (chat.ts) has widened the routing metadata to
+ * include other providers serving the same model, so the explicitly requested
+ * provider is always tried first and this only kicks in as a waterfall on
+ * transient failures (rate limits, overload, 5xx) — unless the caller disabled
+ * fallback via `noFallback` / `X-No-Fallback`.
  */
 export function shouldRetryRequest(opts: {
 	requestedProvider: string | undefined;
@@ -44,9 +52,6 @@ export function shouldRetryRequest(opts: {
 	remainingProviders: number;
 	usedProvider: string;
 }): boolean {
-	if (opts.requestedProvider) {
-		return false;
-	}
 	if (opts.noFallback) {
 		return false;
 	}

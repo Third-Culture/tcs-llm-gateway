@@ -2777,6 +2777,37 @@ chat.openapi(completions, async (c) => {
 				routingMetadataProviders = selectedDirectProvider
 					? [selectedDirectProvider]
 					: [];
+			} else if (!noFallback && project.mode === "credits") {
+				// Even when a specific provider was requested (e.g.
+				// "deepinfra/deepinfra-llama-4-maverick"), surface other
+				// actually-configured providers that also serve this model as
+				// fallback candidates. The first attempt still goes to the
+				// explicitly requested provider (usedProvider is set above and
+				// is unaffected by this); this only widens the retry pool so a
+				// transient upstream failure (rate limit, overload, 5xx) can
+				// waterfall to another provider instead of failing outright.
+				const otherProviderMappings = allModelProviders.filter(
+					(provider) =>
+						provider.providerId !== requestedProvider &&
+						hasProviderEnvironmentToken(provider.providerId as Provider),
+				);
+				const otherEligibleProviders = filterEligibleModelProviders(
+					otherProviderMappings,
+					{
+						allProviderVariants: modelInfo.providers,
+						webSearchTool,
+						responseFormatType: response_format?.type,
+						hasImages,
+						maxTokens: max_tokens,
+						reasoningEffort: reasoning_effort,
+					},
+				);
+				if (otherEligibleProviders.length > 0) {
+					routingMetadataProviders = [
+						...routingMetadataProviders,
+						...otherEligibleProviders,
+					];
+				}
 			}
 		}
 
@@ -8771,7 +8802,11 @@ chat.openapi(completions, async (c) => {
 				}
 			}
 
-			// Return our wrapped error response for non-client errors
+			// Return our wrapped error response for non-client errors.
+			// Surface upstream rate limiting as 429 (instead of a generic 500) so
+			// well-behaved clients see the real reason and can back off/retry.
+			const clientErrorStatus: 429 | 500 =
+				finishReason === "upstream_error" && res.status === 429 ? 429 : 500;
 			return c.json(
 				{
 					error: {
@@ -8786,7 +8821,7 @@ chat.openapi(completions, async (c) => {
 						responseText: errorResponseText,
 					},
 				},
-				500,
+				clientErrorStatus,
 			);
 		}
 

@@ -40,9 +40,35 @@ describe("shouldRetryRequest", () => {
 		expect(shouldRetryRequest(defaultOpts)).toBe(true);
 	});
 
-	it("does not retry when a specific provider was requested", () => {
+	it("still allows retry when a specific provider was requested, as long as fallback candidates exist", () => {
+		// Explicit provider requests ("openai/gpt-4o") still get a waterfall to
+		// other configured providers on transient failures, matching the
+		// existing behavior of proactive rate-limit/low-uptime rerouting for
+		// explicit-provider requests. The caller controls whether other
+		// providers are actually offered via `remainingProviders` (only
+		// populated with real fallback candidates when applicable).
 		expect(
 			shouldRetryRequest({ ...defaultOpts, requestedProvider: "openai" }),
+		).toBe(true);
+	});
+
+	it("does not retry when a specific provider was requested and no fallback candidates exist", () => {
+		expect(
+			shouldRetryRequest({
+				...defaultOpts,
+				requestedProvider: "openai",
+				remainingProviders: 0,
+			}),
+		).toBe(false);
+	});
+
+	it("does not retry when a specific provider was requested and fallback is disabled", () => {
+		expect(
+			shouldRetryRequest({
+				...defaultOpts,
+				requestedProvider: "openai",
+				noFallback: true,
+			}),
 		).toBe(false);
 	});
 
