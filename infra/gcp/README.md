@@ -280,12 +280,21 @@ curl -i -H "Origin: https://llmgateway-ui-303980490211.us-central1.run.app" \
 ### Deploying the platform
 
 **Push to `main`.** [`.github/workflows/deploy-gcp.yml`](../../.github/workflows/deploy-gcp.yml)
-runs the full test suite, builds `infra/unified.dockerfile`, pushes it to
-Artifact Registry, then deploys that exact image (by digest) to all three
-Cloud Run services. You can also re-run it manually from the Actions tab
-(`workflow_dispatch`) to redeploy the current `main` without a new commit,
-which is the fastest way to "roll back" — re-run the workflow from a prior
-commit.
+runs the full test suite, then builds three separate per-service images
+from `infra/split.dockerfile` (`api`, `gateway`, `ui` targets — the same
+lightweight images each service already runs) and deploys each one to its
+matching Cloud Run service by digest. You can also re-run it manually from
+the Actions tab (`workflow_dispatch`) to redeploy the current `main`
+without a new commit, which is the fastest way to "roll back" — re-run the
+workflow from a prior commit.
+
+Do not switch this pipeline to `infra/unified.dockerfile` for these three
+services: that image boots a local Postgres/Redis and starts every app —
+including the worker — inside a single container via `supervisord`. Since
+`api`/`gateway`/`ui` autoscale independently (up to 5/10/3 instances),
+that would run multiple duplicate, uncoordinated worker processes against
+the same production Redis queue, and the extra local services would
+compete for the 1 CPU / 2Gi memory already budgeted per instance.
 
 Do not `docker push` / `gcloud run deploy` by hand, and do not apply the
 `cloudrun-*.yaml` reference manifests in this directory against

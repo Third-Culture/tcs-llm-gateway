@@ -1,9 +1,13 @@
 name: deploy-gcp
 
-# Builds the unified image and deploys it to the three Cloud Run services
-# that make up the live `third-culture` GCP deployment (see
-# infra/gcp/README.md). This is the only supported way to ship a change to
-# that environment — do not `docker push` / `gcloud run deploy` by hand.
+# Builds per-service images from infra/split.dockerfile and deploys them to
+# the three Cloud Run services that make up the live `third-culture` GCP
+# deployment (see infra/gcp/README.md). Each service keeps its own
+# lightweight image, matching what is actually running today — do NOT
+# switch this to the unified all-in-one image (infra/unified.dockerfile):
+# it boots a local Postgres/Redis and every app (including the worker) in
+# a single container, which would run duplicate, uncoordinated worker
+# processes inside api/gateway/ui and blow past their resource limits.
 
 on:
   push:
@@ -35,8 +39,16 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      image_digest: ${{ steps.build.outputs.digest }}
       image_tag: ${{ steps.tag.outputs.image_tag }}
+    strategy:
+      matrix:
+        include:
+          - app: api
+            service: llmgateway-api
+          - app: gateway
+            service: llmgateway-gateway
+          - app: ui
+            service: llmgateway-ui
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -67,50 +79,26 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: infra/unified.dockerfile
+          file: infra/split.dockerfile
+          target: ${{ matrix.app }}
           platforms: linux/amd64
           push: true
-          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.image_tag }}
-          cache-from: type=gha,scope=unified-linux-amd64
-          cache-to: type=gha,mode=max,scope=unified-linux-amd64
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.image_tag }}-${{ matrix.app }}
+          cache-from: type=gha,scope=split-${{ matrix.app }}-linux-amd64
+          cache-to: type=gha,mode=max,scope=split-${{ matrix.app }}-linux-amd64
           build-args: |
             APP_VERSION=${{ steps.tag.outputs.image_tag }}
-
-      - name: Summary
-        run: |
-          echo "Pushed ${{ env.IMAGE }}:${{ steps.tag.outputs.image_tag }} (${{ steps.build.outputs.digest }})"
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    strategy:
-      matrix:
-        service: [llmgateway-api, llmgateway-gateway, llmgateway-ui]
-    steps:
-      - name: Google Auth (Workload Identity Federation)
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.GCP_PROJECT }}
 
       - name: Deploy ${{ matrix.service }}
         run: |
           gcloud run deploy ${{ matrix.service }} \
-            --image="${{ env.IMAGE }}@${{ needs.build-and-push.outputs.image_digest }}" \
+            --image="${{ env.IMAGE }}@${{ steps.build.outputs.digest }}" \
             --project=${{ env.GCP_PROJECT }} \
             --region=${{ env.GCP_REGION }} \
             --quiet
 
   verify:
-    needs: deploy
+    needs: build-and-push
     runs-on: ubuntu-latest
     steps:
       - name: Health check llmgateway-api
