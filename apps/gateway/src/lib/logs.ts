@@ -261,6 +261,15 @@ export async function insertLog(
 		return 1;
 	}
 
-	await publishToQueue(LOG_QUEUE, logData);
-	return 1; // Return 1 to match test expectations
+	try {
+		await publishToQueue(LOG_QUEUE, logData);
+	} catch (_error) {
+		logger.warn("Failed to enqueue log entry, request will continue", {
+			requestId: logData.requestId,
+			model: logData.usedModel,
+			provider: logData.usedProvider,
+		});
+		return 0;
+	}
+	return 1;
 }

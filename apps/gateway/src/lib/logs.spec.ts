@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { UnifiedFinishReason } from "@llmgateway/db";
 
 import {
 	calculateDataStorageCost,
 	getUnifiedFinishReason,
+	insertLog,
 	isContentFilterFinishReason,
 	isExpectedUnknownFinishReason,
 } from "./logs.js";
@@ -233,5 +234,90 @@ describe("calculateDataStorageCost", () => {
 	it("handles string token values", () => {
 		const cost = calculateDataStorageCost("500000", "0", "500000", "0");
 		expect(cost).toBe("0.01");
+	});
+});
+
+vi.mock("@llmgateway/cache", () => ({
+	publishToQueue: vi.fn(),
+	LOG_QUEUE: "log_queue_test",
+	redisClient: {
+		on: vi.fn(),
+		get: vi.fn(),
+		set: vi.fn(),
+	},
+}));
+
+vi.mock("@llmgateway/instrumentation", () => ({
+	recordChatCompletionMetrics: vi.fn(),
+}));
+
+vi.mock("@llmgateway/db", async (importOriginal) => {
+	const actual = await importOriginal();
+	return {
+		...actual,
+		db: vi.fn(),
+	};
+});
+
+describe("insertLog", () => {
+	const baseLogData = {
+		requestId: "test-req-123",
+		organizationId: "org-1",
+		projectId: "proj-1",
+		apiKeyId: "key-1",
+		usedProvider: "openai",
+		usedModel: "gpt-4o",
+		finishReason: "stop",
+		streamed: false,
+		canceled: false,
+		hasError: false,
+		duration: 100,
+		timeToFirstToken: null,
+		timeToFirstReasoningToken: null,
+		responseSize: 50,
+		content: "hello",
+		reasoningContent: null,
+		promptTokens: "10",
+		completionTokens: "5",
+		totalTokens: "15",
+		reasoningTokens: null,
+		cachedTokens: null,
+		errorDetails: null,
+		inputCost: 0,
+		outputCost: 0,
+		cachedInputCost: 0,
+		requestCost: 0,
+		webSearchCost: 0,
+		imageInputTokens: null,
+		imageOutputTokens: null,
+		imageInputCost: null,
+		imageOutputCost: null,
+		cost: 0,
+		estimatedCost: false,
+		discount: null,
+		pricingTier: null,
+		dataStorageCost: "0",
+		cached: false,
+		tools: null,
+		toolResults: null,
+		toolChoice: undefined,
+	};
+
+	it("does not throw when Redis queue publish fails", async () => {
+		const { publishToQueue } = await import("@llmgateway/cache");
+		vi.mocked(publishToQueue).mockRejectedValueOnce(
+			new Error("ECONNREFUSED: Redis connection refused"),
+		);
+
+		const result = await insertLog(baseLogData as any);
+		expect(result).toBe(0);
+	});
+
+	it("returns 1 when queue publish succeeds", async () => {
+		const { publishToQueue } = await import("@llmgateway/cache");
+		vi.mocked(publishToQueue).mockResolvedValueOnce(undefined);
+
+		const result = await insertLog(baseLogData as any);
+		expect(result).toBe(1);
 	});
 });
