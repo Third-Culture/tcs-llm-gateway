@@ -82,6 +82,18 @@ export function mapFinishReasonToOpenai(
 			if (!finishReason) {
 				return hasToolCalls ? "tool_calls" : "stop";
 			}
-			return finishReason;
+			// Defense-in-depth: map Anthropic-style finish reasons that may leak
+			// through providers proxying Anthropic models (e.g. deepinfra, wandb)
+			switch (finishReason) {
+				case "end_turn":
+				case "stop_sequence":
+					return "stop";
+				case "tool_use":
+					return "tool_calls";
+				case "max_tokens":
+					return "length";
+				default:
+					return finishReason;
+			}
 	}
 }
