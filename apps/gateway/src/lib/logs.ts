@@ -123,6 +123,17 @@ export function getUnifiedFinishReason(
 			if (finishReason === "tool_calls") {
 				return UnifiedFinishReason.TOOL_CALLS;
 			}
+			// Defense-in-depth: handle Anthropic-style reasons from providers
+			// that proxy Anthropic/DeepSeek models (e.g. deepinfra, wandb)
+			if (finishReason === "end_turn" || finishReason === "stop_sequence") {
+				return UnifiedFinishReason.COMPLETED;
+			}
+			if (finishReason === "tool_use") {
+				return UnifiedFinishReason.TOOL_CALLS;
+			}
+			if (finishReason === "max_tokens") {
+				return UnifiedFinishReason.LENGTH_LIMIT;
+			}
 			break;
 	}
 

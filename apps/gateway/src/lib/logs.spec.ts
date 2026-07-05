@@ -127,6 +127,24 @@ describe("getUnifiedFinishReason", () => {
 		);
 	});
 
+	it.each(["deepinfra", "wandb"])(
+		"maps Anthropic-style finish reasons for %s provider",
+		(provider) => {
+			expect(getUnifiedFinishReason("end_turn", provider)).toBe(
+				UnifiedFinishReason.COMPLETED,
+			);
+			expect(getUnifiedFinishReason("stop_sequence", provider)).toBe(
+				UnifiedFinishReason.COMPLETED,
+			);
+			expect(getUnifiedFinishReason("tool_use", provider)).toBe(
+				UnifiedFinishReason.TOOL_CALLS,
+			);
+			expect(getUnifiedFinishReason("max_tokens", provider)).toBe(
+				UnifiedFinishReason.LENGTH_LIMIT,
+			);
+		},
+	);
+
 	it("maps llmgateway_content_filter to CONTENT_FILTER", () => {
 		expect(
 			getUnifiedFinishReason("llmgateway_content_filter", "any-provider"),
