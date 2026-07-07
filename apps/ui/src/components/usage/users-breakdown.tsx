@@ -80,7 +80,10 @@ export function UsersBreakdown({ projectId }: UsersBreakdownProps) {
 		{ enabled: !!projectId, staleTime: 5 * 60 * 1000 },
 	);
 
-	const metadataKeys = metadataKeysData?.keys ?? [];
+	const metadataKeys = useMemo(
+		() => metadataKeysData?.keys ?? [],
+		[metadataKeysData],
+	);
 
 	useEffect(() => {
 		if (!selectedMetadataKey && metadataKeys.length > 0) {
