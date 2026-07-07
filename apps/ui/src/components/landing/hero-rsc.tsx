@@ -1,9 +1,8 @@
-import { allMigrations } from "content-collections";
-
 import { fetchModels, fetchProviders } from "@/lib/fetch-models";
 
 import { GitHubStars } from "./github-stars";
 import { Hero } from "./hero";
+import { allMigrations } from "content-collections";
 
 export const HeroRSC = async ({
 	navbarOnly,

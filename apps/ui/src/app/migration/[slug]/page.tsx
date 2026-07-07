@@ -1,4 +1,3 @@
-import { allMigrations } from "content-collections";
 import { ArrowLeftIcon } from "lucide-react";
 import Markdown from "markdown-to-jsx";
 import dynamic from "next/dynamic";
@@ -7,6 +6,8 @@ import { notFound } from "next/navigation";
 
 import { HeroRSC } from "@/components/landing/hero-rsc";
 import { getMarkdownOptions } from "@/lib/utils/markdown";
+
+import { allMigrations } from "content-collections";
 
 import type { Metadata } from "next";
 

@@ -162,6 +162,7 @@
 				padding-right: 0.6rem;
 				border-right: 1px solid var(--border);
 				margin-right: 0.4rem;
+				text-decoration: none;
 			}
 
 			.topbar-mark {
@@ -1087,7 +1088,11 @@
 		<!-- App -->
 		<div id="app">
 			<div class="topbar">
-				<div class="topbar-brand">
+				<a
+					class="topbar-brand"
+					href="https://thirdculture.systems/"
+					aria-label="Third Culture Systems home"
+				>
 					<svg class="topbar-mark" aria-hidden="true">
 						<use href="#tc-mark"></use>
 					</svg>
@@ -1153,7 +1158,7 @@
 						/>
 					</svg>
 					<span class="topbar-sub">LLM</span>
-				</div>
+				</a>
 				<button
 					class="tab-btn active"
 					onclick="switchTab('chat')"
