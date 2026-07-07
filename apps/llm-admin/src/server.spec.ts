@@ -239,6 +239,84 @@ describe("llm-admin server", () => {
 		});
 	});
 
+	test("GET /api/stats/users requires authentication", async () => {
+		const { app } = await freshServerModule();
+		server = app.listen(0);
+		const { port } = server.address() as AddressInfo;
+
+		const res = await fetch(`http://127.0.0.1:${port}/api/stats/users`);
+		expect(res.status).toBe(401);
+	});
+
+	test("fetchUserStats returns a note when LLM_INTERNAL_TOKEN is unset", async () => {
+		delete process.env.LLM_INTERNAL_TOKEN;
+		const { fetchUserStats } = await freshServerModule();
+
+		const stats = await fetchUserStats();
+
+		expect(stats).toEqual({
+			users: [],
+			note: "LLM_INTERNAL_TOKEN not configured",
+		});
+	});
+
+	test("fetchUserStats forwards the upstream payload on success", async () => {
+		process.env.LLM_INTERNAL_TOKEN = "test-internal-token";
+		process.env.LLM_INTERNAL_URL = "http://internal.example";
+		const upstreamBody = {
+			users: [
+				{
+					userId: "user-a",
+					name: "Ada Lovelace",
+					email: "ada@example.com",
+					apiKeyCount: 2,
+					requests: 42,
+					errors: 1,
+					cost: 3.14,
+				},
+			],
+		};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string, init?: RequestInit) => {
+				expect(url).toBe(
+					"http://internal.example/internal/stats/by-user?days=30",
+				);
+				expect((init?.headers as Record<string, string>).Authorization).toBe(
+					"Bearer test-internal-token",
+				);
+				return new Response(JSON.stringify(upstreamBody), { status: 200 });
+			}),
+		);
+
+		const { fetchUserStats } = await freshServerModule();
+		const stats = await fetchUserStats();
+
+		expect(stats).toEqual(upstreamBody);
+	});
+
+	test("fetchUserStats degrades gracefully when the upstream call fails", async () => {
+		process.env.LLM_INTERNAL_TOKEN = "test-internal-token";
+		process.env.LLM_INTERNAL_URL = "http://internal.example";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ message: "Unauthorized" }), {
+						status: 401,
+					}),
+			),
+		);
+
+		const { fetchUserStats } = await freshServerModule();
+		const stats = await fetchUserStats();
+
+		expect(stats).toEqual({
+			users: [],
+			note: "Unauthorized",
+		});
+	});
+
 	test("GET /api/tier-routing requires authentication", async () => {
 		const { app } = await freshServerModule();
 		server = app.listen(0);

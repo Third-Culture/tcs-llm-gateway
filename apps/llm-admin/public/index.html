@@ -746,12 +746,47 @@
 				margin-top: 0.4rem;
 			}
 
+			.metric-tabs {
+				display: inline-flex;
+				border: 1px solid var(--border);
+				border-radius: var(--radius);
+				padding: 2px;
+				background: var(--surface);
+				gap: 2px;
+			}
+			.metric-tab {
+				background: none;
+				border: 0;
+				color: var(--muted);
+				font: 700 0.75rem var(--font);
+				cursor: pointer;
+				padding: 0.3rem 0.7rem;
+				border-radius: 4px;
+				letter-spacing: -0.005em;
+				transition:
+					color 0.12s,
+					background 0.12s;
+			}
+			.metric-tab:hover {
+				color: var(--text);
+			}
+			.metric-tab.active {
+				color: var(--tcs-color-cream);
+				background: var(--brand);
+			}
+
 			.bar-chart {
 				background: var(--surface);
 				border: 1px solid var(--border);
 				border-radius: var(--radius);
 				padding: 1rem 1.2rem;
 				margin-bottom: 1.5rem;
+			}
+
+			.breakdown-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+				gap: 1.5rem;
 			}
 
 			.bar-chart-rows {
@@ -1248,17 +1283,59 @@
 					</div>
 				</div>
 				<div id="bar-chart-section" style="display: none">
-					<div class="stats-section-title">Daily requests</div>
+					<div class="routing-header">
+						<div
+							class="stats-section-title"
+							id="bar-chart-title"
+							style="margin-bottom: 0"
+						>
+							Daily cost
+						</div>
+						<div class="metric-tabs" role="group" aria-label="Chart metric">
+							<button
+								class="metric-tab active"
+								data-metric="cost"
+								onclick="switchStatsMetric('cost')"
+							>
+								Cost
+							</button>
+							<button
+								class="metric-tab"
+								data-metric="requests"
+								onclick="switchStatsMetric('requests')"
+							>
+								Requests
+							</button>
+							<button
+								class="metric-tab"
+								data-metric="totalTokens"
+								onclick="switchStatsMetric('totalTokens')"
+							>
+								Tokens
+							</button>
+						</div>
+					</div>
 					<div class="bar-chart">
 						<div class="bar-chart-rows" id="bar-rows"></div>
 					</div>
 				</div>
-				<div id="consumer-stats-section">
-					<div class="stats-section-title">Usage by application</div>
-					<div id="consumer-stats-content">
-						<div class="stats-loading">
-							<div class="spinner"></div>
-							Loading…
+				<div class="breakdown-grid">
+					<div id="consumer-stats-section">
+						<div class="stats-section-title">Usage by application</div>
+						<div id="consumer-stats-content">
+							<div class="stats-loading">
+								<div class="spinner"></div>
+								Loading…
+							</div>
+						</div>
+					</div>
+					<div id="user-stats-section">
+						<div class="stats-section-title">Usage by person</div>
+						<div id="user-stats-content">
+							<div class="stats-loading">
+								<div class="spinner"></div>
+								Loading…
+							</div>
 						</div>
 					</div>
 				</div>
@@ -1383,6 +1460,7 @@
 					currentUser.name || currentUser.email;
 				loadStats();
 				loadConsumerStats();
+				loadUserStats();
 			}
 
 			async function logout() {
@@ -1777,6 +1855,14 @@
 			// ── Stats ──────────────────────────────────────────────────────────────────
 
 			let statsRangeDays = 30;
+			let statsMetric = "cost";
+			let lastStatsDays = [];
+
+			const METRIC_LABELS = {
+				cost: "Daily cost",
+				requests: "Daily requests",
+				totalTokens: "Daily tokens",
+			};
 
 			async function loadStats() {
 				try {
@@ -1798,8 +1884,22 @@
 				document.getElementById("consumer-stats-content").innerHTML = `
       <div class="stats-loading"><div class="spinner"></div>Loading…</div>
     `;
+				document.getElementById("user-stats-content").innerHTML = `
+      <div class="stats-loading"><div class="spinner"></div>Loading…</div>
+    `;
 				loadStats();
 				loadConsumerStats();
+				loadUserStats();
+			}
+
+			function switchStatsMetric(metric) {
+				statsMetric = metric;
+				document.querySelectorAll(".metric-tab").forEach((btn) => {
+					btn.classList.toggle("active", btn.dataset.metric === metric);
+				});
+				document.getElementById("bar-chart-title").textContent =
+					METRIC_LABELS[metric];
+				renderBarChart(lastStatsDays);
 			}
 
 			function renderStats(data) {
@@ -1814,13 +1914,13 @@
 
 				document.getElementById("stat-cards").innerHTML = `
       <div class="stat-card">
-        <div class="stat-card-label">Total requests</div>
-        <div class="stat-card-value">${fmtNum(totals.requests)}</div>
+        <div class="stat-card-label">Total cost</div>
+        <div class="stat-card-value">$${fmtCost(totals.cost)}</div>
         <div class="stat-card-sub">${rangeLabel}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-card-label">Total cost</div>
-        <div class="stat-card-value">$${fmtCost(totals.cost)}</div>
+        <div class="stat-card-label">Total requests</div>
+        <div class="stat-card-value">${fmtNum(totals.requests)}</div>
         <div class="stat-card-sub">${rangeLabel}</div>
       </div>
       <div class="stat-card">
@@ -1831,22 +1931,38 @@
       ${note ? `<div class="stat-card"><div class="stat-card-label" style="color:var(--orange)">Note</div><div style="font-size:0.75rem;color:var(--muted)">${note}</div></div>` : ""}
     `;
 
+				lastStatsDays = days;
+				document.getElementById("bar-chart-title").textContent =
+					METRIC_LABELS[statsMetric];
 				if (days && days.length > 0) {
 					document.getElementById("bar-chart-section").style.display = "block";
-					const maxReq = Math.max(...days.map((d) => d.requests || 0), 1);
-					document.getElementById("bar-rows").innerHTML = days
-						.map((d) => {
-							const label = d.day ? d.day.slice(5, 10) : "?";
-							const pct = (((d.requests || 0) / maxReq) * 100).toFixed(1);
-							return `
+					renderBarChart(days);
+				}
+			}
+
+			function renderBarChart(days) {
+				if (!days || days.length === 0) return;
+				const values = days.map((d) => d[statsMetric] || 0);
+				const maxVal = Math.max(...values, statsMetric === "cost" ? 0.01 : 1);
+				document.getElementById("bar-rows").innerHTML = days
+					.map((d) => {
+						const label = d.day ? d.day.slice(5, 10) : "?";
+						const val = d[statsMetric] || 0;
+						const pct = ((val / maxVal) * 100).toFixed(1);
+						const valLabel =
+							statsMetric === "cost"
+								? `$${fmtCost(val)}`
+								: statsMetric === "totalTokens"
+									? `${fmtNum(val)} tok`
+									: `${fmtNum(val)} req`;
+						return `
           <div class="bar-row">
             <div class="bar-label">${label}</div>
             <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
-            <div class="bar-val">${fmtNum(d.requests || 0)} req</div>
+            <div class="bar-val">${valLabel}</div>
           </div>`;
-						})
-						.join("");
-				}
+					})
+					.join("");
 			}
 
 			function fmtNum(n) {
@@ -1916,6 +2032,69 @@
             <th>Requests</th>
             <th>Errors</th>
             <th>Cost</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+			}
+
+			// ── Usage by person ──────────────────────────────────────────────────────────
+
+			async function loadUserStats() {
+				try {
+					const r = await fetch(`api/stats/users?days=${statsRangeDays}`);
+					const data = await r.json();
+					renderUserStats(data);
+				} catch (err) {
+					document.getElementById("user-stats-content").innerHTML =
+						`<p style="color:var(--muted);font-size:0.85rem;">Could not load usage by person: ${err.message}</p>`;
+				}
+			}
+
+			function renderUserStats(data) {
+				const users = data?.users || [];
+				const note = data?.note;
+				const el = document.getElementById("user-stats-content");
+
+				if (note) {
+					el.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;">${note}</p>`;
+					return;
+				}
+				if (users.length === 0) {
+					el.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;">No per-person usage recorded for this range.</p>`;
+					return;
+				}
+
+				const maxCost = Math.max(...users.map((u) => u.cost || 0), 0.01);
+				const rows = users
+					.map((u) => {
+						const pct = (((u.cost || 0) / maxCost) * 100).toFixed(1);
+						const keyLabel = `${u.apiKeyCount} API key${u.apiKeyCount === 1 ? "" : "s"}`;
+						return `
+          <tr>
+            <td>
+              <div class="tier-name">${escapeHtml(u.name || u.email)}</div>
+              <div class="tier-desc">${keyLabel}</div>
+            </td>
+            <td>
+              <span class="consumer-share-track"><span class="consumer-share-fill" style="width:${pct}%"></span></span>
+              <span class="consumer-share-pct">$${fmtCost(u.cost || 0)}</span>
+            </td>
+            <td>${fmtNum(u.requests || 0)}</td>
+            <td style="color:${u.errors > 0 ? "var(--red)" : "inherit"}">${fmtNum(u.errors || 0)}</td>
+          </tr>`;
+					})
+					.join("");
+
+				el.innerHTML = `
+      <table class="routing-table">
+        <thead>
+          <tr>
+            <th>Person</th>
+            <th>Cost</th>
+            <th>Requests</th>
+            <th>Errors</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>

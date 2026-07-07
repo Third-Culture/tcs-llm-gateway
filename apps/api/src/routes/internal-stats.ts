@@ -13,6 +13,7 @@ import {
 	project,
 	projectHourlyStats,
 	sql,
+	user,
 } from "@llmgateway/db";
 
 import type { ServerTypes } from "@/vars.js";
@@ -28,6 +29,8 @@ const MAX_STATS_WINDOW_DAYS = 90;
 const dailyStatsSchema = z.object({
 	day: z.string(),
 	requests: z.number(),
+	cost: z.number(),
+	totalTokens: z.number(),
 });
 
 const statsResponseSchema = z.object({
@@ -102,6 +105,10 @@ internalStats.openapi(getStatsRoute, async (c) => {
 			cost: sql<number>`COALESCE(SUM(${projectHourlyStats.cost}), 0)`.as(
 				"cost",
 			),
+			totalTokens:
+				sql<number>`COALESCE(SUM(CAST(${projectHourlyStats.totalTokens} AS NUMERIC)), 0)`.as(
+					"totalTokens",
+				),
 		})
 		.from(projectHourlyStats)
 		.where(gte(projectHourlyStats.hourTimestamp, since))
@@ -122,6 +129,8 @@ internalStats.openapi(getStatsRoute, async (c) => {
 		days: dailyRows.map((row) => ({
 			day: row.day,
 			requests: Number(row.requests),
+			cost: Number(row.cost),
+			totalTokens: Number(row.totalTokens),
 		})),
 	});
 });
@@ -208,6 +217,92 @@ internalStats.openapi(getConsumerStatsRoute, async (c) => {
 			description: row.description,
 			projectId: row.projectId,
 			projectName: row.projectName,
+			requests: Number(row.requests),
+			errors: Number(row.errors),
+			cost: Number(row.cost),
+		})),
+	});
+});
+
+const userStatsSchema = z.object({
+	userId: z.string(),
+	name: z.string().nullable(),
+	email: z.string(),
+	apiKeyCount: z.number(),
+	requests: z.number(),
+	errors: z.number(),
+	cost: z.number(),
+});
+
+const userStatsResponseSchema = z.object({
+	users: z.array(userStatsSchema),
+});
+
+// GET /internal/stats/by-user - Usage broken down per team member, attributed
+// via api_key.created_by (the person who provisioned the key). Same
+// api_key_hourly_stats source as /stats/by-consumer, just grouped by the
+// creator instead of the key itself, so one person's several apps/keys roll
+// up into a single row.
+const getUserStatsRoute = createRoute({
+	operationId: "internal_get_stats_by_user",
+	summary: "Get usage stats broken down by team member",
+	description: `Returns request counts, error counts, and cost per team member (attributed via the API key's creator) for the last N days (default ${DEFAULT_STATS_WINDOW_DAYS}, max ${MAX_STATS_WINDOW_DAYS}, via the \`days\` query param). Requires a Bearer token matching INTERNAL_STATS_TOKEN.`,
+	method: "get",
+	path: "/stats/by-user",
+	request: {
+		query: statsQuerySchema,
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: userStatsResponseSchema,
+				},
+			},
+			description: "Usage totals per team member",
+		},
+	},
+});
+
+internalStats.openapi(getUserStatsRoute, async (c) => {
+	requireInternalStatsToken(c.req.header("Authorization"));
+
+	const { days } = c.req.valid("query");
+	const windowDays = days ?? DEFAULT_STATS_WINDOW_DAYS;
+	const STATS_WINDOW_MS = windowDays * 24 * 60 * 60 * 1000;
+	const since = new Date(Date.now() - STATS_WINDOW_MS);
+
+	const rows = await db
+		.select({
+			userId: apiKey.createdBy,
+			name: user.name,
+			email: user.email,
+			apiKeyCount:
+				sql<number>`COUNT(DISTINCT ${apiKeyHourlyStats.apiKeyId})`.as(
+					"apiKeyCount",
+				),
+			requests:
+				sql<number>`COALESCE(SUM(${apiKeyHourlyStats.requestCount}), 0)`.as(
+					"requests",
+				),
+			errors: sql<number>`COALESCE(SUM(${apiKeyHourlyStats.errorCount}), 0)`.as(
+				"errors",
+			),
+			cost: sql<number>`COALESCE(SUM(${apiKeyHourlyStats.cost}), 0)`.as("cost"),
+		})
+		.from(apiKeyHourlyStats)
+		.innerJoin(apiKey, eq(apiKeyHourlyStats.apiKeyId, apiKey.id))
+		.innerJoin(user, eq(apiKey.createdBy, user.id))
+		.where(gte(apiKeyHourlyStats.hourTimestamp, since))
+		.groupBy(apiKey.createdBy, user.name, user.email)
+		.orderBy(desc(sql`COALESCE(SUM(${apiKeyHourlyStats.cost}), 0)`));
+
+	return c.json({
+		users: rows.map((row) => ({
+			userId: row.userId,
+			name: row.name,
+			email: row.email,
+			apiKeyCount: Number(row.apiKeyCount),
 			requests: Number(row.requests),
 			errors: Number(row.errors),
 			cost: Number(row.cost),

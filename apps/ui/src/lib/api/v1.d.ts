@@ -307,6 +307,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/stats/by-user": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get usage stats broken down by team member
+         * @description Returns request counts, error counts, and cost per team member (attributed via the API key's creator) for the last N days (default 30, max 90, via the `days` query param). Requires a Bearer token matching INTERNAL_STATS_TOKEN.
+         */
+        get: operations["internal_get_stats_by_user"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/tcs-tier-routing-status": {
         parameters: {
             query?: never;
@@ -8809,6 +8829,8 @@ export interface operations {
                         days: {
                             day: string;
                             requests: number;
+                            cost: number;
+                            totalTokens: number;
                         }[];
                     };
                 };
@@ -8838,6 +8860,38 @@ export interface operations {
                             description: string;
                             projectId: string;
                             projectName: string;
+                            requests: number;
+                            errors: number;
+                            cost: number;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    internal_get_stats_by_user: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage totals per team member */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        users: {
+                            userId: string;
+                            name: string | null;
+                            email: string;
+                            apiKeyCount: number;
                             requests: number;
                             errors: number;
                             cost: number;

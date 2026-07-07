@@ -8,6 +8,7 @@ import {
 	db,
 	projectHourlyStats,
 	tables,
+	user,
 } from "@llmgateway/db";
 
 describe("internal stats endpoint", () => {
@@ -98,8 +99,14 @@ describe("internal stats endpoint", () => {
 		const body = await res.json();
 		expect(body.totals).toEqual({ requests: 18, errors: 3, cost: 2.25 });
 		expect(body.days).toHaveLength(2);
-		expect(body.days.map((d: { requests: number }) => d.requests)).toEqual([
-			3, 15,
+		expect(
+			body.days.map((d: { requests: number; cost: number }) => ({
+				requests: d.requests,
+				cost: d.cost,
+			})),
+		).toEqual([
+			{ requests: 3, cost: 0.25 },
+			{ requests: 15, cost: 2 },
 		]);
 	});
 
@@ -263,6 +270,138 @@ describe("internal stats by-consumer endpoint", () => {
 				requests: 10,
 				errors: 1,
 				cost: 1.5,
+			},
+		]);
+	});
+});
+
+describe("internal stats by-user endpoint", () => {
+	const originalToken = process.env.INTERNAL_STATS_TOKEN;
+
+	beforeEach(async () => {
+		await deleteAll();
+		process.env.INTERNAL_STATS_TOKEN = "test-internal-stats-token";
+
+		await createTestUser();
+		await db.insert(user).values({
+			id: "test-user-id-2",
+			name: "Second Person",
+			email: "second@example.com",
+			emailVerified: true,
+		});
+		await db.insert(tables.organization).values({
+			id: "test-org-id",
+			name: "Test Organization",
+			billingEmail: "test@example.com",
+		});
+		await db.insert(tables.project).values([
+			{
+				id: "project-a",
+				name: "Consumer App A",
+				organizationId: "test-org-id",
+			},
+			{
+				id: "project-b",
+				name: "Consumer App B",
+				organizationId: "test-org-id",
+			},
+		]);
+		await db.insert(tables.apiKey).values([
+			{
+				id: "api-key-a",
+				token: "token-a",
+				projectId: "project-a",
+				description: "App A backend",
+				createdBy: "test-user-id",
+			},
+			{
+				id: "api-key-b",
+				token: "token-b",
+				projectId: "project-a",
+				description: "App B backend",
+				createdBy: "test-user-id",
+			},
+			{
+				id: "api-key-c",
+				token: "token-c",
+				projectId: "project-b",
+				description: "App C backend",
+				createdBy: "test-user-id-2",
+			},
+		]);
+	});
+
+	afterEach(() => {
+		if (originalToken === undefined) {
+			delete process.env.INTERNAL_STATS_TOKEN;
+		} else {
+			process.env.INTERNAL_STATS_TOKEN = originalToken;
+		}
+	});
+
+	test("rejects requests without an Authorization header", async () => {
+		const res = await app.request("/internal/stats/by-user");
+		expect(res.status).toBe(401);
+	});
+
+	test("rolls multiple API keys created by the same person into one row", async () => {
+		const today = new Date();
+		today.setUTCHours(12, 0, 0, 0);
+
+		await db.insert(apiKeyHourlyStats).values([
+			{
+				id: "aks-1",
+				apiKeyId: "api-key-a",
+				projectId: "project-a",
+				hourTimestamp: today,
+				requestCount: 10,
+				errorCount: 1,
+				cost: 1.5,
+			},
+			{
+				id: "aks-2",
+				apiKeyId: "api-key-b",
+				projectId: "project-a",
+				hourTimestamp: today,
+				requestCount: 5,
+				errorCount: 0,
+				cost: 0.5,
+			},
+			{
+				id: "aks-3",
+				apiKeyId: "api-key-c",
+				projectId: "project-b",
+				hourTimestamp: today,
+				requestCount: 30,
+				errorCount: 0,
+				cost: 3,
+			},
+		]);
+
+		const res = await app.request("/internal/stats/by-user", {
+			headers: { Authorization: "Bearer test-internal-stats-token" },
+		});
+		expect(res.status).toBe(200);
+
+		const body = await res.json();
+		expect(body.users).toEqual([
+			{
+				userId: "test-user-id-2",
+				name: "Second Person",
+				email: "second@example.com",
+				apiKeyCount: 1,
+				requests: 30,
+				errors: 0,
+				cost: 3,
+			},
+			{
+				userId: "test-user-id",
+				name: "Test User",
+				email: "admin@example.com",
+				apiKeyCount: 2,
+				requests: 15,
+				errors: 1,
+				cost: 2,
 			},
 		]);
 	});

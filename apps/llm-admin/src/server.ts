@@ -273,7 +273,12 @@ app.get("/api/me", (req: Request, res: Response): void => {
 
 interface GatewayStats {
 	totals: { requests: number; errors: number; cost: number };
-	days: Array<{ day: string; requests: number }>;
+	days: Array<{
+		day: string;
+		requests: number;
+		cost: number;
+		totalTokens: number;
+	}>;
 	note?: string;
 }
 
@@ -406,6 +411,74 @@ app.get(
 	async (req: Request, res: Response): Promise<void> => {
 		const days = Number(req.query.days) || DEFAULT_STATS_DAYS;
 		const stats = await fetchConsumerStats(days);
+		res.json(stats);
+	},
+);
+
+interface UserStats {
+	userId: string;
+	name: string | null;
+	email: string;
+	apiKeyCount: number;
+	requests: number;
+	errors: number;
+	cost: number;
+}
+
+interface UserStatsResponse {
+	users: UserStats[];
+	note?: string;
+}
+
+const EMPTY_USER_STATS: UserStatsResponse = { users: [] };
+
+// Fetches usage-by-team-member stats from the internal API (see
+// apps/api/src/routes/internal-stats.ts). Never throws: on any failure it
+// returns the empty shape with a human-readable `note` so the frontend can
+// render a degraded state instead of crashing on missing fields.
+export async function fetchUserStats(
+	days: number = DEFAULT_STATS_DAYS,
+): Promise<UserStatsResponse> {
+	if (!LLM_INTERNAL_TOKEN) {
+		return { ...EMPTY_USER_STATS, note: "LLM_INTERNAL_TOKEN not configured" };
+	}
+	const windowDays = Math.min(
+		Math.max(Math.trunc(days) || DEFAULT_STATS_DAYS, 1),
+		MAX_STATS_DAYS,
+	);
+	try {
+		const r = await fetch(
+			`${LLM_INTERNAL_URL}/internal/stats/by-user?days=${windowDays}`,
+			{
+				headers: { Authorization: `Bearer ${LLM_INTERNAL_TOKEN}` },
+			},
+		);
+		const data = (await r.json()) as Partial<UserStatsResponse> & {
+			message?: string;
+		};
+		if (!r.ok) {
+			console.error("User stats upstream error:", r.status, data);
+			return {
+				...EMPTY_USER_STATS,
+				note:
+					typeof data.message === "string"
+						? data.message
+						: `Upstream user stats request failed (${r.status})`,
+			};
+		}
+		return { users: data.users ?? EMPTY_USER_STATS.users };
+	} catch (err) {
+		console.error("User stats fetch error:", (err as Error).message);
+		return { ...EMPTY_USER_STATS, note: "Failed to fetch user stats" };
+	}
+}
+
+app.get(
+	"/api/stats/users",
+	requireAuth,
+	async (req: Request, res: Response): Promise<void> => {
+		const days = Number(req.query.days) || DEFAULT_STATS_DAYS;
+		const stats = await fetchUserStats(days);
 		res.json(stats);
 	},
 );
