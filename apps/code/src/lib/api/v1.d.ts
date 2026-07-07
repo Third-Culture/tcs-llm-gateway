@@ -1438,6 +1438,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/activity/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get usage breakdown by API key or by team member */
+        get: operations["get_activity_breakdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/activity/breakdown/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get usage breakdown by a custom X-LLMGateway-* metadata header */
+        get: operations["get_activity_breakdown_metadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/activity/breakdown/metadata-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List custom metadata header keys seen for a project */
+        get: operations["get_activity_breakdown_metadata_keys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/metrics": {
         parameters: {
             query?: never;
@@ -8875,6 +8926,105 @@ export interface operations {
                         checkedAt: string | null;
                         ran: boolean;
                         reason?: string;
+                    };
+                };
+            };
+        };
+    };
+    get_activity_breakdown: {
+        parameters: {
+            query: {
+                dimension: "apiKey" | "user";
+                days?: string;
+                from?: string;
+                to?: string;
+                timeRange?: "1h" | "4h" | "24h" | "7d" | "30d";
+                projectId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage totals grouped by API key or by team member */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        breakdown: {
+                            key: string;
+                            label: string;
+                            secondaryLabel?: string;
+                            requestCount: number;
+                            cost: number;
+                            errorCount: number;
+                            cacheCount: number;
+                            totalTokens: number;
+                        }[];
+                        totalCost: number;
+                        totalRequests: number;
+                    };
+                };
+            };
+        };
+    };
+    get_activity_breakdown_metadata: {
+        parameters: {
+            query: {
+                metadataKey: string;
+                days?: string;
+                from?: string;
+                to?: string;
+                timeRange?: "1h" | "4h" | "24h" | "7d" | "30d";
+                projectId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage totals grouped by a custom metadata header value */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        breakdown: {
+                            key: string;
+                            requestCount: number;
+                            cost: number;
+                        }[];
+                        totalCost: number;
+                        totalRequests: number;
+                    };
+                };
+            };
+        };
+    };
+    get_activity_breakdown_metadata_keys: {
+        parameters: {
+            query?: {
+                projectId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Distinct metadata header keys sent in the last 30 days */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        keys: string[];
                     };
                 };
             };

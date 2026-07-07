@@ -28,13 +28,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/lib/components/card";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/lib/components/select";
+import { Tabs, TabsList, TabsTrigger } from "@/lib/components/tabs";
 import { useApi } from "@/lib/fetch-client";
 
 import type { TimeRangeValue } from "@/components/time-range-picker";
@@ -216,17 +210,21 @@ interface ActivityChartProps {
 	initialData?: ActivitT;
 	apiKeyId?: string;
 	timeRange?: TimeRangeValue;
+	title?: string;
+	defaultMetric?: "requests" | "cost" | "tokens";
 }
 
 export function ActivityChart({
 	initialData,
 	apiKeyId,
 	timeRange,
+	title = "Model Usage Overview",
+	defaultMetric = "requests",
 }: ActivityChartProps) {
 	const searchParams = useSearchParams();
 	const [breakdownField, setBreakdownField] = useState<
 		"requests" | "cost" | "tokens"
-	>("requests");
+	>(defaultMetric);
 	const [showAllModels, setShowAllModels] = useState(false);
 	const { selectedProject } = useDashboardNavigation();
 	const api = useApi();
@@ -285,7 +283,7 @@ export function ActivityChart({
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle>Model Usage Overview</CardTitle>
+					<CardTitle>{title}</CardTitle>
 					<CardDescription>
 						Please select a project to view activity data
 					</CardDescription>
@@ -303,7 +301,7 @@ export function ActivityChart({
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle>Model Usage Overview</CardTitle>
+					<CardTitle>{title}</CardTitle>
 					<CardDescription>
 						Stacked model {breakdownField} over {periodLabel}
 					</CardDescription>
@@ -321,7 +319,7 @@ export function ActivityChart({
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle>Model Usage Overview</CardTitle>
+					<CardTitle>{title}</CardTitle>
 					<CardDescription>
 						Stacked model {breakdownField} over {periodLabel}
 					</CardDescription>
@@ -339,7 +337,7 @@ export function ActivityChart({
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle>Model Usage Overview</CardTitle>
+					<CardTitle>{title}</CardTitle>
 					<CardDescription>
 						Stacked model {breakdownField} over {periodLabel}
 						{selectedProject && (
@@ -456,7 +454,7 @@ export function ActivityChart({
 		<Card>
 			<CardHeader className="flex flex-col space-y-4 md:flex-row items-center justify-between pb-2">
 				<div>
-					<CardTitle>Model Usage Overview</CardTitle>
+					<CardTitle>{title}</CardTitle>
 					<CardDescription>
 						Stacked model {breakdownField} over {periodLabel}
 						{selectedProject && (
@@ -466,23 +464,18 @@ export function ActivityChart({
 						)}
 					</CardDescription>
 				</div>
-				<div className="flex items-center space-x-2">
-					<Select
-						value={breakdownField}
-						onValueChange={(value) =>
-							setBreakdownField(value as "requests" | "cost" | "tokens")
-						}
-					>
-						<SelectTrigger className="w-[140px]">
-							<SelectValue placeholder="Select metric" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="requests">Requests</SelectItem>
-							<SelectItem value="cost">Cost</SelectItem>
-							<SelectItem value="tokens">Tokens</SelectItem>
-						</SelectContent>
-					</Select>
-				</div>
+				<Tabs
+					value={breakdownField}
+					onValueChange={(value) =>
+						setBreakdownField(value as "requests" | "cost" | "tokens")
+					}
+				>
+					<TabsList>
+						<TabsTrigger value="cost">Cost</TabsTrigger>
+						<TabsTrigger value="requests">Requests</TabsTrigger>
+						<TabsTrigger value="tokens">Tokens</TabsTrigger>
+					</TabsList>
+				</Tabs>
 			</CardHeader>
 			<CardContent>
 				{uniqueModels.length > 0 && (

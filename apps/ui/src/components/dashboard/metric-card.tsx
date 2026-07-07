@@ -9,7 +9,7 @@ export function MetricCard({
 }: {
 	label: string;
 	value: string;
-	subtitle?: string;
+	subtitle?: React.ReactNode;
 	icon?: React.ReactNode;
 	accent?: "green" | "blue" | "purple";
 }) {
