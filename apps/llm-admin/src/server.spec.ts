@@ -190,6 +190,7 @@ describe("llm-admin server", () => {
 				{
 					apiKeyId: "api-key-a",
 					description: "App A backend",
+					usageType: "service",
 					projectId: "project-a",
 					projectName: "App A",
 					requests: 42,

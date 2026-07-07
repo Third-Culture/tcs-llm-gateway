@@ -8,6 +8,7 @@ const baseApiKey = {
 	updatedAt: new Date("2026-03-29T00:00:00.000Z"),
 	token: "token",
 	description: "Test key",
+	usageType: "service" as const,
 	status: "active" as const,
 	usageLimit: null,
 	usage: "0",

@@ -392,6 +392,11 @@ export const apiKey = pgTable(
 			.$onUpdate(() => new Date()),
 		token: text().notNull().unique(),
 		description: text().notNull(),
+		usageType: text({
+			enum: ["personal", "service"],
+		})
+			.notNull()
+			.default("service"),
 		status: text({
 			enum: ["active", "inactive", "deleted"],
 		}).default("active"),
@@ -1294,6 +1299,7 @@ export const auditLogActions = [
 	// API Key
 	"api_key.create",
 	"api_key.update_status",
+	"api_key.update_usage_type",
 	"api_key.update_limit",
 	"api_key.delete",
 	"api_key.iam_rule.create",

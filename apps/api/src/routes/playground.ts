@@ -83,6 +83,7 @@ playground.openapi(ensureKey, async (c) => {
 				token,
 				projectId,
 				description: "Auto-generated playground key",
+				usageType: "personal",
 				usageLimit: null,
 				createdBy: user.id,
 			})

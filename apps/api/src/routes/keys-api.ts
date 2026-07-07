@@ -281,6 +281,7 @@ const apiKeySchema = z.object({
 	updatedAt: z.date(),
 	token: z.string(),
 	description: z.string(),
+	usageType: z.enum(["personal", "service"]),
 	status: z.enum(["active", "inactive", "deleted"]).nullable(),
 	usageLimit: z.string().nullable(),
 	usage: z.string(),
@@ -332,6 +333,7 @@ const createApiKeySchema = z
 	.object({
 		description: z.string().trim().min(1).max(255),
 		projectId: z.string().trim().min(1),
+		usageType: z.enum(["personal", "service"]).optional().default("service"),
 		usageLimit: createNullableLimitSchema("Usage limit")
 			.optional()
 			.default(null),
@@ -353,6 +355,11 @@ const listApiKeysQuerySchema = z.object({
 // Schema for updating an API key status
 const updateApiKeyStatusSchema = z.object({
 	status: z.enum(["active", "inactive"]),
+});
+
+// Schema for updating an API key's usage type (personal vs. service)
+const updateApiKeyUsageTypeSchema = z.object({
+	usageType: z.enum(["personal", "service"]),
 });
 
 // Schema for updating an API key usage limit
@@ -450,6 +457,7 @@ keysApi.openapi(create, async (c) => {
 	const {
 		description,
 		projectId,
+		usageType,
 		usageLimit,
 		periodUsageLimit,
 		periodUsageDurationValue,
@@ -522,6 +530,7 @@ keysApi.openapi(create, async (c) => {
 			token,
 			projectId,
 			description,
+			usageType,
 			usageLimit,
 			periodUsageLimit,
 			periodUsageDurationValue,
@@ -539,6 +548,7 @@ keysApi.openapi(create, async (c) => {
 		metadata: {
 			resourceName: description,
 			projectId,
+			usageType,
 			usageLimit,
 			periodUsageLimit,
 			periodUsageDurationValue,
@@ -1038,6 +1048,157 @@ keysApi.openapi(updateStatus, async (c) => {
 
 	return c.json({
 		message: `API key status updated to ${status}`,
+		apiKey: {
+			...serializeApiKey(updatedApiKey),
+			maskedToken: maskToken(updatedApiKey.token),
+			token: undefined,
+		},
+	});
+});
+
+// Update API key usage type (personal vs. service)
+const updateUsageType = createRoute({
+	method: "patch",
+	path: "/api/{id}/usage-type",
+	summary: "Update whether an API key is personal or service usage",
+	description:
+		"Marks an API key as either 'personal' (used directly by an individual) or 'service' (used by an automated app/integration). Used to correctly attribute cost when reporting usage by person vs. by application.",
+	request: {
+		params: z.object({
+			id: z.string(),
+		}),
+		body: {
+			content: {
+				"application/json": {
+					schema: updateApiKeyUsageTypeSchema,
+				},
+			},
+		},
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({
+						message: z.string(),
+						apiKey: apiKeySchema
+							.omit({ token: true })
+							.extend({
+								maskedToken: z.string(),
+							})
+							.openapi({}),
+					}),
+				},
+			},
+			description: "API key usage type updated successfully.",
+		},
+		401: {
+			content: {
+				"application/json": {
+					schema: z.object({
+						message: z.string(),
+					}),
+				},
+			},
+			description: "Unauthorized.",
+		},
+		404: {
+			content: {
+				"application/json": {
+					schema: z.object({
+						message: z.string(),
+					}),
+				},
+			},
+			description: "API key not found.",
+		},
+	},
+});
+
+keysApi.openapi(updateUsageType, async (c) => {
+	const user = c.get("user");
+	if (!user) {
+		throw new HTTPException(401, {
+			message: "Unauthorized",
+		});
+	}
+
+	const { id } = c.req.param();
+	const { usageType } = c.req.valid("json");
+
+	const projectIds = await getUserProjectIds(user.id);
+
+	const apiKey = await db.query.apiKey.findFirst({
+		where: {
+			id: {
+				eq: id,
+			},
+			projectId: {
+				in: projectIds,
+			},
+		},
+		with: {
+			project: true,
+		},
+	});
+
+	if (!apiKey) {
+		throw new HTTPException(404, {
+			message: "API key not found",
+		});
+	}
+
+	if (!apiKey.project) {
+		throw new HTTPException(404, {
+			message: "Project not found for API key",
+		});
+	}
+
+	const projectOrgId = apiKey.project.organizationId;
+	const userOrgs = await db.query.userOrganization.findMany({
+		where: {
+			userId: {
+				eq: user.id,
+			},
+		},
+	});
+	const userOrg = userOrgs.find((org) => org.organizationId === projectOrgId);
+	const userRole = userOrg?.role as "owner" | "admin" | "developer" | undefined;
+
+	// Developers can only modify their own API keys
+	// Owners and admins can modify any API key
+	if (userRole === "developer" && apiKey.createdBy !== user.id) {
+		throw new HTTPException(403, {
+			message: "You don't have permission to modify this API key",
+		});
+	}
+
+	const [updatedApiKey] = await db
+		.update(tables.apiKey)
+		.set({
+			usageType,
+		})
+		.where(eq(tables.apiKey.id, id))
+		.returning();
+
+	if (apiKey.usageType !== usageType) {
+		await logAuditEvent({
+			organizationId: projectOrgId,
+			userId: user.id,
+			action: "api_key.update_usage_type",
+			resourceType: "api_key",
+			resourceId: id,
+			metadata: {
+				resourceName: apiKey.description,
+				changes: {
+					usageType: { old: apiKey.usageType, new: usageType },
+				},
+			},
+		});
+	}
+
+	return c.json({
+		message: `API key usage type updated to ${usageType}`,
 		apiKey: {
 			...serializeApiKey(updatedApiKey),
 			maskedToken: maskToken(updatedApiKey.token),

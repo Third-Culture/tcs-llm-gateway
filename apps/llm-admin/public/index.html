@@ -708,7 +708,31 @@
 				letter-spacing: 0.2em;
 				text-transform: uppercase;
 				color: var(--muted);
+				margin-bottom: 0.35rem;
+			}
+
+			.stats-section-subtitle {
+				font-size: 0.75rem;
+				color: var(--muted);
 				margin-bottom: 0.9rem;
+			}
+
+			.usage-type-badge {
+				display: inline-block;
+				font-size: 0.6rem;
+				font-weight: 700;
+				letter-spacing: 0.05em;
+				text-transform: uppercase;
+				padding: 0.1rem 0.45rem;
+				border-radius: 999px;
+				border: 1px solid var(--border-strong);
+				color: var(--muted);
+				margin-left: 0.5rem;
+			}
+
+			.usage-type-badge.personal {
+				color: var(--brand);
+				border-color: var(--brand);
 			}
 
 			.stat-cards {
@@ -1322,6 +1346,9 @@
 				<div class="breakdown-grid">
 					<div id="consumer-stats-section">
 						<div class="stats-section-title">Usage by application</div>
+						<div class="stats-section-subtitle">
+							Every API key, service &amp; personal
+						</div>
 						<div id="consumer-stats-content">
 							<div class="stats-loading">
 								<div class="spinner"></div>
@@ -1331,6 +1358,10 @@
 					</div>
 					<div id="user-stats-section">
 						<div class="stats-section-title">Usage by person</div>
+						<div class="stats-section-subtitle">
+							Personal-use keys only — service key spend is under Usage by
+							application
+						</div>
 						<div id="user-stats-content">
 							<div class="stats-loading">
 								<div class="spinner"></div>
@@ -2011,7 +2042,7 @@
 						return `
           <tr>
             <td>
-              <div class="tier-name">${c.description}</div>
+              <div class="tier-name">${c.description}<span class="usage-type-badge ${c.usageType}">${c.usageType}</span></div>
               <div class="tier-desc">${c.projectName}</div>
             </td>
             <td>

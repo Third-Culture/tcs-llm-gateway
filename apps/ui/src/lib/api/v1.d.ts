@@ -316,7 +316,7 @@ export interface paths {
         };
         /**
          * Get usage stats broken down by team member
-         * @description Returns request counts, error counts, and cost per team member (attributed via the API key's creator) for the last N days (default 30, max 90, via the `days` query param). Requires a Bearer token matching INTERNAL_STATS_TOKEN.
+         * @description Returns request counts, error counts, and cost per team member for personal-use API keys only (keys marked usageType = "personal", attributed via the key's creator) for the last N days (default 30, max 90, via the `days` query param). Service/automation keys are excluded here — see /stats/by-consumer for those. Requires a Bearer token matching INTERNAL_STATS_TOKEN.
          */
         get: operations["internal_get_stats_by_user"];
         put?: never;
@@ -4600,6 +4600,8 @@ export interface paths {
                                 createdAt: string;
                                 updatedAt: string;
                                 description: string;
+                                /** @enum {string} */
+                                usageType: "personal" | "service";
                                 /** @enum {string|null} */
                                 status: "active" | "inactive" | "deleted" | null;
                                 usageLimit: string | null;
@@ -4663,6 +4665,11 @@ export interface paths {
                     "application/json": {
                         description: string;
                         projectId: string;
+                        /**
+                         * @default service
+                         * @enum {string}
+                         */
+                        usageType?: "personal" | "service";
                         usageLimit?: string | null;
                         periodUsageLimit?: string | null;
                         periodUsageDurationValue?: number | null;
@@ -4684,6 +4691,8 @@ export interface paths {
                                 createdAt: string;
                                 updatedAt: string;
                                 description: string;
+                                /** @enum {string} */
+                                usageType: "personal" | "service";
                                 /** @enum {string|null} */
                                 status: "active" | "inactive" | "deleted" | null;
                                 usageLimit: string | null;
@@ -4821,6 +4830,124 @@ export interface paths {
                                 createdAt: string;
                                 updatedAt: string;
                                 description: string;
+                                /** @enum {string} */
+                                usageType: "personal" | "service";
+                                /** @enum {string|null} */
+                                status: "active" | "inactive" | "deleted" | null;
+                                usageLimit: string | null;
+                                usage: string;
+                                periodUsageLimit: string | null;
+                                periodUsageDurationValue: number | null;
+                                /** @enum {string|null} */
+                                periodUsageDurationUnit: "hour" | "day" | "week" | "month" | null;
+                                currentPeriodUsage: string;
+                                currentPeriodStartedAt: string | null;
+                                currentPeriodResetAt: string | null;
+                                projectId: string;
+                                createdBy: string;
+                                creator?: {
+                                    id: string;
+                                    name: string | null;
+                                    email: string;
+                                } | null;
+                                iamRules?: {
+                                    id: string;
+                                    createdAt: string;
+                                    updatedAt: string;
+                                    /** @enum {string} */
+                                    ruleType: "allow_models" | "deny_models" | "allow_pricing" | "deny_pricing" | "allow_providers" | "deny_providers";
+                                    ruleValue: {
+                                        models?: string[];
+                                        providers?: string[];
+                                        /** @enum {string} */
+                                        pricingType?: "free" | "paid";
+                                        maxInputPrice?: number;
+                                        maxOutputPrice?: number;
+                                    };
+                                    /** @enum {string} */
+                                    status: "active" | "inactive";
+                                }[];
+                                maskedToken: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Unauthorized. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            message: string;
+                        };
+                    };
+                };
+                /** @description API key not found. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/keys/api/{id}/usage-type": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update whether an API key is personal or service usage
+         * @description Marks an API key as either 'personal' (used directly by an individual) or 'service' (used by an automated app/integration). Used to correctly attribute cost when reporting usage by person vs. by application.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        usageType: "personal" | "service";
+                    };
+                };
+            };
+            responses: {
+                /** @description API key usage type updated successfully. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            message: string;
+                            apiKey: {
+                                id: string;
+                                createdAt: string;
+                                updatedAt: string;
+                                description: string;
+                                /** @enum {string} */
+                                usageType: "personal" | "service";
                                 /** @enum {string|null} */
                                 status: "active" | "inactive" | "deleted" | null;
                                 usageLimit: string | null;
@@ -4934,6 +5061,8 @@ export interface paths {
                                 createdAt: string;
                                 updatedAt: string;
                                 description: string;
+                                /** @enum {string} */
+                                usageType: "personal" | "service";
                                 /** @enum {string|null} */
                                 status: "active" | "inactive" | "deleted" | null;
                                 usageLimit: string | null;
@@ -7753,7 +7882,7 @@ export interface paths {
                                 organizationId: string;
                                 userId: string;
                                 /** @enum {string} */
-                                action: "organization.create" | "organization.update" | "organization.delete" | "project.create" | "project.update" | "project.delete" | "team_member.add" | "team_member.update" | "team_member.remove" | "api_key.create" | "api_key.update_status" | "api_key.update_limit" | "api_key.delete" | "api_key.iam_rule.create" | "api_key.iam_rule.update" | "api_key.iam_rule.delete" | "provider_key.create" | "provider_key.update" | "provider_key.delete" | "subscription.create" | "subscription.cancel" | "subscription.resume" | "subscription.upgrade_yearly" | "payment.method.set_default" | "payment.method.delete" | "payment.credit_topup" | "payment.auto_topup.update" | "payment.auto_topup.disable" | "credits.gift" | "dev_plan.subscribe" | "dev_plan.cancel" | "dev_plan.resume" | "dev_plan.change_tier" | "dev_plan.update_settings";
+                                action: "organization.create" | "organization.update" | "organization.delete" | "project.create" | "project.update" | "project.delete" | "team_member.add" | "team_member.update" | "team_member.remove" | "api_key.create" | "api_key.update_status" | "api_key.update_usage_type" | "api_key.update_limit" | "api_key.delete" | "api_key.iam_rule.create" | "api_key.iam_rule.update" | "api_key.iam_rule.delete" | "provider_key.create" | "provider_key.update" | "provider_key.delete" | "subscription.create" | "subscription.cancel" | "subscription.resume" | "subscription.upgrade_yearly" | "payment.method.set_default" | "payment.method.delete" | "payment.credit_topup" | "payment.auto_topup.update" | "payment.auto_topup.disable" | "credits.gift" | "dev_plan.subscribe" | "dev_plan.cancel" | "dev_plan.resume" | "dev_plan.change_tier" | "dev_plan.update_settings";
                                 /** @enum {string} */
                                 resourceType: "organization" | "project" | "team_member" | "api_key" | "iam_rule" | "provider_key" | "subscription" | "payment_method" | "payment" | "dev_plan";
                                 resourceId: string | null;
@@ -8858,6 +8987,8 @@ export interface operations {
                         consumers: {
                             apiKeyId: string;
                             description: string;
+                            /** @enum {string} */
+                            usageType: "personal" | "service";
                             projectId: string;
                             projectName: string;
                             requests: number;

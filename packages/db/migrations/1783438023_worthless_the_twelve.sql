@@ -1,0 +1,1 @@
+ALTER TABLE "api_key" ADD COLUMN "usage_type" text DEFAULT 'service' NOT NULL;

@@ -16,6 +16,13 @@ import {
 import { Input } from "@/lib/components/input";
 import { Label } from "@/lib/components/label";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/lib/components/select";
+import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
@@ -50,6 +57,7 @@ export function CreateApiKeyDialog({
 	const [open, setOpen] = useState(false);
 	const [step, setStep] = useState<"form" | "created">("form");
 	const [name, setName] = useState("");
+	const [usageType, setUsageType] = useState<"personal" | "service">("service");
 	const [limitValue, setLimitValue] = useState(() =>
 		createApiKeyLimitFormValue(),
 	);
@@ -80,6 +88,7 @@ export function CreateApiKeyDialog({
 				body: {
 					description: name.trim(),
 					projectId: selectedProject.id,
+					usageType,
 					...payload,
 				},
 			});
@@ -120,6 +129,7 @@ export function CreateApiKeyDialog({
 
 			setStep("form");
 			setName("");
+			setUsageType("service");
 			setApiKey("");
 			setLimitValue(createApiKeyLimitFormValue());
 		}, 300);
@@ -187,6 +197,31 @@ export function CreateApiKeyDialog({
 									disabled={createApiKeyMutation.isPending}
 									required
 								/>
+							</div>
+							<div className="space-y-2">
+								<Label htmlFor="usage-type">Key Type</Label>
+								<Select
+									value={usageType}
+									onValueChange={(value) =>
+										setUsageType(value as "personal" | "service")
+									}
+									disabled={createApiKeyMutation.isPending}
+								>
+									<SelectTrigger id="usage-type" className="w-full">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="service">
+											Service — used by an app, integration, or automation
+										</SelectItem>
+										<SelectItem value="personal">
+											Personal — used directly by me
+										</SelectItem>
+									</SelectContent>
+								</Select>
+								<p className="text-muted-foreground text-xs">
+									Used to attribute spend correctly in usage reports.
+								</p>
 							</div>
 							<ApiKeyLimitFields
 								idPrefix="create-api-key"

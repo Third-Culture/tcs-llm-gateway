@@ -347,6 +347,7 @@ app.get(
 interface ConsumerStats {
 	apiKeyId: string;
 	description: string;
+	usageType: "personal" | "service";
 	projectId: string;
 	projectName: string;
 	requests: number;

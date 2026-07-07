@@ -130,6 +130,10 @@ export function ApiKeysList({
 		"patch",
 		"/keys/api/{id}",
 	);
+	const { mutate: updateUsageType } = api.useMutation(
+		"patch",
+		"/keys/api/{id}/usage-type",
+	);
 
 	const updateKeyUsageLimitMutation = api.useMutation(
 		"patch",
@@ -263,6 +267,41 @@ export function ApiKeysList({
 					toast({
 						title: "API Key Status Updated",
 						description: "The API key status has been updated.",
+					});
+				},
+			},
+		);
+	};
+
+	const toggleUsageType = (
+		id: string,
+		currentUsageType: "personal" | "service",
+	) => {
+		const newUsageType =
+			currentUsageType === "personal" ? "service" : "personal";
+
+		updateUsageType(
+			{
+				params: {
+					path: { id },
+				},
+				body: {
+					usageType: newUsageType,
+				},
+			},
+			{
+				onSuccess: () => {
+					const queryKey = api.queryOptions("get", "/keys/api", {
+						params: {
+							query: { projectId: selectedProject.id },
+						},
+					}).queryKey;
+
+					void queryClient.invalidateQueries({ queryKey });
+
+					toast({
+						title: "API Key Type Updated",
+						description: `This key is now marked as ${newUsageType}.`,
 					});
 				},
 			},
@@ -464,6 +503,7 @@ export function ApiKeysList({
 						<TableRow>
 							<TableHead>Name</TableHead>
 							<TableHead className="w-40">API Key</TableHead>
+							<TableHead>Type</TableHead>
 							<TableHead>Status</TableHead>
 							<TableHead>Created</TableHead>
 							<TableHead>Created By</TableHead>
@@ -489,6 +529,25 @@ export function ApiKeysList({
 											{key.maskedToken}
 										</span>
 									</div>
+								</TableCell>
+								<TableCell>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<Badge
+												variant="outline"
+												className="cursor-help text-xs capitalize"
+											>
+												{key.usageType}
+											</Badge>
+										</TooltipTrigger>
+										<TooltipContent>
+											<p className="max-w-xs text-xs">
+												{key.usageType === "personal"
+													? "Attributed to the creator in usage-by-person reports."
+													: "Attributed to the app/integration in usage reports, not to a person."}
+											</p>
+										</TooltipContent>
+									</Tooltip>
 								</TableCell>
 								<TableCell>
 									<StatusBadge status={key.status} variant="detailed" />
@@ -613,6 +672,16 @@ export function ApiKeysList({
 															: "Activate"}{" "}
 														Key
 													</DropdownMenuItem>
+													<DropdownMenuItem
+														onClick={() =>
+															toggleUsageType(key.id, key.usageType)
+														}
+													>
+														Mark as{" "}
+														{key.usageType === "personal"
+															? "Service"
+															: "Personal"}
+													</DropdownMenuItem>
 													<DropdownMenuSeparator />
 													<AlertDialog>
 														<AlertDialogTrigger asChild>
@@ -664,6 +733,9 @@ export function ApiKeysList({
 								<div className="flex items-center gap-2">
 									<h3 className="font-medium text-sm">{key.description}</h3>
 									<StatusBadge status={key.status} />
+									<Badge variant="outline" className="text-xs capitalize">
+										{key.usageType}
+									</Badge>
 								</div>
 								<div className="flex items-center gap-2 mt-1">
 									<span className="text-xs text-muted-foreground">
@@ -706,6 +778,12 @@ export function ApiKeysList({
 											>
 												{key.status === "active" ? "Deactivate" : "Activate"}{" "}
 												Key
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												onClick={() => toggleUsageType(key.id, key.usageType)}
+											>
+												Mark as{" "}
+												{key.usageType === "personal" ? "Service" : "Personal"}
 											</DropdownMenuItem>
 											<DropdownMenuSeparator />
 											<AlertDialog>

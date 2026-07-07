@@ -774,6 +774,7 @@ The LLM Gateway Team`.trim();
 							projectId: project.id,
 							token: token,
 							description: "Auto-generated playground key",
+							usageType: "personal",
 							usageLimit: null, // No limit for playground key
 							createdBy: userId,
 						});

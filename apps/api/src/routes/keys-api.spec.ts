@@ -131,6 +131,80 @@ describe("keys route", () => {
 		expect(apiKey?.status).toBe("inactive");
 	});
 
+	test("POST /keys/api defaults usageType to service", async () => {
+		const res = await app.request("/keys/api", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Cookie: token,
+			},
+			body: JSON.stringify({
+				description: "New API Key",
+				projectId: "test-project-id",
+			}),
+		});
+		expect(res.status).toBe(200);
+		const json = await res.json();
+		expect(json.apiKey.usageType).toBe("service");
+	});
+
+	test("POST /keys/api creates a personal key", async () => {
+		const res = await app.request("/keys/api", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Cookie: token,
+			},
+			body: JSON.stringify({
+				description: "New Personal API Key",
+				projectId: "test-project-id",
+				usageType: "personal",
+			}),
+		});
+		expect(res.status).toBe(200);
+		const json = await res.json();
+		expect(json.apiKey.usageType).toBe("personal");
+	});
+
+	test("PATCH /keys/api/{id}/usage-type", async () => {
+		const res = await app.request("/keys/api/test-api-key-id/usage-type", {
+			method: "PATCH",
+			headers: {
+				"Content-Type": "application/json",
+				Cookie: token,
+			},
+			body: JSON.stringify({
+				usageType: "personal",
+			}),
+		});
+		expect(res.status).toBe(200);
+		const json = await res.json();
+		expect(json).toHaveProperty("message");
+		expect(json.apiKey.usageType).toBe("personal");
+
+		const apiKey = await db.query.apiKey.findFirst({
+			where: {
+				id: {
+					eq: "test-api-key-id",
+				},
+			},
+		});
+		expect(apiKey?.usageType).toBe("personal");
+	});
+
+	test("PATCH /keys/api/{id}/usage-type unauthorized", async () => {
+		const res = await app.request("/keys/api/test-api-key-id/usage-type", {
+			method: "PATCH",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				usageType: "personal",
+			}),
+		});
+		expect(res.status).toBe(401);
+	});
+
 	test("POST /keys/api creates a period usage limit", async () => {
 		const res = await app.request("/keys/api", {
 			method: "POST",

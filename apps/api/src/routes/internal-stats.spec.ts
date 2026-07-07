@@ -256,6 +256,7 @@ describe("internal stats by-consumer endpoint", () => {
 			{
 				apiKeyId: "api-key-b",
 				description: "App B backend",
+				usageType: "service",
 				projectId: "project-b",
 				projectName: "Consumer App B",
 				requests: 30,
@@ -265,6 +266,7 @@ describe("internal stats by-consumer endpoint", () => {
 			{
 				apiKeyId: "api-key-a",
 				description: "App A backend",
+				usageType: "service",
 				projectId: "project-a",
 				projectName: "Consumer App A",
 				requests: 10,
@@ -312,6 +314,7 @@ describe("internal stats by-user endpoint", () => {
 				token: "token-a",
 				projectId: "project-a",
 				description: "App A backend",
+				usageType: "personal",
 				createdBy: "test-user-id",
 			},
 			{
@@ -319,6 +322,7 @@ describe("internal stats by-user endpoint", () => {
 				token: "token-b",
 				projectId: "project-a",
 				description: "App B backend",
+				usageType: "personal",
 				createdBy: "test-user-id",
 			},
 			{
@@ -326,7 +330,16 @@ describe("internal stats by-user endpoint", () => {
 				token: "token-c",
 				projectId: "project-b",
 				description: "App C backend",
+				usageType: "personal",
 				createdBy: "test-user-id-2",
+			},
+			{
+				id: "api-key-service",
+				token: "token-service",
+				projectId: "project-b",
+				description: "Automated integration",
+				usageType: "service",
+				createdBy: "test-user-id",
 			},
 		]);
 	});
@@ -402,6 +415,52 @@ describe("internal stats by-user endpoint", () => {
 				requests: 15,
 				errors: 1,
 				cost: 2,
+			},
+		]);
+	});
+
+	test("excludes keys marked usageType 'service' from attribution", async () => {
+		const today = new Date();
+		today.setUTCHours(12, 0, 0, 0);
+
+		await db.insert(apiKeyHourlyStats).values([
+			{
+				id: "aks-1",
+				apiKeyId: "api-key-a",
+				projectId: "project-a",
+				hourTimestamp: today,
+				requestCount: 10,
+				errorCount: 1,
+				cost: 1.5,
+			},
+			// This key is createdBy the same user, but it's a service key, so its
+			// cost must not be attributed to that person.
+			{
+				id: "aks-service",
+				apiKeyId: "api-key-service",
+				projectId: "project-b",
+				hourTimestamp: today,
+				requestCount: 1000,
+				errorCount: 500,
+				cost: 100,
+			},
+		]);
+
+		const res = await app.request("/internal/stats/by-user", {
+			headers: { Authorization: "Bearer test-internal-stats-token" },
+		});
+		expect(res.status).toBe(200);
+
+		const body = await res.json();
+		expect(body.users).toEqual([
+			{
+				userId: "test-user-id",
+				name: "Test User",
+				email: "admin@example.com",
+				apiKeyCount: 1,
+				requests: 10,
+				errors: 1,
+				cost: 1.5,
 			},
 		]);
 	});

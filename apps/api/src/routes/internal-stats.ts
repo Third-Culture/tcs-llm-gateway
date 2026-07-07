@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireInternalStatsToken } from "@/utils/internal-auth.js";
 
 import {
+	and,
 	apiKey,
 	apiKeyHourlyStats,
 	db,
@@ -138,6 +139,7 @@ internalStats.openapi(getStatsRoute, async (c) => {
 const consumerStatsSchema = z.object({
 	apiKeyId: z.string(),
 	description: z.string(),
+	usageType: z.enum(["personal", "service"]),
 	projectId: z.string(),
 	projectName: z.string(),
 	requests: z.number(),
@@ -188,6 +190,7 @@ internalStats.openapi(getConsumerStatsRoute, async (c) => {
 		.select({
 			apiKeyId: apiKeyHourlyStats.apiKeyId,
 			description: apiKey.description,
+			usageType: apiKey.usageType,
 			projectId: apiKeyHourlyStats.projectId,
 			projectName: project.name,
 			requests:
@@ -206,6 +209,7 @@ internalStats.openapi(getConsumerStatsRoute, async (c) => {
 		.groupBy(
 			apiKeyHourlyStats.apiKeyId,
 			apiKey.description,
+			apiKey.usageType,
 			apiKeyHourlyStats.projectId,
 			project.name,
 		)
@@ -215,6 +219,7 @@ internalStats.openapi(getConsumerStatsRoute, async (c) => {
 		consumers: rows.map((row) => ({
 			apiKeyId: row.apiKeyId,
 			description: row.description,
+			usageType: row.usageType,
 			projectId: row.projectId,
 			projectName: row.projectName,
 			requests: Number(row.requests),
@@ -239,14 +244,15 @@ const userStatsResponseSchema = z.object({
 });
 
 // GET /internal/stats/by-user - Usage broken down per team member, attributed
-// via api_key.created_by (the person who provisioned the key). Same
-// api_key_hourly_stats source as /stats/by-consumer, just grouped by the
-// creator instead of the key itself, so one person's several apps/keys roll
-// up into a single row.
+// via api_key.created_by (the person who provisioned the key). Only counts
+// keys explicitly marked usageType = "personal" — most keys are provisioned
+// by a single admin on behalf of an automated service, so including
+// "service" keys here would misattribute their cost to whoever happened to
+// click "create". Service-key spend is already visible in /stats/by-consumer.
 const getUserStatsRoute = createRoute({
 	operationId: "internal_get_stats_by_user",
 	summary: "Get usage stats broken down by team member",
-	description: `Returns request counts, error counts, and cost per team member (attributed via the API key's creator) for the last N days (default ${DEFAULT_STATS_WINDOW_DAYS}, max ${MAX_STATS_WINDOW_DAYS}, via the \`days\` query param). Requires a Bearer token matching INTERNAL_STATS_TOKEN.`,
+	description: `Returns request counts, error counts, and cost per team member for personal-use API keys only (keys marked usageType = "personal", attributed via the key's creator) for the last N days (default ${DEFAULT_STATS_WINDOW_DAYS}, max ${MAX_STATS_WINDOW_DAYS}, via the \`days\` query param). Service/automation keys are excluded here — see /stats/by-consumer for those. Requires a Bearer token matching INTERNAL_STATS_TOKEN.`,
 	method: "get",
 	path: "/stats/by-user",
 	request: {
@@ -293,7 +299,12 @@ internalStats.openapi(getUserStatsRoute, async (c) => {
 		.from(apiKeyHourlyStats)
 		.innerJoin(apiKey, eq(apiKeyHourlyStats.apiKeyId, apiKey.id))
 		.innerJoin(user, eq(apiKey.createdBy, user.id))
-		.where(gte(apiKeyHourlyStats.hourTimestamp, since))
+		.where(
+			and(
+				gte(apiKeyHourlyStats.hourTimestamp, since),
+				eq(apiKey.usageType, "personal"),
+			),
+		)
 		.groupBy(apiKey.createdBy, user.name, user.email)
 		.orderBy(desc(sql`COALESCE(SUM(${apiKeyHourlyStats.cost}), 0)`));
 
