@@ -294,7 +294,7 @@ export const TweetCard = async ({
 		if (onError) {
 			onError(err);
 		} else {
-			console.error("Failed to fetch tweet:", err);
+			console.warn("Failed to fetch tweet:", err);
 		}
 		tweet = undefined;
 	}

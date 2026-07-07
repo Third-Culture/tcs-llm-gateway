@@ -87,7 +87,7 @@ export async function fetchServerData<T>(
 
 		return response.data ?? null;
 	} catch (error) {
-		console.error(`Server API error for ${method} ${path}:`, error);
+		console.warn(`Server API error for ${method} ${path}:`, error);
 		return null;
 	}
 }
