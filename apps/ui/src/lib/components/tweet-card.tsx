@@ -243,7 +243,13 @@ export const MagicTweet = ({
 	components?: TwitterComponents;
 	className?: string;
 }) => {
-	const enrichedTweet = enrichTweet(tweet);
+	let enrichedTweet: EnrichedTweet;
+	try {
+		enrichedTweet = enrichTweet(tweet);
+	} catch (err) {
+		console.error("Failed to enrich tweet:", err);
+		return <TweetNotFound className={className} {...props} />;
+	}
 	return (
 		<div
 			className={cn(
