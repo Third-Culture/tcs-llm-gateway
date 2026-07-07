@@ -11,26 +11,35 @@ export async function getUser() {
 	const cookieStore = await cookies();
 
 	const key = "better-auth.session_token";
-	// Get session cookie for authentication
 	const sessionCookie = cookieStore.get(`${key}`);
 	const secureSessionCookie = cookieStore.get(`__Secure-${key}`);
 
-	const data = await fetch(`${config.apiBackendUrl}/user/me`, {
-		method: "GET",
-		headers: {
-			Cookie: secureSessionCookie
-				? `__Secure-${key}=${secureSessionCookie.value}`
-				: sessionCookie
-					? `${key}=${sessionCookie.value}`
-					: "",
-		},
-	});
+	let data: Response;
+	try {
+		data = await fetch(`${config.apiBackendUrl}/user/me`, {
+			method: "GET",
+			headers: {
+				Cookie: secureSessionCookie
+					? `__Secure-${key}=${secureSessionCookie.value}`
+					: sessionCookie
+						? `${key}=${sessionCookie.value}`
+						: "",
+			},
+		});
+	} catch {
+		return null;
+	}
 
 	if (!data.ok) {
 		return null;
 	}
 
-	const user: User = await data.json();
+	let user: User;
+	try {
+		user = await data.json();
+	} catch {
+		return null;
+	}
 
 	if (posthog) {
 		posthog.identify({

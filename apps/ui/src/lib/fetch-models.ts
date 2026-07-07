@@ -77,13 +77,13 @@ export const fetchModels = cache(async (): Promise<ApiModel[]> => {
 			next: { revalidate: 60 },
 		});
 		if (!response.ok) {
-			console.error("Failed to fetch models:", response.statusText);
+			console.warn("Failed to fetch models:", response.statusText);
 			return [];
 		}
 		const data = await response.json();
 		return data.models ?? [];
 	} catch (error) {
-		console.error("Error fetching models:", error);
+		console.warn("Error fetching models:", error);
 		return [];
 	}
 });
@@ -95,13 +95,13 @@ export const fetchProviders = cache(async (): Promise<ApiProvider[]> => {
 			next: { revalidate: 60 },
 		});
 		if (!response.ok) {
-			console.error("Failed to fetch providers:", response.statusText);
+			console.warn("Failed to fetch providers:", response.statusText);
 			return [];
 		}
 		const data = await response.json();
 		return data.providers ?? [];
 	} catch (error) {
-		console.error("Error fetching providers:", error);
+		console.warn("Error fetching providers:", error);
 		return [];
 	}
 });
