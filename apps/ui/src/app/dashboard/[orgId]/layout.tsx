@@ -29,7 +29,10 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
 	const orgs = initialOrganizationsData?.organizations ?? [];
 	const isAuthorizedForOrg = orgs.some((org) => org.id === orgId);
 
-	if (orgId && !isAuthorizedForOrg) {
+	// Only enforce when SSR successfully loaded orgs. In cross-origin deployments
+	// the session cookie is on the API domain, so SSR fetches return empty and
+	// client-side hooks handle authorization instead.
+	if (initialOrganizationsData && orgId && !isAuthorizedForOrg) {
 		return (
 			<UserProvider initialUserData={initialUserData}>
 				<UnauthorizedView resource="organization" />

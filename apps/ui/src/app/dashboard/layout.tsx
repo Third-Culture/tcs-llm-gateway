@@ -1,7 +1,3 @@
-import { redirect } from "next/navigation";
-
-import { getUser } from "@/lib/getUser";
-
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
@@ -16,14 +12,9 @@ interface DashboardLayoutProps {
 	children: ReactNode;
 }
 
-export default async function DashboardLayout({
-	children,
-}: DashboardLayoutProps) {
-	const user = await getUser();
-
-	if (!user) {
-		return redirect("/login");
-	}
-
-	return await children;
+export default function DashboardLayout({ children }: DashboardLayoutProps) {
+	// Auth is enforced client-side via useUser(). Server-side getUser() cannot
+	// read the session cookie in our Cloud Run deployment because Better Auth
+	// sets it on the API origin (llmgateway-api.*.run.app), not the UI origin.
+	return children;
 }
