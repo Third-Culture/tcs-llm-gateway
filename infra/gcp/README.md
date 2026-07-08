@@ -214,20 +214,31 @@ so nothing ever drained the Redis log/billing queue or refreshed
 which exists purely to satisfy Cloud Run's container-contract startup
 probe for an otherwise request-less background consumer).
 
-The gap should self-heal without manual intervention: `gateway`/`api` only
-ever `LPUSH` request logs onto the `log_queue_production` Redis list (see
-`packages/cache/src/redis.ts`) — they don't insert into Postgres directly —
-so the missing days' logs should still be sitting in that list (`tcs-llm-redis`
-is a 1GB instance; five days of this gateway's ~500-1500 req/day volume is a
-few MB, well under any eviction pressure). Once the worker is running again,
-`processLogQueue` drains that backlog into the `log` table, and
-`aggregateHistoricalStats`'s stale-bucket detection (default
-`STATS_STALE_DAYS=7`, see `apps/worker/src/services/project-stats-aggregator.ts`)
-picks up the newly-inserted rows and backfills `project_hourly_stats` for
-2026-07-04 through 2026-07-07 automatically, no `STATS_BACKFILL_ENABLED` flag
-needed. Confirm after deploying with `GET /internal/stats?days=7` — if those
-days are still zero after ~10 minutes, the Redis list was likely evicted or
-`RUN_MIGRATIONS`/queue-name mismatch is worth checking next.
+The backlog itself was not lost: `gateway`/`api` only ever `LPUSH` request
+logs onto the `log_queue_production` Redis list (see
+`packages/cache/src/redis.ts`) rather than inserting into Postgres directly,
+so the missing days' logs were still sitting in that list when the worker
+came back (confirmed on redeploy — `/internal/stats` totals jumped by
+several thousand requests as `processLogQueue` drained it).
+
+**However, the per-day breakdown for 2026-07-04 through 2026-07-07 cannot be
+recovered**, and shows up misattributed to the day the backlog was drained
+instead: `LogInsertData` (`packages/db/src/types.ts`) deliberately omits
+`createdAt` from the queue payload, so every backlog row lands in Postgres
+with `createdAt = now()` at insert time, not the request's real timestamp.
+`aggregateHistoricalStats`'s stale/backfill logic
+(`apps/worker/src/services/project-stats-aggregator.ts`) only ever re-derives
+`project_hourly_stats` from `log.created_at`, so it has no way to know those
+rows actually belonged to earlier days. Net effect: total request/cost/token
+counts across the gap are fully accurate (no data loss), but `GET
+/internal/stats?days=N` will show a one-day spike on whichever day the
+worker was redeployed and a permanent zero for the days in between. For
+`tcs-monitoring`'s `llmgateway_completions_today` metric specifically (a
+rolling 24h count) this self-corrects within a day and was not worth a
+special-case fix; if per-day accuracy across outages like this ever matters,
+the real fix is threading the gateway's original request timestamp through
+the queue payload into `LogInsertData` instead of relying on the DB's
+insert-time default.
 
 All four services run from the same container image
 (`us-central1-docker.pkg.dev/third-culture/tcs/llm-gateway`, pinned by
