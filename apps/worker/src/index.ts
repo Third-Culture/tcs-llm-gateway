@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 
 import { logger } from "@llmgateway/logger";
 
+import { createHealthServer } from "./health-server.js";
 import { startWorker, stopWorker } from "./worker.js";
 
 export { processLogQueue } from "./worker.js";
@@ -9,6 +10,9 @@ export {
 	processPendingVideoJobs,
 	processPendingWebhookDeliveries,
 } from "./services/video-jobs.js";
+
+const PORT = Number(process.env.PORT) || 8080;
+const health = createHealthServer();
 
 let isShuttingDown = false;
 
@@ -19,6 +23,9 @@ async function gracefulShutdown(): Promise<void> {
 
 	isShuttingDown = true;
 	logger.info("Received shutdown signal, stopping worker...");
+
+	health.setReady(false);
+	health.server.close();
 
 	try {
 		await stopWorker();
@@ -62,11 +69,25 @@ function isDirectExecution() {
 
 if (isDirectExecution()) {
 	logger.info("Starting worker application...");
-	startWorker().catch((error) => {
-		logger.error(
-			"Failed to start worker",
-			error instanceof Error ? error : new Error(String(error)),
-		);
-		process.exit(1);
+
+	health.server.listen(PORT, "0.0.0.0", () => {
+		logger.info(`Health check server listening on port ${PORT}`);
 	});
+
+	startWorker()
+		.then(() => {
+			// startWorker() only awaits the initial provider/model sync before
+			// dispatching its background loops (see startWorker in worker.ts) --
+			// by the time this resolves, all loops are running, so it's a
+			// reasonable readiness signal even though the loops themselves never
+			// "complete".
+			health.setReady(true);
+		})
+		.catch((error) => {
+			logger.error(
+				"Failed to start worker",
+				error instanceof Error ? error : new Error(String(error)),
+			);
+			process.exit(1);
+		});
 }

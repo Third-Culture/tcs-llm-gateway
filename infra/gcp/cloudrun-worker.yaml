@@ -4,6 +4,17 @@
 # not appropriate because we need a continuously-running consumer. Use
 # a Cloud Run Service with min instances >= 1, ingress=internal, and no
 # public traffic.
+#
+# Unlike the other reference manifests in this directory, this one must
+# still declare a `containerPort` + startup/liveness probes even though the
+# worker serves no real traffic: Cloud Run (fully managed) requires every
+# service's ingress container to listen on a port and pass its probes to
+# become Ready, and the worker has none of its own work to trigger that
+# naturally. apps/worker/src/health-server.ts exists solely to satisfy this.
+# (Cloud Run worker pools -- the GCP-native resource for pull-based
+# background work with no port requirement -- were only available behind
+# `gcloud alpha run worker-pools` when this was last verified; revisit if
+# that has since reached GA/beta.)
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
@@ -31,6 +42,9 @@ spec:
       containers:
         - name: worker
           image: $REPLACE_REGISTRY/$REPLACE_PROJECT/llmgateway/worker@sha256:$REPLACE_DIGEST
+          ports:
+            - name: http1
+              containerPort: 8080
           resources:
             limits:
               cpu: "1"
@@ -63,11 +77,36 @@ spec:
                 secretKeyRef:
                   name: DATABASE_URL
                   key: latest
-            - name: REDIS_URL
+            # NOTE: packages/cache/src/redis.ts reads REDIS_HOST/REDIS_PORT/
+            # REDIS_PASSWORD, not a single REDIS_URL -- unlike the other
+            # reference manifests in this directory (which share this same
+            # REDIS_URL placeholder and are equally wrong about it), this one
+            # is corrected because it was the direct cause of this file having
+            # never actually been deployed anywhere.
+            - name: REDIS_HOST
+              value: $REPLACE_REDIS_HOST
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: REDIS_URL
+                  name: REDIS_PASSWORD
                   key: latest
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
   traffic:
     - latestRevision: true
       percent: 100

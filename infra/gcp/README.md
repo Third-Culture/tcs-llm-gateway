@@ -198,17 +198,58 @@ environment; there is no separate staging/dev deployment today.
 | `llmgateway-ui`      | https://llmgateway-ui-303980490211.us-central1.run.app      | 3002 | 0 / 3             | Next.js dashboard (our UI)                                      |
 | `llmgateway-api`     | https://llmgateway-api-303980490211.us-central1.run.app     | 4002 | 1 / 5             | Management API, runs migrations on boot (`RUN_MIGRATIONS=true`) |
 | `llmgateway-gateway` | https://llmgateway-gateway-303980490211.us-central1.run.app | 4001 | 1 / 10            | LLM routing entrypoint                                          |
+| `llmgateway-worker`  | (no public URL — `ingress: internal`)                       | 8080 | 1 / 3             | Redis log/billing queue consumer + hourly stats aggregator      |
 
 There is no `playground` or `docs` Cloud Run service deployed for this
-project. No custom domain is mapped to any of the three services —
-they are only reachable on their default `*.run.app` URLs.
+project. No custom domain is mapped to the public services — they are
+only reachable on their default `*.run.app` URLs.
 
-All three services run from the same container image
+**`llmgateway-worker` was missing from `third-culture` from the
+2026-07-03 api/gateway/ui Cloud Run migration until 2026-07-08** — the
+migration's `deploy-gcp.yml` only had matrix entries for `api`/`gateway`/`ui`,
+so nothing ever drained the Redis log/billing queue or refreshed
+`project_hourly_stats` in that window (visible as a gap in
+`/internal/stats` from 2026-07-04 onward). It's deployed now (see the
+`worker` matrix entry in `deploy-gcp.yml` and `apps/worker/src/health-server.ts`,
+which exists purely to satisfy Cloud Run's container-contract startup
+probe for an otherwise request-less background consumer).
+
+The backlog itself was not lost: `gateway`/`api` only ever `LPUSH` request
+logs onto the `log_queue_production` Redis list (see
+`packages/cache/src/redis.ts`) rather than inserting into Postgres directly,
+so the missing days' logs were still sitting in that list when the worker
+came back (confirmed on redeploy — `/internal/stats` totals jumped by
+several thousand requests as `processLogQueue` drained it).
+
+**However, the per-day breakdown for 2026-07-04 through 2026-07-07 cannot be
+recovered**, and shows up misattributed to the day the backlog was drained
+instead: `LogInsertData` (`packages/db/src/types.ts`) deliberately omits
+`createdAt` from the queue payload, so every backlog row lands in Postgres
+with `createdAt = now()` at insert time, not the request's real timestamp.
+`aggregateHistoricalStats`'s stale/backfill logic
+(`apps/worker/src/services/project-stats-aggregator.ts`) only ever re-derives
+`project_hourly_stats` from `log.created_at`, so it has no way to know those
+rows actually belonged to earlier days. Net effect: total request/cost/token
+counts across the gap are fully accurate (no data loss), but `GET
+/internal/stats?days=N` will show a one-day spike on whichever day the
+worker was redeployed and a permanent zero for the days in between. For
+`tcs-monitoring`'s `llmgateway_completions_today` metric specifically (a
+rolling 24h count) this self-corrects within a day and was not worth a
+special-case fix; if per-day accuracy across outages like this ever matters,
+the real fix is threading the gateway's original request timestamp through
+the queue payload into `LogInsertData` instead of relying on the DB's
+insert-time default.
+
+All four services run from the same container image
 (`us-central1-docker.pkg.dev/third-culture/tcs/llm-gateway`, pinned by
 digest) under the `tcs-llm-gateway@third-culture.iam.gserviceaccount.com`
 runtime service account, attached to the `tcs-llm-connector` VPC
 connector (`private-ranges-only` egress) so they can reach private
-backing services.
+backing services. `llmgateway-worker` additionally runs with
+`run.googleapis.com/ingress: internal` (no `allUsers` invoker binding)
+since it serves no real traffic, and `--no-cpu-throttling` /
+`--min-instances=1` since its background loops must keep running
+between requests to its health endpoint.
 
 **Deploy identity** (used by `deploy-gcp.yml`, not the runtime identity
 above): GitHub Actions authenticates as
