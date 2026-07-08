@@ -1,13 +1,22 @@
 name: deploy-gcp
 
 # Builds per-service images from infra/split.dockerfile and deploys them to
-# the three Cloud Run services that make up the live `third-culture` GCP
+# the four Cloud Run services that make up the live `third-culture` GCP
 # deployment (see infra/gcp/README.md). Each service keeps its own
 # lightweight image, matching what is actually running today — do NOT
 # switch this to the unified all-in-one image (infra/unified.dockerfile):
 # it boots a local Postgres/Redis and every app (including the worker) in
 # a single container, which would run duplicate, uncoordinated worker
 # processes inside api/gateway/ui and blow past their resource limits.
+#
+# `llmgateway-worker` (added after the api/gateway/ui-only migration left it
+# undeployed for several days -- see infra/gcp/README.md's "Production
+# deployment" section) has no HTTP traffic of its own; it's a background
+# consumer of the Redis log/billing queue and the source of the
+# project_hourly_stats rows that /internal/stats reads. It still deploys like
+# the others because it exposes a minimal health endpoint (apps/worker/src/health-server.ts)
+# to satisfy Cloud Run's container contract, with ingress restricted to
+# internal traffic only.
 
 on:
   push:
@@ -49,6 +58,8 @@ jobs:
             service: llmgateway-gateway
           - app: ui
             service: llmgateway-ui
+          - app: worker
+            service: llmgateway-worker
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -116,6 +127,30 @@ jobs:
           curl --fail --silent --show-error https://llmgateway-ui-303980490211.us-central1.run.app/api/health \
             | tee /dev/stderr | grep -q '"status":"ok"'
 
+      - name: Google Auth (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Health check llmgateway-worker
+        # ingress: internal, so it isn't reachable from this runner over
+        # plain HTTP -- confirm readiness the same way Cloud Run itself does,
+        # by checking the deployed revision reports Ready=True.
+        run: |
+          ready=$(gcloud run services describe llmgateway-worker \
+            --project="${{ env.GCP_PROJECT }}" --region="${{ env.GCP_REGION }}" \
+            --format="value(status.conditions[0].status)")
+          if [ "$ready" != "True" ]; then
+            echo "llmgateway-worker is not Ready (status.conditions[0].status=$ready)" >&2
+            exit 1
+          fi
+
       - name: Summary
         run: |
           echo "=================================================="
@@ -124,4 +159,5 @@ jobs:
           echo "    api:      https://llmgateway-api-303980490211.us-central1.run.app"
           echo "    gateway:  https://llmgateway-gateway-303980490211.us-central1.run.app"
           echo "    ui:       https://llmgateway-ui-303980490211.us-central1.run.app"
+          echo "    worker:   (internal-only, no public URL)"
           echo "=================================================="

@@ -198,17 +198,47 @@ environment; there is no separate staging/dev deployment today.
 | `llmgateway-ui`      | https://llmgateway-ui-303980490211.us-central1.run.app      | 3002 | 0 / 3             | Next.js dashboard (our UI)                                      |
 | `llmgateway-api`     | https://llmgateway-api-303980490211.us-central1.run.app     | 4002 | 1 / 5             | Management API, runs migrations on boot (`RUN_MIGRATIONS=true`) |
 | `llmgateway-gateway` | https://llmgateway-gateway-303980490211.us-central1.run.app | 4001 | 1 / 10            | LLM routing entrypoint                                          |
+| `llmgateway-worker`  | (no public URL — `ingress: internal`)                       | 8080 | 1 / 3             | Redis log/billing queue consumer + hourly stats aggregator      |
 
 There is no `playground` or `docs` Cloud Run service deployed for this
-project. No custom domain is mapped to any of the three services —
-they are only reachable on their default `*.run.app` URLs.
+project. No custom domain is mapped to the public services — they are
+only reachable on their default `*.run.app` URLs.
 
-All three services run from the same container image
+**`llmgateway-worker` was missing from `third-culture` from the
+2026-07-03 api/gateway/ui Cloud Run migration until 2026-07-08** — the
+migration's `deploy-gcp.yml` only had matrix entries for `api`/`gateway`/`ui`,
+so nothing ever drained the Redis log/billing queue or refreshed
+`project_hourly_stats` in that window (visible as a gap in
+`/internal/stats` from 2026-07-04 onward). It's deployed now (see the
+`worker` matrix entry in `deploy-gcp.yml` and `apps/worker/src/health-server.ts`,
+which exists purely to satisfy Cloud Run's container-contract startup
+probe for an otherwise request-less background consumer).
+
+The gap should self-heal without manual intervention: `gateway`/`api` only
+ever `LPUSH` request logs onto the `log_queue_production` Redis list (see
+`packages/cache/src/redis.ts`) — they don't insert into Postgres directly —
+so the missing days' logs should still be sitting in that list (`tcs-llm-redis`
+is a 1GB instance; five days of this gateway's ~500-1500 req/day volume is a
+few MB, well under any eviction pressure). Once the worker is running again,
+`processLogQueue` drains that backlog into the `log` table, and
+`aggregateHistoricalStats`'s stale-bucket detection (default
+`STATS_STALE_DAYS=7`, see `apps/worker/src/services/project-stats-aggregator.ts`)
+picks up the newly-inserted rows and backfills `project_hourly_stats` for
+2026-07-04 through 2026-07-07 automatically, no `STATS_BACKFILL_ENABLED` flag
+needed. Confirm after deploying with `GET /internal/stats?days=7` — if those
+days are still zero after ~10 minutes, the Redis list was likely evicted or
+`RUN_MIGRATIONS`/queue-name mismatch is worth checking next.
+
+All four services run from the same container image
 (`us-central1-docker.pkg.dev/third-culture/tcs/llm-gateway`, pinned by
 digest) under the `tcs-llm-gateway@third-culture.iam.gserviceaccount.com`
 runtime service account, attached to the `tcs-llm-connector` VPC
 connector (`private-ranges-only` egress) so they can reach private
-backing services.
+backing services. `llmgateway-worker` additionally runs with
+`run.googleapis.com/ingress: internal` (no `allUsers` invoker binding)
+since it serves no real traffic, and `--no-cpu-throttling` /
+`--min-instances=1` since its background loops must keep running
+between requests to its health endpoint.
 
 **Deploy identity** (used by `deploy-gcp.yml`, not the runtime identity
 above): GitHub Actions authenticates as
