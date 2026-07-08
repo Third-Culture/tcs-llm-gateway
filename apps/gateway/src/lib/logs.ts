@@ -230,7 +230,7 @@ export async function insertLog(
 					logData.usedProvider,
 				)
 			) {
-				logger.error("Unknown finish reason encountered", {
+				logger.warn("Unknown finish reason encountered", {
 					requestId: logData.requestId,
 					finishReason: logData.finishReason,
 					provider: logData.usedProvider,

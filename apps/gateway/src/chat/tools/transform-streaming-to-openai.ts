@@ -411,7 +411,7 @@ export function transformStreamingToOpenai(
 				(!data.candidates || data.candidates.length === 0) &&
 				!data.promptFeedback?.blockReason
 			) {
-				logger.error(
+				logger.debug(
 					"[transform-streaming-to-openai] Google streaming chunk missing candidates",
 					{
 						hasCandidates: !!data.candidates,
@@ -528,7 +528,7 @@ export function transformStreamingToOpenai(
 									sig,
 								)
 								.catch((err) => {
-									logger.error(
+									logger.warn(
 										"Failed to cache thought_signature in streaming transform",
 										{ err },
 									);

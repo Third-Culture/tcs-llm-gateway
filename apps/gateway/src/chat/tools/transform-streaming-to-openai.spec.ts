@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { transformStreamingToOpenai } from "./transform-streaming-to-openai.js";
 
-const { warn } = vi.hoisted(() => ({
+const { warn, error, debug } = vi.hoisted(() => ({
 	warn: vi.fn(),
+	error: vi.fn(),
+	debug: vi.fn(),
 }));
 
 vi.mock("@llmgateway/cache", () => ({
@@ -16,8 +18,8 @@ vi.mock("@llmgateway/cache", () => ({
 vi.mock("@llmgateway/logger", () => ({
 	logger: {
 		warn,
-		error: vi.fn(),
-		debug: vi.fn(),
+		error,
+		debug,
 		info: vi.fn(),
 	},
 }));
@@ -256,6 +258,67 @@ describe("transformStreamingToOpenai", () => {
 
 			expect(result?.choices?.[0]?.finish_reason).toBe("tool_calls");
 			expect(warn).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each(["google-ai-studio", "glacier", "google-vertex", "quartz"] as const)(
+		"does not log at error level for %s usage-only chunks without candidates",
+		(provider) => {
+			error.mockClear();
+			debug.mockClear();
+			warn.mockClear();
+
+			const result = transformStreamingToOpenai(
+				provider,
+				"gemini-2.5-flash",
+				{
+					usageMetadata: {
+						promptTokenCount: 10,
+						candidatesTokenCount: 20,
+						totalTokenCount: 30,
+					},
+				},
+				[{ role: "user", content: "hello" }],
+			);
+
+			expect(error).not.toHaveBeenCalled();
+			expect(debug).toHaveBeenCalledWith(
+				"[transform-streaming-to-openai] Google streaming chunk missing candidates",
+				expect.objectContaining({
+					hasCandidates: false,
+				}),
+			);
+			expect(result).toMatchObject({
+				object: "chat.completion.chunk",
+				choices: [
+					{ index: 0, delta: { role: "assistant" }, finish_reason: null },
+				],
+			});
+		},
+	);
+
+	it.each(["google-ai-studio", "glacier", "google-vertex", "quartz"] as const)(
+		"does not log at error level for %s chunks with empty candidates array",
+		(provider) => {
+			error.mockClear();
+			debug.mockClear();
+
+			transformStreamingToOpenai(
+				provider,
+				"gemini-2.5-flash",
+				{
+					candidates: [],
+					usageMetadata: {
+						promptTokenCount: 5,
+						candidatesTokenCount: 0,
+						totalTokenCount: 5,
+					},
+				},
+				[],
+			);
+
+			expect(error).not.toHaveBeenCalled();
+			expect(debug).toHaveBeenCalled();
 		},
 	);
 });

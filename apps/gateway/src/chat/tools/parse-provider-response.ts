@@ -308,7 +308,7 @@ export function parseProviderResponse(
 									part.thoughtSignature,
 								)
 								.catch((err) => {
-									logger.error("Failed to cache thought_signature", { err });
+									logger.warn("Failed to cache thought_signature", { err });
 								});
 						}
 						return toolCall;
@@ -821,7 +821,7 @@ export function parseProviderResponse(
 						reasoningContent,
 					)
 					.catch((err) => {
-						logger.error("Failed to cache reasoning_content", { err });
+						logger.warn("Failed to cache reasoning_content", { err });
 					});
 			}
 		}

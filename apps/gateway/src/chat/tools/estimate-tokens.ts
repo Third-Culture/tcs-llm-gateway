@@ -32,7 +32,7 @@ export function estimateTokens(
 				calculatedCompletionTokens = encode(JSON.stringify(content)).length;
 			} catch (error) {
 				// Fallback to simple estimation if encoding fails
-				logger.error(
+				logger.warn(
 					"Failed to encode completion text",
 					error instanceof Error ? error : new Error(String(error)),
 				);

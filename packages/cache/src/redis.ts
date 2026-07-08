@@ -8,7 +8,7 @@ export const redisClient = new Redis({
 	password: process.env.REDIS_PASSWORD,
 });
 
-redisClient.on("error", (err) => logger.error("Redis Client Error", err));
+redisClient.on("error", (err) => logger.warn("Redis Client Error", err));
 
 export const LOG_QUEUE = "log_queue_" + process.env.NODE_ENV;
 
