@@ -35,7 +35,7 @@ export function encodeChatMessages(messages: any[]): number {
 		}));
 		return encodeChat(chatMessages, DEFAULT_TOKENIZER_MODEL).length;
 	} catch (error) {
-		logger.error("Failed to encode chat messages", {
+		logger.warn("Failed to encode chat messages", {
 			error: error instanceof Error ? error.message : String(error),
 			messageCount: messages.length,
 			messageRoles: messages.map((m) => m.role),

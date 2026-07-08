@@ -5796,9 +5796,9 @@ chat.openapi(completions, async (c) => {
 							chunk = sharedTextDecoder.decode(value, { stream: true });
 						}
 
-						// Log error on large chunks (1MB+) - should almost never happen
+						// Log warning on large chunks (1MB+) - should almost never happen
 						if (chunk.length > 1024 * 1024) {
-							logger.error(
+							logger.warn(
 								`Large chunk received: ${(chunk.length / 1024 / 1024).toFixed(2)}MB`,
 							);
 						}
@@ -7130,7 +7130,7 @@ chat.openapi(completions, async (c) => {
 									calculatedCompletionTokens = textTokens + imageTokens;
 								} catch (error) {
 									// Fallback to simple estimation if encoding fails
-									logger.error(
+									logger.warn(
 										"Failed to encode completion text in streaming",
 										error instanceof Error ? error : new Error(String(error)),
 									);
@@ -7151,7 +7151,7 @@ chat.openapi(completions, async (c) => {
 							calculatedReasoningTokens = encode(fullReasoningContent).length;
 						} catch (error) {
 							// Fallback to simple estimation if encoding fails
-							logger.error(
+							logger.warn(
 								"Failed to encode reasoning text in streaming",
 								error instanceof Error ? error : new Error(String(error)),
 							);
@@ -7794,92 +7794,101 @@ chat.openapi(completions, async (c) => {
 							? streamingError.details.statusCode
 							: 500;
 
-					await insertLogEntry({
-						...baseLogEntry,
-						id: routingAttempts.length > 0 ? finalLogId : undefined,
-						duration,
-						timeToFirstToken,
-						timeToFirstReasoningToken,
-						responseSize: fullContent.length,
-						content: fullContent,
-						reasoningContent: fullReasoningContent || null,
-						finishReason: canceled ? "canceled" : finishReason,
-						promptTokens: shouldIncludeTokensForBilling
-							? (calculatedPromptTokens?.toString() ?? null)
-							: null,
-						completionTokens: shouldIncludeTokensForBilling
-							? (calculatedCompletionTokens?.toString() ?? null)
-							: null,
-						totalTokens: shouldIncludeTokensForBilling
-							? (calculatedTotalTokens?.toString() ?? null)
-							: null,
-						reasoningTokens: shouldIncludeTokensForBilling
-							? (calculatedReasoningTokens?.toString() ?? null)
-							: null,
-						cachedTokens: shouldIncludeTokensForBilling
-							? (cachedTokens?.toString() ?? null)
-							: null,
-						hasError: streamingError !== null,
-						errorDetails: streamingError
-							? {
-									statusCode: streamingErrorStatusCode,
-									statusText:
-										typeof streamingError === "object" &&
-										streamingError !== null &&
-										"details" in streamingError &&
-										typeof streamingError.details === "object" &&
-										streamingError.details !== null &&
-										"statusText" in streamingError.details &&
-										typeof streamingError.details.statusText === "string"
-											? streamingError.details.statusText
-											: "Streaming Error",
-									responseText:
-										typeof streamingError === "object" &&
-										streamingError !== null &&
-										"details" in streamingError &&
-										typeof streamingError.details === "object" &&
-										streamingError.details !== null &&
-										"responseText" in streamingError.details &&
-										typeof streamingError.details.responseText === "string"
-											? streamingError.details.responseText
-											: typeof streamingError === "object" &&
-												  streamingError !== null &&
-												  "details" in streamingError
-												? JSON.stringify(streamingError)
-												: streamingError instanceof Error
-													? streamingError.message
-													: String(streamingError),
-								}
-							: null,
-						streamed: true,
-						canceled: canceled,
-						inputCost: costs.inputCost,
-						outputCost: costs.outputCost,
-						cachedInputCost: costs.cachedInputCost,
-						requestCost: costs.requestCost,
-						webSearchCost: costs.webSearchCost,
-						imageInputTokens: costs.imageInputTokens?.toString() ?? null,
-						imageOutputTokens: costs.imageOutputTokens?.toString() ?? null,
-						imageInputCost: costs.imageInputCost ?? null,
-						imageOutputCost: costs.imageOutputCost ?? null,
-						cost: costs.totalCost,
-						estimatedCost: costs.estimatedCost,
-						discount: costs.discount,
-						pricingTier: costs.pricingTier,
-						dataStorageCost: shouldIncludeTokensForBilling
-							? calculateDataStorageCost(
-									calculatedPromptTokens,
-									cachedTokens,
-									calculatedCompletionTokens,
-									calculatedReasoningTokens,
-									retentionLevel,
-								)
-							: "0",
-						cached: false,
-						tools,
-						toolResults: streamingToolCalls,
-						toolChoice: tool_choice,
-					});
+					try {
+						await insertLogEntry({
+							...baseLogEntry,
+							id: routingAttempts.length > 0 ? finalLogId : undefined,
+							duration,
+							timeToFirstToken,
+							timeToFirstReasoningToken,
+							responseSize: fullContent.length,
+							content: fullContent,
+							reasoningContent: fullReasoningContent || null,
+							finishReason: canceled ? "canceled" : finishReason,
+							promptTokens: shouldIncludeTokensForBilling
+								? (calculatedPromptTokens?.toString() ?? null)
+								: null,
+							completionTokens: shouldIncludeTokensForBilling
+								? (calculatedCompletionTokens?.toString() ?? null)
+								: null,
+							totalTokens: shouldIncludeTokensForBilling
+								? (calculatedTotalTokens?.toString() ?? null)
+								: null,
+							reasoningTokens: shouldIncludeTokensForBilling
+								? (calculatedReasoningTokens?.toString() ?? null)
+								: null,
+							cachedTokens: shouldIncludeTokensForBilling
+								? (cachedTokens?.toString() ?? null)
+								: null,
+							hasError: streamingError !== null,
+							errorDetails: streamingError
+								? {
+										statusCode: streamingErrorStatusCode,
+										statusText:
+											typeof streamingError === "object" &&
+											streamingError !== null &&
+											"details" in streamingError &&
+											typeof streamingError.details === "object" &&
+											streamingError.details !== null &&
+											"statusText" in streamingError.details &&
+											typeof streamingError.details.statusText === "string"
+												? streamingError.details.statusText
+												: "Streaming Error",
+										responseText:
+											typeof streamingError === "object" &&
+											streamingError !== null &&
+											"details" in streamingError &&
+											typeof streamingError.details === "object" &&
+											streamingError.details !== null &&
+											"responseText" in streamingError.details &&
+											typeof streamingError.details.responseText === "string"
+												? streamingError.details.responseText
+												: typeof streamingError === "object" &&
+													  streamingError !== null &&
+													  "details" in streamingError
+													? JSON.stringify(streamingError)
+													: streamingError instanceof Error
+														? streamingError.message
+														: String(streamingError),
+									}
+								: null,
+							streamed: true,
+							canceled: canceled,
+							inputCost: costs.inputCost,
+							outputCost: costs.outputCost,
+							cachedInputCost: costs.cachedInputCost,
+							requestCost: costs.requestCost,
+							webSearchCost: costs.webSearchCost,
+							imageInputTokens: costs.imageInputTokens?.toString() ?? null,
+							imageOutputTokens: costs.imageOutputTokens?.toString() ?? null,
+							imageInputCost: costs.imageInputCost ?? null,
+							imageOutputCost: costs.imageOutputCost ?? null,
+							cost: costs.totalCost,
+							estimatedCost: costs.estimatedCost,
+							discount: costs.discount,
+							pricingTier: costs.pricingTier,
+							dataStorageCost: shouldIncludeTokensForBilling
+								? calculateDataStorageCost(
+										calculatedPromptTokens,
+										cachedTokens,
+										calculatedCompletionTokens,
+										calculatedReasoningTokens,
+										retentionLevel,
+									)
+								: "0",
+							cached: false,
+							tools,
+							toolResults: streamingToolCalls,
+							toolChoice: tool_choice,
+						});
+					} catch (logError) {
+						logger.warn(
+							"Failed to insert streaming log entry",
+							logError instanceof Error
+								? logError
+								: new Error(String(logError)),
+						);
+					}
 
 					// Report key health for the selected token source
 					if (envVarName !== undefined) {

@@ -160,7 +160,7 @@ export async function calculateCosts(
 					).length;
 				} catch (error) {
 					// If encoding fails, leave as null
-					logger.error(`Failed to encode chat messages in costs: ${error}`);
+					logger.warn(`Failed to encode chat messages in costs: ${error}`);
 				}
 			} else if (fullOutput.prompt) {
 				// For text prompt
@@ -170,7 +170,7 @@ export async function calculateCosts(
 					).length;
 				} catch (error) {
 					// If encoding fails, leave as null
-					logger.error(`Failed to encode prompt text: ${error}`);
+					logger.warn(`Failed to encode prompt text: ${error}`);
 				}
 			}
 		}
@@ -201,7 +201,7 @@ export async function calculateCosts(
 					calculatedCompletionTokens = encode(completionText).length;
 				} catch (error) {
 					// If encoding fails, leave as null
-					logger.error(`Failed to encode completion text: ${error}`);
+					logger.warn(`Failed to encode completion text: ${error}`);
 				}
 			}
 		}
