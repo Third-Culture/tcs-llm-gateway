@@ -3741,7 +3741,7 @@ chat.openapi(completions, async (c) => {
 								path: c.req.path,
 							});
 						} else {
-							logger.error("Error replaying cached stream", error);
+							logger.warn("Error replaying cached stream", error);
 						}
 					},
 				);
@@ -5812,7 +5812,7 @@ chat.openapi(completions, async (c) => {
 						// Check buffer size to prevent memory exhaustion
 						if (buffer.length > MAX_BUFFER_SIZE) {
 							const bufferSizeMB = MAX_BUFFER_SIZE / 1024 / 1024;
-							logger.error(
+							logger.warn(
 								`Buffer size exceeded ${bufferSizeMB}MB limit, aborting stream`,
 							);
 
@@ -5837,7 +5837,7 @@ chat.openapi(completions, async (c) => {
 								});
 								doneSent = true;
 							} catch (sseError) {
-								logger.error(
+								logger.warn(
 									"Failed to send buffer overflow error SSE",
 									sseError instanceof Error
 										? sseError
@@ -6996,7 +6996,7 @@ chat.openapi(completions, async (c) => {
 							});
 							doneSent = true;
 						} catch (sseError) {
-							logger.error(
+							logger.warn(
 								"Failed to send timeout error SSE",
 								sseError instanceof Error
 									? sseError
@@ -7024,41 +7024,38 @@ chat.openapi(completions, async (c) => {
 							phase: "upstream_read",
 						});
 
-						logger.error(
-							"Error reading upstream stream",
-							error instanceof Error ? error : new Error(String(error)),
-							{
-								requestId,
+						logger.warn("Error reading upstream stream", {
+							err: error instanceof Error ? error : new Error(String(error)),
+							requestId,
+							usedProvider,
+							requestedProvider,
+							usedModel,
+							initialRequestedModel,
+							upstreamStatus: res?.status ?? null,
+							upstreamStatusText: res?.statusText ?? null,
+							upstreamHeaders: res
+								? {
+										contentType: res.headers.get("content-type"),
+										contentLength: res.headers.get("content-length"),
+										transferEncoding: res.headers.get("transfer-encoding"),
+										requestId:
+											res.headers.get("x-request-id") ??
+											res.headers.get("request-id") ??
+											res.headers.get("openai-request-id"),
+									}
+								: null,
+							streamingDiagnostics: normalizedStreamingError.log.details,
+							timeToFirstToken,
+							timeToFirstReasoningToken,
+							firstTokenReceived,
+							firstReasoningTokenReceived,
+							unifiedFinishReason: getUnifiedFinishReason(
+								normalizedStreamingError.client.type === "gateway_error"
+									? "gateway_error"
+									: "upstream_error",
 								usedProvider,
-								requestedProvider,
-								usedModel,
-								initialRequestedModel,
-								upstreamStatus: res?.status ?? null,
-								upstreamStatusText: res?.statusText ?? null,
-								upstreamHeaders: res
-									? {
-											contentType: res.headers.get("content-type"),
-											contentLength: res.headers.get("content-length"),
-											transferEncoding: res.headers.get("transfer-encoding"),
-											requestId:
-												res.headers.get("x-request-id") ??
-												res.headers.get("request-id") ??
-												res.headers.get("openai-request-id"),
-										}
-									: null,
-								streamingDiagnostics: normalizedStreamingError.log.details,
-								timeToFirstToken,
-								timeToFirstReasoningToken,
-								firstTokenReceived,
-								firstReasoningTokenReceived,
-								unifiedFinishReason: getUnifiedFinishReason(
-									normalizedStreamingError.client.type === "gateway_error"
-										? "gateway_error"
-										: "upstream_error",
-									usedProvider,
-								),
-							},
-						);
+							),
+						});
 
 						// Forward the error to the client with the buffered content that caused the error
 						try {
@@ -7076,7 +7073,7 @@ chat.openapi(completions, async (c) => {
 							});
 							doneSent = true;
 						} catch (sseError) {
-							logger.error(
+							logger.warn(
 								"Failed to send error SSE",
 								sseError instanceof Error
 									? sseError
@@ -7248,7 +7245,7 @@ chat.openapi(completions, async (c) => {
 							});
 							doneSent = true;
 						} catch (sseError) {
-							logger.error(
+							logger.warn(
 								"Failed to send truncated stream error SSE",
 								sseError instanceof Error
 									? sseError
@@ -7325,7 +7322,7 @@ chat.openapi(completions, async (c) => {
 							});
 							doneSent = true;
 						} catch (sseError) {
-							logger.error(
+							logger.warn(
 								"Failed to send upstream error SSE",
 								sseError instanceof Error
 									? sseError
@@ -7363,7 +7360,7 @@ chat.openapi(completions, async (c) => {
 								});
 								sentDownstreamFinishReasonChunk = true;
 							} catch (error) {
-								logger.error(
+								logger.warn(
 									"Error sending synthesized finish chunk",
 									error instanceof Error ? error : new Error(String(error)),
 								);
@@ -7505,7 +7502,7 @@ chat.openapi(completions, async (c) => {
 								id: String(eventId++),
 							});
 						} catch (error) {
-							logger.error(
+							logger.warn(
 								"Error sending final usage chunk",
 								error instanceof Error ? error : new Error(String(error)),
 							);
@@ -7584,7 +7581,7 @@ chat.openapi(completions, async (c) => {
 									id: String(eventId++),
 								});
 							} catch (error) {
-								logger.error(
+								logger.warn(
 									"Error sending healed content chunk",
 									error instanceof Error ? error : new Error(String(error)),
 								);
@@ -7621,7 +7618,7 @@ chat.openapi(completions, async (c) => {
 									id: String(eventId++),
 								});
 							} catch (error) {
-								logger.error(
+								logger.warn(
 									"Error sending routing metadata chunk",
 									error instanceof Error ? error : new Error(String(error)),
 								);
@@ -7637,7 +7634,7 @@ chat.openapi(completions, async (c) => {
 									id: String(eventId++),
 								});
 							} catch (error) {
-								logger.error(
+								logger.warn(
 									"Error sending [DONE] event",
 									error instanceof Error ? error : new Error(String(error)),
 								);
@@ -7933,7 +7930,7 @@ chat.openapi(completions, async (c) => {
 								cacheDuration,
 							);
 						} catch (error) {
-							logger.error(
+							logger.warn(
 								"Error saving streaming cache",
 								error instanceof Error ? error : new Error(String(error)),
 							);
@@ -7953,7 +7950,7 @@ chat.openapi(completions, async (c) => {
 						path: c.req.path,
 					});
 				} else {
-					logger.error("Streaming request error (escaped handler)", error);
+					logger.warn("Streaming request error (escaped handler)", error);
 				}
 			},
 		);
@@ -9221,7 +9218,7 @@ chat.openapi(completions, async (c) => {
 			calculatedReasoningTokens = encode(reasoningContent).length;
 		} catch (error) {
 			// Fallback to simple estimation if encoding fails
-			logger.error(
+			logger.warn(
 				"Failed to encode reasoning text",
 				error instanceof Error ? error : new Error(String(error)),
 			);

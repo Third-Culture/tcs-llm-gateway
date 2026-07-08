@@ -797,7 +797,7 @@ anthropic.openapi(messages, async (c) => {
 						path: c.req.path,
 					});
 				} else {
-					logger.error("Anthropic streaming error (escaped handler)", error);
+					logger.warn("Anthropic streaming error (escaped handler)", error);
 				}
 			},
 		);

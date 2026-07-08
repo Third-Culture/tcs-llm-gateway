@@ -2436,6 +2436,96 @@ describe("api", () => {
 			);
 		});
 
+		test("streaming truncated stream does NOT emit logger.error", async () => {
+			const errorSpy = vi.spyOn(logger, "error");
+
+			await db.insert(tables.apiKey).values({
+				id: "token-id",
+				token: "real-token",
+				projectId: "project-id",
+				description: "Test API Key",
+				createdBy: "user-id",
+			});
+
+			await db.insert(tables.providerKey).values({
+				id: "provider-key-id",
+				token: "sk-test-key",
+				provider: "llmgateway",
+				organizationId: "org-id",
+				baseUrl: mockServerUrl,
+			});
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer real-token`,
+				},
+				body: JSON.stringify({
+					model: "llmgateway/custom",
+					messages: [
+						{
+							role: "user",
+							content: "TRIGGER_TRUNCATED_STREAM",
+						},
+					],
+					stream: true,
+				}),
+			});
+
+			expect(res.status).toBe(200);
+			await readAll(res.body);
+			await waitForLogs(1);
+
+			expect(errorSpy).not.toHaveBeenCalled();
+			errorSpy.mockRestore();
+		});
+
+		test("streaming provider error does NOT emit logger.error", async () => {
+			const errorSpy = vi.spyOn(logger, "error");
+
+			await db.insert(tables.apiKey).values({
+				id: "token-id",
+				token: "real-token",
+				projectId: "project-id",
+				description: "Test API Key",
+				createdBy: "user-id",
+			});
+
+			await db.insert(tables.providerKey).values({
+				id: "provider-key-id",
+				token: "sk-test-key",
+				provider: "llmgateway",
+				organizationId: "org-id",
+				baseUrl: mockServerUrl,
+			});
+
+			const res = await app.request("/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer real-token`,
+				},
+				body: JSON.stringify({
+					model: "llmgateway/custom",
+					messages: [
+						{
+							role: "user",
+							content: "TRIGGER_STREAM_PROVIDER_ERROR",
+						},
+					],
+					stream: true,
+				}),
+			});
+
+			expect(res.status).toBe(200);
+			await readAll(res.body);
+			await waitForLogs(1);
+
+			expect(errorSpy).not.toHaveBeenCalled();
+			errorSpy.mockRestore();
+		});
+
 		test("streaming request closes cleanly after finish reason without upstream done sentinel", async () => {
 			await db.insert(tables.apiKey).values({
 				id: "token-id",
