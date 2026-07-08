@@ -33,6 +33,10 @@ import { Input } from "@/lib/components/input";
 import { toast } from "@/lib/components/use-toast";
 import { useAppConfig } from "@/lib/config";
 
+// Module-level (not component-level) so it survives the Login page
+// remounting from redirect bounces, and only ever fires once per tab.
+let passkeyAutofillAttempted = false;
+
 const formSchema = z.object({
 	email: z.string().email({
 		message: "Please enter a valid email address",
@@ -70,7 +74,8 @@ export default function Login() {
 	});
 
 	useEffect(() => {
-		if (window.PublicKeyCredential) {
+		if (window.PublicKeyCredential && !passkeyAutofillAttempted) {
+			passkeyAutofillAttempted = true;
 			void signIn.passkey({ autoFill: true }).then((res) => {
 				if (res?.data) {
 					queryClient.clear();

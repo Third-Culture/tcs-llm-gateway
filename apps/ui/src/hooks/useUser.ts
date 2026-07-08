@@ -102,7 +102,6 @@ export function useUser(options?: UseUserOptions) {
 		options?.redirectTo,
 		options?.redirectWhen,
 		options?.checkOnboarding,
-		options,
 	]);
 
 	return {
