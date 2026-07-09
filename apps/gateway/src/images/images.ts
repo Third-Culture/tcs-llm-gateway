@@ -328,7 +328,7 @@ async function forwardToChatCompletions(
 		const responseText = await response.text();
 		return JSON.parse(responseText);
 	} catch (error) {
-		logger.error("Images API - failed to parse chat completions response", {
+		logger.warn("Images API - failed to parse chat completions response", {
 			err: error instanceof Error ? error : new Error(String(error)),
 		});
 		throw new HTTPException(500, {

@@ -313,7 +313,7 @@ modelsApi.openapi(listModels, async (c) => {
 
 		return c.json({ data: modelData });
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Error in models endpoint",
 			error instanceof Error ? error : new Error(String(error)),
 		);

@@ -553,9 +553,7 @@ describe("checkOpenAIContentFilter", () => {
 
 	it("logs nested fetch causes as structured moderation errors", async () => {
 		process.env.LLM_OPENAI_API_KEY = "sk-openai-test";
-		const loggerErrorSpy = vi
-			.spyOn(logger, "error")
-			.mockImplementation(() => {});
+		const loggerWarnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
 		vi.spyOn(globalThis, "fetch").mockRejectedValue(
 			new TypeError("fetch failed", {
@@ -587,7 +585,7 @@ describe("checkOpenAIContentFilter", () => {
 			results: [],
 			responses: [],
 		});
-		expect(loggerErrorSpy).toHaveBeenCalledWith(
+		expect(loggerWarnSpy).toHaveBeenCalledWith(
 			"gateway_content_filter_error",
 			expect.objectContaining({
 				mode: "openai",
@@ -601,16 +599,14 @@ describe("checkOpenAIContentFilter", () => {
 				errorName: "TypeError",
 				errorCause: "Error: connect ETIMEDOUT 10.0.0.1:443 (code: ETIMEDOUT)",
 				errorCode: "ETIMEDOUT",
+				err: expect.any(TypeError),
 			}),
-			expect.any(TypeError),
 		);
 	});
 
 	it("logs non-error throwables with a fallback error payload", async () => {
 		process.env.LLM_OPENAI_API_KEY = "sk-openai-test";
-		const loggerErrorSpy = vi
-			.spyOn(logger, "error")
-			.mockImplementation(() => {});
+		const loggerWarnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
 		vi.spyOn(globalThis, "fetch").mockRejectedValue("moderation exploded");
 
@@ -636,7 +632,7 @@ describe("checkOpenAIContentFilter", () => {
 			results: [],
 			responses: [],
 		});
-		expect(loggerErrorSpy).toHaveBeenCalledWith(
+		expect(loggerWarnSpy).toHaveBeenCalledWith(
 			"gateway_content_filter_error",
 			expect.objectContaining({
 				mode: "openai",
@@ -654,9 +650,7 @@ describe("checkOpenAIContentFilter", () => {
 
 	it("returns undefined errorCode for circular cause chains", async () => {
 		process.env.LLM_OPENAI_API_KEY = "sk-openai-test";
-		const loggerErrorSpy = vi
-			.spyOn(logger, "error")
-			.mockImplementation(() => {});
+		const loggerWarnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 		const error = Object.assign(new TypeError("fetch failed"), {
 			cause: undefined as unknown,
 		});
@@ -679,24 +673,22 @@ describe("checkOpenAIContentFilter", () => {
 			},
 		);
 
-		const [eventName, payload, loggedError] = loggerErrorSpy.mock.calls[0]!;
+		const [eventName, payload] = loggerWarnSpy.mock.calls[0]!;
 		expect(eventName).toBe("gateway_content_filter_error");
 		expect(payload).toEqual(
 			expect.objectContaining({
 				mode: "openai",
 				error: "fetch failed",
 				errorName: "TypeError",
+				err: error,
 			}),
 		);
 		expect(payload).not.toHaveProperty("errorCode");
-		expect(loggedError).toBe(error);
 	});
 
 	it("logs missing moderation credentials through the shared logger", async () => {
 		delete process.env.LLM_OPENAI_API_KEY;
-		const loggerErrorSpy = vi
-			.spyOn(logger, "error")
-			.mockImplementation(() => {});
+		const loggerWarnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
 		const result = await checkOpenAIContentFilter(
 			[
@@ -720,7 +712,7 @@ describe("checkOpenAIContentFilter", () => {
 			results: [],
 			responses: [],
 		});
-		expect(loggerErrorSpy).toHaveBeenCalledWith(
+		expect(loggerWarnSpy).toHaveBeenCalledWith(
 			"gateway_content_filter_error",
 			expect.objectContaining({
 				mode: "openai",
@@ -731,8 +723,8 @@ describe("checkOpenAIContentFilter", () => {
 				timeout: false,
 				error: expect.stringContaining("openai"),
 				errorName: "Error",
+				err: expect.any(Error),
 			}),
-			expect.any(Error),
 		);
 	});
 });

@@ -275,11 +275,11 @@ function logModerationError(
 	};
 
 	if (error instanceof Error) {
-		logger.error("gateway_content_filter_error", logPayload, error);
+		logger.warn("gateway_content_filter_error", { ...logPayload, err: error });
 		return;
 	}
 
-	logger.error("gateway_content_filter_error", logPayload);
+	logger.warn("gateway_content_filter_error", logPayload);
 }
 
 function getErrorCode(error: unknown): string | undefined {

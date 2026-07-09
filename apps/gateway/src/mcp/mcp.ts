@@ -212,7 +212,7 @@ function createMcpServer(apiKey: string): McpServer {
 					],
 				};
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"MCP chat tool error",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -412,7 +412,7 @@ function createMcpServer(apiKey: string): McpServer {
 					],
 				};
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"MCP list-models tool error",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -556,7 +556,7 @@ function createMcpServer(apiKey: string): McpServer {
 					content: contentBlocks,
 				};
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"MCP generate-image tool error",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -786,7 +786,7 @@ function createMcpServer(apiKey: string): McpServer {
 					content: contentBlocks,
 				};
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"MCP generate-nano-banana tool error",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -887,7 +887,7 @@ function createMcpServer(apiKey: string): McpServer {
 					],
 				};
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"MCP list-image-models tool error",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1342,7 +1342,7 @@ export async function mcpHandler(c: Context): Promise<Response> {
 				);
 			}
 
-			logger.error(
+			logger.warn(
 				"MCP request error",
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -1882,7 +1882,7 @@ async function oauthRegisterHandler(c: Context): Promise<Response> {
 			201,
 		);
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"OAuth registration error",
 			error instanceof Error ? error : new Error(String(error)),
 		);

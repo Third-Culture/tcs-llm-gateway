@@ -17,6 +17,7 @@ vi.mock("@llmgateway/logger", () => ({
 	logger: {
 		info: vi.fn(),
 		debug: vi.fn(),
+		warn: vi.fn(),
 		error: vi.fn(),
 	},
 }));

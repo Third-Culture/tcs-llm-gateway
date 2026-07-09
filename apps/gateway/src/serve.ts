@@ -31,7 +31,7 @@ async function startServer() {
 			projectId: process.env.GOOGLE_CLOUD_PROJECT,
 		});
 	} catch (error) {
-		logger.error("Failed to initialize instrumentation", error as Error);
+		logger.warn("Failed to initialize instrumentation", error as Error);
 		// Continue without tracing
 	}
 

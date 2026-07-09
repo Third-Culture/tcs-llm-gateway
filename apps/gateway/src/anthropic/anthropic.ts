@@ -797,7 +797,7 @@ anthropic.openapi(messages, async (c) => {
 						path: c.req.path,
 					});
 				} else {
-					logger.error("Anthropic streaming error (escaped handler)", error);
+					logger.warn("Anthropic streaming error (escaped handler)", error);
 				}
 			},
 		);
@@ -810,7 +810,7 @@ anthropic.openapi(messages, async (c) => {
 		openaiText = await response.text();
 		openaiResponse = JSON.parse(openaiText);
 	} catch (error) {
-		logger.error("Failed to parse OpenAI response", {
+		logger.warn("Failed to parse OpenAI response", {
 			err: error instanceof Error ? error : new Error(String(error)),
 			responseText: openaiText || "(empty)",
 		});
@@ -836,7 +836,7 @@ anthropic.openapi(messages, async (c) => {
 			try {
 				input = JSON.parse(toolCall.function.arguments ?? "{}");
 			} catch (err) {
-				logger.error("Failed to parse anthropic tool call arguments", {
+				logger.warn("Failed to parse anthropic tool call arguments", {
 					err: err instanceof Error ? err : new Error(String(err)),
 					arguments: toolCall.function.arguments,
 				});

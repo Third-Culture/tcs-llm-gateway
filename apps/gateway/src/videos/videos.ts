@@ -1739,14 +1739,11 @@ async function getExternalVideoContentUrl(
 		try {
 			return await createSignedGcsReadUrl(job.storageUri);
 		} catch (error) {
-			logger.error(
-				"Failed to create signed URL for video job",
-				error instanceof Error ? error : new Error(String(error)),
-				{
-					videoJobId: job.id,
-					storageUri: job.storageUri,
-				},
-			);
+			logger.warn("Failed to create signed URL for video job", {
+				err: error instanceof Error ? error : new Error(String(error)),
+				videoJobId: job.id,
+				storageUri: job.storageUri,
+			});
 		}
 	}
 
