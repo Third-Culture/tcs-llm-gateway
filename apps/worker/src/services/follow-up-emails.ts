@@ -35,7 +35,7 @@ async function sendFollowUpEmail(opts: {
 }): Promise<void> {
 	const client = getResendClient();
 	if (!client) {
-		logger.error(
+		logger.warn(
 			"RESEND_API_KEY is not configured. Follow-up email will not be sent.",
 			new Error(
 				`Resend not configured for email to ${opts.to} with subject: ${opts.subject}`,
@@ -243,7 +243,7 @@ async function processNoPurchaseEmails(): Promise<void> {
 			}
 			await sendAndRecord(organizationId, "no_purchase", email);
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				`Error sending no_purchase follow-up for org ${organizationId}`,
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -316,7 +316,7 @@ async function processLowUsageEmails(): Promise<void> {
 				totalSpent: row.total_spent,
 			});
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				`Error sending low_usage follow-up for org ${organizationId}`,
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -391,7 +391,7 @@ async function processNoRepurchaseEmails(): Promise<void> {
 				totalSpent: row.total_spent,
 			});
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				`Error sending no_repurchase follow-up for org ${organizationId}`,
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -477,7 +477,7 @@ export async function runFollowUpEmailsLoop(deps: {
 					await deps.interruptibleSleep(interval);
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in follow-up emails loop",
 					error instanceof Error ? error : new Error(String(error)),
 				);
