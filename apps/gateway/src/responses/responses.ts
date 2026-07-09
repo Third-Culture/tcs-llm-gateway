@@ -463,7 +463,7 @@ responses.post("/", async (c) => {
 					await processLine(buffer);
 				}
 			} catch (error) {
-				logger.error("Error processing streaming response", {
+				logger.warn("Error processing streaming response", {
 					error,
 				});
 				const failedEvent = createFailedEvent(state);

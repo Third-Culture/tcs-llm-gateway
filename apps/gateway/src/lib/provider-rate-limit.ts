@@ -237,7 +237,7 @@ export async function peekProviderRateLimit(
 			limits,
 		};
 	} catch (error) {
-		logger.error("Error peeking provider rate limit:", error as Error);
+		logger.warn("Error peeking provider rate limit:", error as Error);
 		return buildFallbackResult();
 	}
 }
@@ -364,7 +364,7 @@ export async function checkProviderRateLimit(
 			limits: updatedLimits,
 		};
 	} catch (error) {
-		logger.error("Error checking provider rate limit:", error as Error);
+		logger.warn("Error checking provider rate limit:", error as Error);
 		return buildFallbackResult();
 	}
 }

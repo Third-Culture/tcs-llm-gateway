@@ -56,7 +56,7 @@ async function hasElevatedLimits(organizationId: string): Promise<boolean> {
 		const org = await findOrganizationById(organizationId);
 		return Boolean(org && parseFloat(org.credits ?? "0") > 0);
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Error checking organization credits for rate limiting:",
 			error as Error,
 		);
@@ -149,7 +149,7 @@ export async function checkFreeModelRateLimit(
 			limit,
 		};
 	} catch (error) {
-		logger.error("Error checking free model rate limit:", error as Error);
+		logger.warn("Error checking free model rate limit:", error as Error);
 		// Allow request on error to avoid blocking users due to Redis issues
 		return { allowed: true, remaining: 0, limit: 0 };
 	}
