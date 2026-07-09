@@ -203,6 +203,24 @@ export function calculateDataStorageCost(
 }
 
 /**
+ * Compute the total token count from a log entry for the TCS daily-tokens metric.
+ * Returns 0 when no meaningful token data is present.
+ */
+export function computeTotalTokensForMetric(logData: {
+	totalTokens?: string | number | null;
+	promptTokens?: string | number | null;
+	completionTokens?: string | number | null;
+}): number {
+	const total = Number(logData.totalTokens) || 0;
+	if (total > 0) {
+		return total;
+	}
+	const prompt = Number(logData.promptTokens) || 0;
+	const completion = Number(logData.completionTokens) || 0;
+	return prompt + completion;
+}
+
+/**
  * Insert a log entry into the database.
  * This function is extracted to prepare for future implementation using a message queue.
  */
@@ -266,6 +284,14 @@ export async function insertLog(
 			: undefined,
 		errorType,
 	});
+
+	const totalTokens = computeTotalTokensForMetric(logData);
+	if (totalTokens > 0) {
+		logger.info("tcs_metric", {
+			tcs_metric: "llmgateway_daily_tokens_processed",
+			value: totalTokens,
+		});
+	}
 
 	if (options?.syncInsert) {
 		await db.insert(log).values(logData as LogData);

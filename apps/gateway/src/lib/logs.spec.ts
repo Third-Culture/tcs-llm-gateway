@@ -4,6 +4,7 @@ import { UnifiedFinishReason } from "@llmgateway/db";
 
 import {
 	calculateDataStorageCost,
+	computeTotalTokensForMetric,
 	getUnifiedFinishReason,
 	isContentFilterFinishReason,
 	isExpectedUnknownFinishReason,
@@ -251,5 +252,70 @@ describe("calculateDataStorageCost", () => {
 	it("handles string token values", () => {
 		const cost = calculateDataStorageCost("500000", "0", "500000", "0");
 		expect(cost).toBe("0.01");
+	});
+});
+
+describe("computeTotalTokensForMetric", () => {
+	it("returns totalTokens when available as a number", () => {
+		expect(
+			computeTotalTokensForMetric({
+				totalTokens: 150,
+				promptTokens: 100,
+				completionTokens: 50,
+			}),
+		).toBe(150);
+	});
+
+	it("returns totalTokens when available as a string", () => {
+		expect(
+			computeTotalTokensForMetric({
+				totalTokens: "200",
+				promptTokens: "120",
+				completionTokens: "80",
+			}),
+		).toBe(200);
+	});
+
+	it("falls back to promptTokens + completionTokens when totalTokens is null", () => {
+		expect(
+			computeTotalTokensForMetric({
+				totalTokens: null,
+				promptTokens: 300,
+				completionTokens: 100,
+			}),
+		).toBe(400);
+	});
+
+	it("falls back to promptTokens + completionTokens when totalTokens is 0", () => {
+		expect(
+			computeTotalTokensForMetric({
+				totalTokens: 0,
+				promptTokens: "250",
+				completionTokens: "50",
+			}),
+		).toBe(300);
+	});
+
+	it("returns 0 when all token fields are null or undefined", () => {
+		expect(
+			computeTotalTokensForMetric({
+				totalTokens: null,
+				promptTokens: null,
+				completionTokens: null,
+			}),
+		).toBe(0);
+		expect(computeTotalTokensForMetric({})).toBe(0);
+	});
+
+	it("returns promptTokens alone when completionTokens is missing", () => {
+		expect(
+			computeTotalTokensForMetric({ totalTokens: null, promptTokens: 500 }),
+		).toBe(500);
+	});
+
+	it("returns completionTokens alone when promptTokens is missing", () => {
+		expect(
+			computeTotalTokensForMetric({ totalTokens: null, completionTokens: 75 }),
+		).toBe(75);
 	});
 });
