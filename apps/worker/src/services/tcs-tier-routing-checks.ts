@@ -53,7 +53,7 @@ export async function runTcsTierRoutingChecksLoop(deps: {
 					await deps.interruptibleSleep(intervalMs);
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in TCS tier routing checks loop",
 					error instanceof Error ? error : new Error(String(error)),
 				);

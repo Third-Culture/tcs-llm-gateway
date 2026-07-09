@@ -290,7 +290,7 @@ export async function syncProvidersAndModels() {
 
 		logger.info("Providers and models sync completed successfully");
 	} catch (error) {
-		logger.error("Error syncing providers and models:", error as Error);
+		logger.warn("Error syncing providers and models:", error as Error);
 		throw error;
 	}
 }
@@ -399,7 +399,7 @@ export async function updateTimingAverages() {
 
 		logger.info("Timing averages update completed successfully");
 	} catch (error) {
-		logger.error("Error updating timing averages:", error as Error);
+		logger.warn("Error updating timing averages:", error as Error);
 		throw error;
 	}
 }

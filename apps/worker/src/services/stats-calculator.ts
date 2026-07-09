@@ -617,7 +617,7 @@ export async function backfillHistoryIfNeeded() {
 
 				// Safety check to prevent infinite loops
 				if (nextMinute.getTime() <= minute.getTime()) {
-					logger.error(
+					logger.warn(
 						`Loop safety break: Time calculation error at ${minute.toISOString()}`,
 					);
 					break;
@@ -662,7 +662,7 @@ export async function backfillHistoryIfNeeded() {
 
 				// Safety check to prevent infinite loops
 				if (nextMinute.getTime() <= minute.getTime()) {
-					logger.error(
+					logger.warn(
 						`Loop safety break: Time calculation error at ${minute.toISOString()}`,
 					);
 					break;
@@ -683,7 +683,7 @@ export async function backfillHistoryIfNeeded() {
 			);
 		}
 	} catch (error) {
-		logger.error("Error during history backfill:", error as Error);
+		logger.warn("Error during history backfill:", error as Error);
 		throw error;
 	}
 }
@@ -708,7 +708,7 @@ export async function calculateMinutelyHistory() {
 			`Recorded history for ${mappingResult.totalMappings} model-provider mappings (${mappingResult.activeMappings} active, ${mappingResult.inactiveMappings} inactive) and ${modelResult.totalModels} models (${modelResult.activeModels} active, ${modelResult.inactiveModels} inactive)`,
 		);
 	} catch (error) {
-		logger.error("Error calculating minutely history:", error as Error);
+		logger.warn("Error calculating minutely history:", error as Error);
 		throw error;
 	}
 }
@@ -730,7 +730,7 @@ export async function calculateCurrentMinuteHistory() {
 			`Updated current minute history for ${currentMinuteStart.toISOString()}: ${mappingResult.activeMappings} active mappings, ${modelResult.activeModels} active models`,
 		);
 	} catch (error) {
-		logger.error("Error calculating current minute history:", error as Error);
+		logger.warn("Error calculating current minute history:", error as Error);
 		throw error;
 	}
 }
@@ -1040,7 +1040,7 @@ export async function calculateAggregatedStatistics() {
 		);
 		logger.debug("Aggregated statistics calculation completed successfully");
 	} catch (error) {
-		logger.error("Error calculating aggregated statistics:", error as Error);
+		logger.warn("Error calculating aggregated statistics:", error as Error);
 		throw error;
 	}
 }

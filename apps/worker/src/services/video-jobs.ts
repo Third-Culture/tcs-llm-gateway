@@ -528,14 +528,11 @@ async function getExternalVideoContentUrl(
 		try {
 			return await createSignedGcsReadUrl(job.storageUri);
 		} catch (error) {
-			logger.error(
-				"Failed to create signed URL for video job",
-				error instanceof Error ? error : new Error(String(error)),
-				{
-					videoJobId: job.id,
-					storageUri: job.storageUri,
-				},
-			);
+			logger.warn("Failed to create signed URL for video job", {
+				err: error instanceof Error ? error : new Error(String(error)),
+				videoJobId: job.id,
+				storageUri: job.storageUri,
+			});
 		}
 	}
 
@@ -1950,26 +1947,20 @@ export async function processPendingVideoJobs(): Promise<void> {
 				try {
 					await finalizeVideoJob(updatedJob);
 				} catch (error) {
-					logger.error(
-						"Error finalizing video job",
-						error instanceof Error ? error : new Error(String(error)),
-						{
-							videoJobId: updatedJob.id,
-							upstreamId: updatedJob.upstreamId,
-						},
-					);
+					logger.warn("Error finalizing video job", {
+						err: error instanceof Error ? error : new Error(String(error)),
+						videoJobId: updatedJob.id,
+						upstreamId: updatedJob.upstreamId,
+					});
 				}
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			logger.error(
-				"Error polling video job",
-				error instanceof Error ? error : new Error(message),
-				{
-					videoJobId: job.id,
-					upstreamId: job.upstreamId,
-				},
-			);
+			logger.warn("Error polling video job", {
+				err: error instanceof Error ? error : new Error(message),
+				videoJobId: job.id,
+				upstreamId: job.upstreamId,
+			});
 
 			const nextErrorCount = getVideoJobPollErrorCount(job) + 1;
 			const currentStatusResponse =
@@ -2061,14 +2052,11 @@ export async function processPendingVideoJobs(): Promise<void> {
 		try {
 			await finalizeVideoJob(job);
 		} catch (error) {
-			logger.error(
-				"Error finalizing terminal video job",
-				error instanceof Error ? error : new Error(String(error)),
-				{
-					videoJobId: job.id,
-					upstreamId: job.upstreamId,
-				},
-			);
+			logger.warn("Error finalizing terminal video job", {
+				err: error instanceof Error ? error : new Error(String(error)),
+				videoJobId: job.id,
+				upstreamId: job.upstreamId,
+			});
 		}
 	}
 }

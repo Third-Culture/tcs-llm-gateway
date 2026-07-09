@@ -588,7 +588,7 @@ export async function aggregateHistoricalStats() {
 			bucketsProcessed: totalBucketsProcessed,
 		};
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Error processing logs for stats aggregation",
 			error instanceof Error ? error : new Error(String(error)),
 		);
@@ -625,7 +625,7 @@ export async function refreshCurrentHourStats() {
 			`Refreshed current hour stats (${currentHourStart}) for ${projectsWithCurrentHourLogs.length} projects`,
 		);
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Error refreshing current hour stats",
 			error instanceof Error ? error : new Error(String(error)),
 		);
@@ -660,7 +660,7 @@ export async function refreshProjectHourlyStats() {
 			`Project hourly stats refresh complete in ${Date.now() - start}ms`,
 		);
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Error refreshing project hourly stats",
 			error instanceof Error ? error : new Error(String(error)),
 		);

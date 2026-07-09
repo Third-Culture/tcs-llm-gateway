@@ -410,7 +410,7 @@ export async function processAutoTopUp(): Promise<void> {
 				const topUpAmount = Number(org.autoTopUpAmount ?? "10");
 
 				if (!isCreditTopUpAmountInRange(topUpAmount)) {
-					logger.error(
+					logger.warn(
 						`Skipping auto top-up for organization ${org.id}: invalid amount ${org.autoTopUpAmount}`,
 					);
 					continue;
@@ -490,7 +490,7 @@ export async function processAutoTopUp(): Promise<void> {
 							`Auto top-up requires action for organization ${org.id}: ${paymentIntent.status}`,
 						);
 					} else {
-						logger.error(
+						logger.warn(
 							`Auto top-up payment intent failed for organization ${org.id}: ${paymentIntent.status}`,
 						);
 						// Mark transaction as failed
@@ -503,7 +503,7 @@ export async function processAutoTopUp(): Promise<void> {
 							.where(eq(tables.transaction.id, pendingTransaction.id));
 					}
 				} catch (stripeError) {
-					logger.error(
+					logger.warn(
 						`Stripe error for organization ${org.id}`,
 						stripeError instanceof Error
 							? stripeError
@@ -519,7 +519,7 @@ export async function processAutoTopUp(): Promise<void> {
 						.where(eq(tables.transaction.id, pendingTransaction.id));
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					`Error processing auto top-up for organization ${org.id}`,
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -637,7 +637,7 @@ export async function cleanupExpiredLogData(): Promise<void> {
 
 		logger.info("Data retention cleanup completed successfully");
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Error during data retention cleanup",
 			error instanceof Error ? error : new Error(String(error)),
 		);
@@ -961,7 +961,7 @@ export async function batchProcessLogs(): Promise<void> {
 			void checkLowBalanceAlerts(deductedOrgIds);
 		}
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Error processing batch credit deductions",
 			error instanceof Error ? error : new Error(String(error)),
 		);
@@ -999,14 +999,14 @@ async function checkLowBalanceAlerts(orgIds: string[]): Promise<void> {
 					await enqueueLowBalanceEmail(org.id, "low_balance_5", currentBalance);
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					`Error checking low balance alerts for org ${org.id}`,
 					error instanceof Error ? error : new Error(String(error)),
 				);
 			}
 		}
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Error checking low balance alerts",
 			error instanceof Error ? error : new Error(String(error)),
 		);
@@ -1198,7 +1198,7 @@ export async function processLogQueue(): Promise<void> {
 
 		// All retries exhausted, push messages back to queue for later processing
 		recordLogInsertFailure();
-		logger.error(
+		logger.warn(
 			`Failed to insert logs after ${MAX_RETRIES + 1} attempts, pushing back to queue`,
 			lastError,
 		);
@@ -1211,7 +1211,7 @@ export async function processLogQueue(): Promise<void> {
 		// Opens the circuit when the pre-insert postgres read (cdb.select) throws,
 		// so we stop draining the queue while postgres is down.
 		recordLogInsertFailure();
-		logger.error(
+		logger.warn(
 			"Error processing log message",
 			error instanceof Error ? error : new Error(String(error)),
 		);
@@ -1268,7 +1268,7 @@ async function runLogQueueLoop() {
 					});
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in log queue loop",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1303,7 +1303,7 @@ async function runAutoTopUpLoop() {
 					});
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in auto top-up loop",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1338,7 +1338,7 @@ async function runBatchProcessLoop() {
 					});
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in batch process loop",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1366,7 +1366,7 @@ async function runMinutelyHistoryLoop() {
 		try {
 			await calculateMinutelyHistory();
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				"Error in initial minutely history calculation",
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -1395,7 +1395,7 @@ async function runMinutelyHistoryLoop() {
 			try {
 				await calculateMinutelyHistory();
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in minutely history calculation",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1425,7 +1425,7 @@ async function runCurrentMinuteHistoryLoop() {
 					});
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in current minute history loop",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1460,7 +1460,7 @@ async function runVideoJobsLoop() {
 					});
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in video jobs loop",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1495,7 +1495,7 @@ async function runVideoWebhookLoop() {
 					});
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in video webhook loop",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1523,7 +1523,7 @@ async function runAggregatedStatsLoop() {
 		try {
 			await calculateAggregatedStatistics();
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				"Error in initial aggregated statistics calculation",
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -1554,7 +1554,7 @@ async function runAggregatedStatsLoop() {
 			try {
 				await calculateAggregatedStatistics();
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in aggregated statistics calculation",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1584,7 +1584,7 @@ async function runProjectStatsLoop() {
 					});
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in project stats loop",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1619,7 +1619,7 @@ async function runDataRetentionLoop() {
 					});
 				}
 			} catch (error) {
-				logger.error(
+				logger.warn(
 					"Error in data retention loop",
 					error instanceof Error ? error : new Error(String(error)),
 				);
@@ -1638,19 +1638,19 @@ async function runDataRetentionLoop() {
 
 export async function startWorker() {
 	if (isWorkerRunning) {
-		logger.error("Worker is already running");
+		logger.warn("Worker is already running");
 		return;
 	}
 
 	if (activeLoops > 0) {
-		logger.error(
+		logger.warn(
 			`Cannot start worker: ${activeLoops} loop(s) from previous worker still active. Please ensure previous worker has fully stopped.`,
 		);
 		return;
 	}
 
 	if (stopFailed) {
-		logger.error(
+		logger.warn(
 			"Cannot start worker: previous worker stop failed. Please ensure all loops from previous worker have exited before starting a new worker.",
 		);
 		return;
@@ -1665,7 +1665,7 @@ export async function startWorker() {
 		await syncProvidersAndModels();
 		logger.info("Initial sync completed");
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Error during initial sync",
 			error instanceof Error ? error : new Error(String(error)),
 		);
@@ -1676,7 +1676,7 @@ export async function startWorker() {
 			logger.info("History backfill check completed");
 		})
 		.catch((error) => {
-			logger.error(
+			logger.warn(
 				"Error during history backfill",
 				error instanceof Error ? error : new Error(String(error)),
 			);

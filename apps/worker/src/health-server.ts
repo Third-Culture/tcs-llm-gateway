@@ -37,7 +37,7 @@ export function createHealthServer(): HealthServer {
 	});
 
 	server.on("error", (error) => {
-		logger.error(
+		logger.warn(
 			"Health check server error",
 			error instanceof Error ? error : new Error(String(error)),
 		);
