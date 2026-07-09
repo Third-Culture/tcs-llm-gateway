@@ -205,7 +205,7 @@ export async function getEffectiveRateLimit(
 			rpdRateLimitId: rpd.rateLimitId,
 		};
 	} catch (error) {
-		logger.error("Error fetching effective rate limit:", error as Error);
+		logger.warn("Error fetching effective rate limit:", error as Error);
 		return {
 			maxRpm: 0,
 			maxRpd: 0,

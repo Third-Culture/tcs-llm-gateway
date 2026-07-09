@@ -155,7 +155,7 @@ export async function processImageUrl(
 		};
 	} catch (error) {
 		// Log the full error internally but sanitize the thrown error
-		logger.error("Error processing image URL", {
+		logger.warn("Error processing image URL", {
 			err: error instanceof Error ? error : new Error(String(error)),
 			url: url.substring(0, 50) + "...",
 		});

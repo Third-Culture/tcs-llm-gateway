@@ -24,7 +24,7 @@ export async function setCache(
 	try {
 		await redisClient.set(key, JSON.stringify(value), "EX", expirationSeconds);
 	} catch (error) {
-		logger.error("Error setting cache:", error as Error);
+		logger.warn("Error setting cache:", error as Error);
 	}
 }
 
@@ -36,7 +36,7 @@ export async function getCache(key: string): Promise<any | null> {
 		}
 		return JSON.parse(cachedValue);
 	} catch (error) {
-		logger.error("Error getting cache:", error as Error);
+		logger.warn("Error getting cache:", error as Error);
 		return null;
 	}
 }
@@ -80,7 +80,7 @@ export async function setStreamingCache(
 	try {
 		await redisClient.set(key, JSON.stringify(data), "EX", expirationSeconds);
 	} catch (error) {
-		logger.error("Error setting streaming cache:", error as Error);
+		logger.warn("Error setting streaming cache:", error as Error);
 	}
 }
 
@@ -94,7 +94,7 @@ export async function getStreamingCache(
 		}
 		return JSON.parse(cachedValue);
 	} catch (error) {
-		logger.error("Error getting streaming cache:", error as Error);
+		logger.warn("Error getting streaming cache:", error as Error);
 		return null;
 	}
 }

@@ -295,7 +295,7 @@ export async function validateProviderKey(
 	} catch (error) {
 		const errorMessage =
 			error instanceof Error ? error.message : "Unknown error occurred";
-		logger.error("Provider key validation failed with exception", {
+		logger.warn("Provider key validation failed with exception", {
 			provider,
 			model: validationModel,
 			error: errorMessage,

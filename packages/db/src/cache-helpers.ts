@@ -44,7 +44,7 @@ export async function isCachingEnabled(
 			},
 		);
 	} catch (error) {
-		logger.error("Error checking if caching is enabled:", error as Error);
+		logger.warn("Error checking if caching is enabled:", error as Error);
 		throw error;
 	}
 }

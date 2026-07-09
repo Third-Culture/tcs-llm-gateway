@@ -116,7 +116,7 @@ export function createTracingMiddleware(options: TracingMiddlewareOptions) {
 					});
 
 					// Log error with trace context
-					logger.error(
+					logger.warn(
 						"Request failed",
 						error instanceof Error ? error : { error: String(error) },
 					);

@@ -29,7 +29,11 @@ export async function publishToQueue(
 					usedProvider: msg.usedProvider,
 				}
 			: undefined;
-		logger.error("Error publishing to queue", error, { queue, item });
+		logger.warn("Error publishing to queue", {
+			err: error instanceof Error ? error : new Error(String(error)),
+			queue,
+			item,
+		});
 		throw error;
 	}
 }
@@ -47,7 +51,10 @@ export async function consumeFromQueue(
 
 		return result;
 	} catch (error) {
-		logger.error("Error consuming from queue", error);
+		logger.warn(
+			"Error consuming from queue",
+			error instanceof Error ? error : new Error(String(error)),
+		);
 		throw error;
 	}
 }
@@ -57,7 +64,10 @@ export async function closeRedisClient(): Promise<void> {
 		await redisClient.disconnect();
 		logger.info("Redis client disconnected");
 	} catch (error) {
-		logger.error("Error disconnecting Redis client", error);
+		logger.warn(
+			"Error disconnecting Redis client",
+			error instanceof Error ? error : new Error(String(error)),
+		);
 		throw error;
 	}
 }

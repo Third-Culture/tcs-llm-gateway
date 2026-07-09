@@ -27,7 +27,7 @@ export interface HealthCheckDependencies {
 		};
 	};
 	logger: {
-		error: (message: string, error?: object | Error | undefined) => void;
+		warn: (message: string, error?: object | Error | undefined) => void;
 	};
 }
 
@@ -121,14 +121,14 @@ export class HealthChecker {
 					health.redis.error = errorMessage.includes("timed out")
 						? "Redis check timed out"
 						: "Redis connection failed";
-					logger.error("Redis healthcheck failed", result.reason);
+					logger.warn("Redis healthcheck failed", result.reason);
 				} else if (checkIndex === 1) {
 					// Database check failed
 					health.status = "error";
 					health.database.error = errorMessage.includes("timed out")
 						? "Database check timed out"
 						: "Database connection failed";
-					logger.error("Database healthcheck failed", result.reason);
+					logger.warn("Database healthcheck failed", result.reason);
 				}
 			}
 		}

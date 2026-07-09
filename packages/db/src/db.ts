@@ -24,7 +24,7 @@ export const pool = new Pool({
 
 // Log pool errors to help diagnose connection issues
 pool.on("error", (err) => {
-	logger.error("Unexpected database pool error", err);
+	logger.warn("Unexpected database pool error", err);
 });
 
 // Log when pool connects (trace level to avoid noise in production)
@@ -55,7 +55,7 @@ export async function closeDatabase(): Promise<void> {
 		await pool.end();
 		logger.info("Database connection pool closed");
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Error closing database connection pool",
 			error instanceof Error ? error : new Error(String(error)),
 		);
