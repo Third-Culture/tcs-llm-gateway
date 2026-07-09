@@ -220,7 +220,7 @@ export async function getEffectiveDiscount(
 			source: "none",
 		};
 	} catch (error) {
-		logger.error("Error fetching effective discount:", error as Error);
+		logger.warn("Error fetching effective discount:", error as Error);
 		// On error, fall back to hardcoded discount
 		return {
 			discount: hardcodedDiscount,

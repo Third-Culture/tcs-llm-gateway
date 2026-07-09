@@ -191,7 +191,7 @@ async function sendFailureEmail(opts: {
 
 	const client = getResendClient();
 	if (!client) {
-		logger.error(
+		logger.warn(
 			"RESEND_API_KEY is not configured. TCS tier routing alert will not be sent.",
 			new Error(`Resend not configured for tier alert: ${opts.tierId}`),
 		);

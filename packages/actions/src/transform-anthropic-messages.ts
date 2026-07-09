@@ -111,7 +111,7 @@ export async function transformAnthropicMessages(
 								},
 							};
 						} catch (error) {
-							logger.error(`Failed to fetch image ${part.image_url.url}`, {
+							logger.warn(`Failed to fetch image ${part.image_url.url}`, {
 								err: error instanceof Error ? error : new Error(String(error)),
 							});
 							// Fallback to text representation

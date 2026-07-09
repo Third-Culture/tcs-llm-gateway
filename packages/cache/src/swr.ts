@@ -61,11 +61,10 @@ async function writeMirror<T>(
 		}
 		await pipeline.exec();
 	} catch (error) {
-		logger.error(
-			"Error writing SWR mirror",
-			error instanceof Error ? error : new Error(String(error)),
-			{ key },
-		);
+		logger.warn("Error writing SWR mirror", {
+			err: error instanceof Error ? error : new Error(String(error)),
+			key,
+		});
 	}
 }
 
@@ -99,13 +98,13 @@ export async function swrWrap<T>(
 				return result.value;
 			}
 		} catch (redisError) {
-			logger.error(
-				"Error reading SWR mirror for fallback",
-				redisError instanceof Error
-					? redisError
-					: new Error(String(redisError)),
-				{ key },
-			);
+			logger.warn("Error reading SWR mirror for fallback", {
+				err:
+					redisError instanceof Error
+						? redisError
+						: new Error(String(redisError)),
+				key,
+			});
 		}
 		throw error;
 	}
@@ -146,10 +145,9 @@ export async function invalidateSwrByTables(tables: string[]): Promise<void> {
 			await redisClient.del(tableIndexKey(table));
 		}
 	} catch (error) {
-		logger.error(
-			"Error invalidating SWR mirrors by tables",
-			error instanceof Error ? error : new Error(String(error)),
-			{ tables },
-		);
+		logger.warn("Error invalidating SWR mirrors by tables", {
+			err: error instanceof Error ? error : new Error(String(error)),
+			tables,
+		});
 	}
 }

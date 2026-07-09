@@ -61,7 +61,7 @@ export class RedisCache extends Cache {
 			logger.trace(`Cache hit for key: ${key}`, { tables });
 			return parsed.data;
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				"Error getting from cache",
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -123,7 +123,7 @@ export class RedisCache extends Cache {
 				ttl,
 			});
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				"Error putting to cache",
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -157,7 +157,7 @@ export class RedisCache extends Cache {
 
 			logger.trace("Cache invalidated on mutation", { tables, tags });
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				"Error invalidating cache on mutation",
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -208,7 +208,7 @@ export class RedisCache extends Cache {
 
 			return maxTimestamp;
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				"Error getting last modified timestamps",
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -227,7 +227,7 @@ export class RedisCache extends Cache {
 
 			await pipeline.exec();
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				"Error updating last modified timestamps",
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -259,7 +259,7 @@ export class RedisCache extends Cache {
 				await pipeline.exec();
 			}
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				"Error invalidating cache by tags",
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -300,7 +300,7 @@ export class RedisCache extends Cache {
 				});
 			}
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				"Error invalidating cache by tables",
 				error instanceof Error ? error : new Error(String(error)),
 			);
@@ -316,7 +316,7 @@ export class RedisCache extends Cache {
 				}
 			}
 		} catch (error) {
-			logger.error(
+			logger.warn(
 				"Error deleting keys in batches",
 				error instanceof Error ? error : new Error(String(error)),
 			);

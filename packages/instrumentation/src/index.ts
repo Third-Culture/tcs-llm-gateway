@@ -76,12 +76,12 @@ export function initializeInstrumentation(
 			logger.warn("⚠️  GOOGLE_CLOUD_PROJECT not set - traces may not export");
 		}
 	} catch (error) {
-		logger.error("❌ Error initializing OpenTelemetry SDK:", error as Error);
-		logger.error("Troubleshooting steps:");
-		logger.error("1. Set GOOGLE_CLOUD_PROJECT environment variable");
-		logger.error("2. Ensure Cloud Trace API is enabled");
-		logger.error("3. Verify service account has Trace Agent role");
-		logger.error("4. Check GOOGLE_APPLICATION_CREDENTIALS is set");
+		logger.warn("Error initializing OpenTelemetry SDK", error as Error);
+		logger.warn("Troubleshooting steps:");
+		logger.warn("1. Set GOOGLE_CLOUD_PROJECT environment variable");
+		logger.warn("2. Ensure Cloud Trace API is enabled");
+		logger.warn("3. Verify service account has Trace Agent role");
+		logger.warn("4. Check GOOGLE_APPLICATION_CREDENTIALS is set");
 		throw error;
 	}
 
@@ -94,7 +94,7 @@ export async function shutdownInstrumentation(sdk: NodeSDK): Promise<void> {
 		await sdk.shutdown();
 		logger.info("OpenTelemetry SDK shut down successfully");
 	} catch (error) {
-		logger.error("Error shutting down OpenTelemetry SDK", error as Error);
+		logger.warn("Error shutting down OpenTelemetry SDK", error as Error);
 		throw error;
 	}
 }
