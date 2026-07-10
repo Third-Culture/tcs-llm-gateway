@@ -1222,8 +1222,8 @@ export async function processLogQueue(): Promise<void> {
 				await publishToQueue(LOG_QUEUE, JSON.parse(msg));
 			}
 		} catch (requeueError) {
-			logger.error(
-				"Failed to re-queue log messages",
+			logger.warn(
+				"Failed to re-queue log messages (potential data loss)",
 				requeueError instanceof Error
 					? requeueError
 					: new Error(String(requeueError)),
@@ -1771,7 +1771,7 @@ export async function stopWorker(): Promise<boolean> {
 		const elapsed = Date.now() - startTime;
 
 		if (elapsed >= maxWaitTime) {
-			logger.error(
+			logger.warn(
 				`Timeout reached (${maxWaitTime}ms) while waiting for worker loops to exit. ${activeLoops} loop(s) still active. Worker stop failed.`,
 			);
 			stopFailed = true;
@@ -1796,8 +1796,8 @@ export async function stopWorker(): Promise<boolean> {
 		await Promise.all([closeDatabase(), closeRedisClient()]);
 		logger.info("All connections closed successfully");
 	} catch (error) {
-		logger.error(
-			"Error closing connections",
+		logger.warn(
+			"Error closing connections during shutdown",
 			error instanceof Error ? error : new Error(String(error)),
 		);
 		// Don't throw here to allow graceful shutdown to continue

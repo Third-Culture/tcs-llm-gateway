@@ -12,12 +12,9 @@ import { describe, expect, it } from "vitest";
  * logger.error should ONLY appear in:
  * - index.ts global handlers (uncaught exceptions, unhandled rejections,
  *   graceful shutdown failures, fatal startup errors)
- * - worker.ts data-loss paths (failed to re-queue after all retries)
- * - worker.ts shutdown timeout (worker in broken state)
- * - worker.ts connection close errors during final shutdown
  */
 
-const ALLOWED_ERROR_FILES = new Set(["src/index.ts", "src/worker.ts"]);
+const ALLOWED_ERROR_FILES = new Set(["src/index.ts"]);
 
 function collectTsFiles(dir: string, base: string): string[] {
 	const results: string[] = [];
@@ -96,6 +93,6 @@ describe("worker log severity policy", () => {
 		);
 		const workerErrorCount = (workerContent.match(/logger\.error/g) || [])
 			.length;
-		expect(workerErrorCount).toBeLessThanOrEqual(3);
+		expect(workerErrorCount).toBe(0);
 	});
 });

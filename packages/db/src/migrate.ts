@@ -25,7 +25,7 @@ export async function runMigrations(): Promise<void> {
 		});
 		logger.info("Database migrations completed successfully");
 	} catch (error) {
-		logger.error(
+		logger.warn(
 			"Database migration failed",
 			error instanceof Error ? error : new Error(String(error)),
 		);
