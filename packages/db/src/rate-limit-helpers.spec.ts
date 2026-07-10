@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@llmgateway/logger", () => ({
 	logger: {
 		error: vi.fn(),
+		warn: vi.fn(),
 	},
 }));
 

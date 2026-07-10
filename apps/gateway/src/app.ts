@@ -21,6 +21,7 @@ import { HealthChecker } from "@llmgateway/shared";
 import { anthropic } from "./anthropic/anthropic.js";
 import { chat } from "./chat/chat.js";
 import { imagesRoute } from "./images/route.js";
+import { isInfrastructureError } from "./lib/infra-errors.js";
 import { mcpHandler, registerMcpOAuthRoutes } from "./mcp/mcp.js";
 import { tracingMiddleware } from "./middleware/tracing.js";
 import { models } from "./models/route.js";
@@ -165,6 +166,26 @@ app.onError((error, c) => {
 				message: "Client Closed Request",
 			},
 			499 as any,
+		);
+	}
+
+	// Handle transient infrastructure errors (DB/Redis connectivity) that
+	// are not application bugs but operational conditions. These should not
+	// trigger severity>=ERROR alerts in Cloud Run.
+	if (error instanceof Error && isInfrastructureError(error)) {
+		logger.warn("Infrastructure error", {
+			message: error.message,
+			code: (error as NodeJS.ErrnoException).code,
+			path: c.req.path,
+			method: c.req.method,
+		});
+		return c.json(
+			{
+				error: true,
+				status: 503,
+				message: "Service temporarily unavailable",
+			},
+			503,
 		);
 	}
 
