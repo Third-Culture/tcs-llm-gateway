@@ -21,6 +21,7 @@ import { HealthChecker } from "@llmgateway/shared";
 import { anthropic } from "./anthropic/anthropic.js";
 import { chat } from "./chat/chat.js";
 import { imagesRoute } from "./images/route.js";
+import { isInfrastructureError } from "./lib/infra-errors.js";
 import { mcpHandler, registerMcpOAuthRoutes } from "./mcp/mcp.js";
 import { tracingMiddleware } from "./middleware/tracing.js";
 import { models } from "./models/route.js";
@@ -165,6 +166,24 @@ app.onError((error, c) => {
 				message: "Client Closed Request",
 			},
 			499 as any,
+		);
+	}
+
+	// Handle infrastructure/connectivity errors (transient DB, Redis, DNS, etc.)
+	// These are operational conditions, not application bugs.
+	if (isInfrastructureError(error)) {
+		logger.warn("Infrastructure connectivity error", {
+			message: error instanceof Error ? error.message : String(error),
+			path: c.req.path,
+			method: c.req.method,
+		});
+		return c.json(
+			{
+				error: true,
+				status: 503,
+				message: "Service Temporarily Unavailable",
+			},
+			503,
 		);
 	}
 

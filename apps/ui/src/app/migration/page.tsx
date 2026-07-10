@@ -1,9 +1,10 @@
-import { allMigrations } from "content-collections";
 import { ArrowRightIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 
 import { HeroRSC } from "@/components/landing/hero-rsc";
+
+import { allMigrations } from "content-collections";
 
 const Footer = dynamic(() => import("@/components/landing/footer"));
 
