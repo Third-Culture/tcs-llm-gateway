@@ -1209,7 +1209,7 @@ describe("api", () => {
 		const previousOpenAIKey = process.env.LLM_OPENAI_API_KEY;
 		const requestId = "chat-openai-content-filter-fail-open-request-id";
 		const originalFetch = globalThis.fetch;
-		const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
 			.mockImplementation(async (input, init) => {
@@ -1257,7 +1257,7 @@ describe("api", () => {
 			expect(json.choices[0].message.content).toContain("Hello!");
 			expect(fetchSpy).toHaveBeenCalled();
 
-			expect(errorSpy).toHaveBeenCalledWith(
+			expect(warnSpy).toHaveBeenCalledWith(
 				"gateway_content_filter_error",
 				expect.objectContaining({
 					durationMs: expect.any(Number),
@@ -1267,8 +1267,8 @@ describe("api", () => {
 					projectId: "project-id",
 					apiKeyId: "token-id",
 					error: "moderation fetch failed",
+					err: expect.any(Error),
 				}),
-				expect.any(Error),
 			);
 
 			const logs = await waitForLogs(1);
@@ -1279,7 +1279,7 @@ describe("api", () => {
 			expect(completedLog?.gatewayContentFilterResponse).toBeNull();
 		} finally {
 			fetchSpy.mockRestore();
-			errorSpy.mockRestore();
+			warnSpy.mockRestore();
 			if (previousContentFilterMode === undefined) {
 				delete process.env.LLM_CONTENT_FILTER_MODE;
 			} else {
@@ -1325,7 +1325,7 @@ describe("api", () => {
 		const previousContentFilterModels = process.env.LLM_CONTENT_FILTER_MODELS;
 		const previousOpenAIKey = process.env.LLM_OPENAI_API_KEY;
 		const requestId = "chat-openai-content-filter-missing-key-request-id";
-		const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
 		try {
 			process.env.LLM_CONTENT_FILTER_MODE = "enabled";
@@ -1356,7 +1356,7 @@ describe("api", () => {
 			const json = await res.json();
 			expect(json.choices[0].message.content).toContain("Hello!");
 
-			expect(errorSpy).toHaveBeenCalledWith(
+			expect(warnSpy).toHaveBeenCalledWith(
 				"gateway_content_filter_error",
 				expect.objectContaining({
 					durationMs: expect.any(Number),
@@ -1366,8 +1366,8 @@ describe("api", () => {
 					projectId: "project-id",
 					apiKeyId: "token-id",
 					error: expect.stringContaining("openai"),
+					err: expect.any(Error),
 				}),
-				expect.any(Error),
 			);
 
 			const logs = await waitForLogs(1);
@@ -1377,7 +1377,7 @@ describe("api", () => {
 			expect(completedLog?.finishReason).toBe("stop");
 			expect(completedLog?.gatewayContentFilterResponse).toBeNull();
 		} finally {
-			errorSpy.mockRestore();
+			warnSpy.mockRestore();
 			if (previousContentFilterMode === undefined) {
 				delete process.env.LLM_CONTENT_FILTER_MODE;
 			} else {

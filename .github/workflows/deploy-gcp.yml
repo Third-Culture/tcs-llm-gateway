@@ -111,7 +111,22 @@ jobs:
   verify:
     needs: build-and-push
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
+      - uses: actions/checkout@v6
+
+      - name: Google Auth (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
       - name: Health check llmgateway-api
         run: |
           curl --fail --silent --show-error https://llmgateway-api-303980490211.us-central1.run.app/ \
@@ -127,17 +142,6 @@ jobs:
           curl --fail --silent --show-error https://llmgateway-ui-303980490211.us-central1.run.app/api/health \
             | tee /dev/stderr | grep -q '"status":"ok"'
 
-      - name: Google Auth (Workload Identity Federation)
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.GCP_PROJECT }}
-
       - name: Health check llmgateway-worker
         # ingress: internal, so it isn't reachable from this runner over
         # plain HTTP -- confirm readiness the same way Cloud Run itself does,
@@ -150,6 +154,18 @@ jobs:
             echo "llmgateway-worker is not Ready (status.conditions[0].status=$ready)" >&2
             exit 1
           fi
+
+      - name: Completion smoke test
+        env:
+          GATEWAY_URL: https://llmgateway-gateway-303980490211.us-central1.run.app
+          SMOKE_MODEL: tcs-reasoning
+          SMOKE_TASK: company_refresh_json
+        run: |
+          GATEWAY_API_KEY=$(gcloud secrets versions access latest \
+            --secret=llm-gateway-api-key \
+            --project=$GCP_PROJECT)
+          export GATEWAY_API_KEY
+          ./infra/gcp/smoke-test.sh
 
       - name: Summary
         run: |
