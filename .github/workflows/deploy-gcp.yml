@@ -158,14 +158,10 @@ jobs:
       - name: Completion smoke test
         env:
           GATEWAY_URL: https://llmgateway-gateway-303980490211.us-central1.run.app
+          GATEWAY_API_KEY: ${{ secrets.GATEWAY_SMOKE_API_KEY }}
           SMOKE_MODEL: tcs-reasoning
           SMOKE_TASK: company_refresh_json
-        run: |
-          GATEWAY_API_KEY=$(gcloud secrets versions access latest \
-            --secret=llm-gateway-api-key \
-            --project=$GCP_PROJECT)
-          export GATEWAY_API_KEY
-          ./infra/gcp/smoke-test.sh
+        run: ./infra/gcp/smoke-test.sh
 
       - name: Summary
         run: |
