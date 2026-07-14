@@ -156,6 +156,64 @@ collect them on GCP:
   - Cloud SQL CPU > 80% sustained.
   - Memorystore connection failures > 0 for 1m.
 
+### The recurring `log_error` alert (root cause, 2026-07-14)
+
+The `llmgateway-gateway` `log_error` alert kept re-firing across revisions
+(`00038-clb`, `00040-bdf`, `00046-rxq`, ...). Five prior autofix PRs (#4, #7,
+#8, #10, #12) all took the same approach — downgrade `logger.error` →
+`logger.warn` on request-path operational logs — and the alert kept coming
+back. That is the tell that the cosmetic fixes were never touching the real
+trigger.
+
+**What was ruled out.** The running revision is healthy: `GET /` returns
+`health.status: ok` and the deploy's real completion smoke test passes
+(`tcs-reasoning` → `deepinfra/deepinfra-kimi-k2.6`, tokens + billable cost
+reported). The one CI verify failure on `b5782df` was a Secret Manager
+permission gap (`tcs-llm-deployer` lacked `secretmanager.versions.access`),
+fixed in `9b8cf15` by using a masked Actions secret — not an application error.
+After the prior PRs, the only `severity>=ERROR` logs left anywhere in the
+gateway's runtime import graph are the legitimate global handlers in
+`apps/gateway/src/app.ts` (HTTP 500 / unhandled) and `apps/gateway/src/serve.ts`
+(fatal startup/shutdown). Those are correct and must **not** be downgraded —
+doing so would hide real outages.
+
+**Actual root cause — telemetry flush on teardown.** `shutdownInstrumentation`
+(`packages/instrumentation/src/index.ts`) logged an OpenTelemetry shutdown
+failure at `warn` (PR #12) but then **re-threw** it. Every service's
+`gracefulShutdown` (`apps/*/src/serve.ts`) awaits it inside the try whose catch
+does `logger.error("Error during graceful shutdown")` — severity=ERROR. On
+Cloud Run, every revision rollout and every scale-in sends `SIGTERM` to the
+outgoing instance; the Cloud Trace (gRPC) span flush frequently times out
+inside the short termination grace, so `sdk.shutdown()` rejects → re-throw →
+`logger.error` → the raw `severity>=ERROR` log-based metric trips. Because the
+gateway runs `minScale 1 / maxScale 10` and every merge to `main` (including the
+autofix merges themselves) creates a new revision, this fired on essentially
+every deploy/teardown, independent of the code in that revision — which is
+exactly the observed "recurs on every revision" pattern. The HTTP server, DB,
+and Redis are all closed cleanly _before_ this point, so dropping a few trace
+spans on teardown is not an outage.
+
+**Fix.** Stop re-throwing the best-effort span-flush failure from
+`shutdownInstrumentation` (it is still logged at `warn`). Genuine shutdown
+failures (HTTP server / DB / Redis close) remain the only things that escalate
+to `logger.error`, so real failures are still alerted. Regression tests live in
+`packages/instrumentation/src/index.spec.ts`. This fixes `gateway`, `api`, and
+`worker`, which shared the identical shutdown path.
+
+**Recommended monitoring follow-ups (Terraform, outside this repo).** The alert
+policy is a raw `severity>=ERROR` log metric with no rate/duration threshold, so
+a single legitimate ERROR entry pages. Prefer alerting on the gateway's HTTP 5xx
+response-count metric (Cloud Run request metrics or the `/metrics` counters),
+add a sustained rate/duration threshold, and exclude expected lifecycle logs.
+Also stop auto-merging cosmetic autofix PRs for this alert — each merge is a new
+revision that re-tests and can re-trip it.
+
+**Latent risk noted (not the trigger).** `apps/gateway/src/responses/responses.ts`
+hard-imports `zstdDecompress` from `node:zlib` (added in Node 22.15). Production
+runs Node 24.13.0 (`.tool-versions`) so it is fine today, but pinning Node
+< 22.15 anywhere would crash the whole gateway at module load. Keep
+`.tool-versions` at Node ≥ 24 (or make that import lazy/guarded).
+
 ## Smoke test
 
 Run [`smoke-test.sh`](./smoke-test.sh) after every deploy, against the

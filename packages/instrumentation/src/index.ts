@@ -94,8 +94,19 @@ export async function shutdownInstrumentation(sdk: NodeSDK): Promise<void> {
 		await sdk.shutdown();
 		logger.info("OpenTelemetry SDK shut down successfully");
 	} catch (error) {
-		logger.warn("Error shutting down OpenTelemetry SDK", error as Error);
-		throw error;
+		// Flushing OpenTelemetry spans is best-effort cleanup that runs while the
+		// instance is already being torn down (e.g. the Cloud Trace exporter times
+		// out inside Cloud Run's termination grace). It never affects request
+		// serving or data integrity, so it must not be re-thrown: doing so makes
+		// the caller's graceful-shutdown handler treat a clean shutdown as a
+		// failure and emit a severity=ERROR log, which fires the `log_error`
+		// alert on every revision/instance teardown. Log it at warn and return
+		// normally so genuine shutdown failures (HTTP server, DB, Redis) remain
+		// the only things that escalate to ERROR.
+		logger.warn(
+			"Error shutting down OpenTelemetry SDK (non-fatal; some trace spans may be dropped)",
+			error instanceof Error ? error : new Error(String(error)),
+		);
 	}
 }
 
