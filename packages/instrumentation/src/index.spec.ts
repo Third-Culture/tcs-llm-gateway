@@ -1,15 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 // Import after mocking (Vitest hoists vi.mock)
-import { initializeInstrumentation } from "./index.js";
+import { initializeInstrumentation, shutdownInstrumentation } from "./index.js";
 
-// Mock the logger and OpenTelemetry modules
-vi.mock("@llmgateway/logger", () => ({
-	createLogger: () => ({
+// Stable mock logger instance so tests can assert on the exact calls the
+// module makes through its `createLogger`-created logger.
+const { mockLogger } = vi.hoisted(() => ({
+	mockLogger: {
 		info: vi.fn(),
 		warn: vi.fn(),
 		error: vi.fn(),
-	}),
+	},
+}));
+
+// Mock the logger and OpenTelemetry modules
+vi.mock("@llmgateway/logger", () => ({
+	createLogger: () => mockLogger,
 }));
 
 vi.mock("@opentelemetry/sdk-node", () => ({
@@ -141,5 +147,45 @@ describe("HeaderBasedForceSampler", () => {
 		});
 
 		expect(sdk).toBeDefined();
+	});
+});
+
+describe("shutdownInstrumentation", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	// Regression test for the recurring `llmgateway-gateway` `log_error` alert.
+	// A best-effort OpenTelemetry span flush that fails while the instance is
+	// being torn down (common under Cloud Run's short termination grace) must
+	// NOT propagate an error. If it does, the caller's graceful-shutdown handler
+	// (apps/*/src/serve.ts) logs it via `logger.error("Error during graceful
+	// shutdown")` — severity=ERROR — which trips the raw `severity>=ERROR`
+	// log-based alert on every revision/instance teardown, regardless of what
+	// application code changed in that revision.
+	it("does not throw and logs at warn (not error) when the SDK shutdown fails", async () => {
+		const failingSdk = {
+			shutdown: vi
+				.fn()
+				.mockRejectedValue(new Error("Cloud Trace export timeout")),
+		} as unknown as Parameters<typeof shutdownInstrumentation>[0];
+
+		await expect(shutdownInstrumentation(failingSdk)).resolves.toBeUndefined();
+
+		expect(failingSdk.shutdown).toHaveBeenCalledTimes(1);
+		expect(mockLogger.warn).toHaveBeenCalled();
+		expect(mockLogger.error).not.toHaveBeenCalled();
+	});
+
+	it("resolves without logging an error when the SDK shuts down cleanly", async () => {
+		const okSdk = {
+			shutdown: vi.fn().mockResolvedValue(undefined),
+		} as unknown as Parameters<typeof shutdownInstrumentation>[0];
+
+		await expect(shutdownInstrumentation(okSdk)).resolves.toBeUndefined();
+
+		expect(okSdk.shutdown).toHaveBeenCalledTimes(1);
+		expect(mockLogger.error).not.toHaveBeenCalled();
+		expect(mockLogger.warn).not.toHaveBeenCalled();
 	});
 });
