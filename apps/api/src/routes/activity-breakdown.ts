@@ -68,10 +68,18 @@ function resolveDateRange({ days, from, to, timeRange }: DateRangeQuery): {
 	}
 
 	if (from && to) {
-		return {
-			startDate: new Date(from + "T00:00:00"),
-			endDate: new Date(to + "T23:59:59.999"),
-		};
+		const startDate = new Date(from + "T00:00:00");
+		const endDate = new Date(to + "T23:59:59.999");
+		// `from`/`to` are free-form strings on the wire, so an unparseable value
+		// yields an Invalid Date. Passing that to the query would throw a
+		// RangeError deep in the driver ("Invalid time value") and surface as an
+		// unhandled 500; reject it as the client error it is instead.
+		if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+			throw new HTTPException(400, {
+				message: "Invalid `from`/`to` date. Expected format YYYY-MM-DD.",
+			});
+		}
+		return { startDate, endDate };
 	}
 
 	const effectiveDays = days ?? 7;
