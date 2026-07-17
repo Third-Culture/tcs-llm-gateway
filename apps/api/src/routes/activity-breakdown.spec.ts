@@ -256,4 +256,33 @@ describe("activity breakdown endpoints", () => {
 		const data = await res.json();
 		expect(data.keys).toContain("user-id");
 	});
+
+	test("GET /activity/breakdown returns 400 for an unparseable from/to date", async () => {
+		const res = await app.request(
+			"/activity/breakdown?dimension=apiKey&from=not-a-date&to=2026-01-01",
+			{ headers: { Cookie: token } },
+		);
+
+		expect(res.status).toBe(400);
+	});
+
+	test("GET /activity/breakdown/metadata returns 400 for an unparseable date", async () => {
+		const res = await app.request(
+			"/activity/breakdown/metadata?metadataKey=user-id&from=2026-01-01&to=garbage",
+			{ headers: { Cookie: token } },
+		);
+
+		expect(res.status).toBe(400);
+	});
+
+	test("GET /activity/breakdown still honors a valid explicit from/to range", async () => {
+		const res = await app.request(
+			"/activity/breakdown?dimension=apiKey&from=2020-01-01&to=2100-01-01",
+			{ headers: { Cookie: token } },
+		);
+
+		expect(res.status).toBe(200);
+		const data = await res.json();
+		expect(data.breakdown).toHaveLength(2);
+	});
 });
