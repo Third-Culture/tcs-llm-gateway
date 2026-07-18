@@ -151,4 +151,30 @@ describe("log severity policy", () => {
 			);
 		}
 	});
+
+	// The flip side of the policy above: the *genuine* failure handlers MUST
+	// keep escalating to ERROR/CRITICAL severity. The recurring `log_error`
+	// incident has repeatedly attracted cosmetic autofix PRs that try to make
+	// the page go away by downgrading or removing these handlers. Doing so
+	// hides real outages (unhandled 500s, boot failures, crashes) rather than
+	// fixing them, so this test fails if any of them are silently muted.
+	it("genuine failure handlers still escalate to ERROR/CRITICAL so real outages keep alerting", () => {
+		const gatewayRoot = join(__dirname, "..");
+		const appTs = readFileSync(join(gatewayRoot, "src", "app.ts"), "utf-8");
+		const serveTs = readFileSync(join(gatewayRoot, "src", "serve.ts"), "utf-8");
+
+		// Global onError handler: real 500s must page.
+		expect(appTs).toContain('logger.error("HTTP 500 exception"');
+		expect(appTs).toMatch(/logger\.error\(\s*"Unhandled error"/);
+
+		// serve.ts: fatal startup/shutdown failures and process-level crashes
+		// must page. These are the only remaining legitimate severity>=ERROR
+		// emitters in the gateway runtime after PR #17.
+		expect(serveTs).toMatch(/logger\.error\("Failed to start server"/);
+		expect(serveTs).toMatch(
+			/logger\.error\(\s*"Error during graceful shutdown"/,
+		);
+		expect(serveTs).toMatch(/logger\.fatal\("Uncaught exception/);
+		expect(serveTs).toMatch(/logger\.fatal\("Unhandled rejection/);
+	});
 });
