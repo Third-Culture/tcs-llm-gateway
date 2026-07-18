@@ -214,6 +214,97 @@ runs Node 24.13.0 (`.tool-versions`) so it is fine today, but pinning Node
 < 22.15 anywhere would crash the whole gateway at module load. Keep
 `.tool-versions` at Node ≥ 24 (or make that import lazy/guarded).
 
+### The recurring `log_error` alert re-fired again (recurrence review, 2026-07-18)
+
+The `llmgateway-gateway` `log_error` alert paged again after PRs #10 and #12
+(and the later #13/#17). This review set out to pull the specific failing stack
+trace and either patch a genuinely different code path or, if the trigger is not
+application code, say so plainly instead of shipping an eighth cosmetic patch.
+
+**Constraint, stated up front.** This pass ran from an agent VM with **no GCP
+credentials** (no `gcloud`, no Application Default Credentials, no metadata
+server) and **no gateway API key**, so Cloud Logging and the authenticated
+consumer request path could not be read/exercised directly. The conclusion below
+is built from live black-box probing of the public gateway, the full commit/PR
+history, CI logs, and code analysis. A human (or an agent with log access) should
+confirm it against the actual `severity>=ERROR` entries for the paging revision —
+see the verification checklist at the end.
+
+**What was checked and ruled out this time:**
+
+- The live latest revision (`gh-0419694`, the #18 image) is healthy: `GET /` →
+  `health.status: ok`, Redis + DB connected. No unhandled 500 is reproducible on
+  any endpoint reachable without a key — health, `/v1/models`, `/json`,
+  `/metrics` all 200; `POST /v1/chat/completions` without auth → 401; malformed
+  JSON body → 400; and the unauthenticated MCP/OAuth surface (`/oauth/authorize`,
+  `/oauth/token`, `/oauth/register`, `/mcp`, `/.well-known/...`) returns proper
+  4xx for malformed input rather than 500.
+- The gateway **request-path code has not changed** since the cosmetic log PRs.
+  The "latest revision deployment" (#18, `fix(api): reject invalid activity
+breakdown date range`) touched only `apps/api/src/routes/activity-breakdown.ts`,
+  which the gateway does not import. So no newly deployed gateway code introduced
+  a fresh unhandled exception.
+- The only `severity>=ERROR`/CRITICAL emitters left in the gateway runtime import
+  graph are the **legitimate** global handlers — `app.ts` (`"HTTP 500 exception"`,
+  `"Unhandled error"`) and `serve.ts` (`"Failed to start server"`, `"Error during
+graceful shutdown"`, and the `logger.fatal` uncaught-exception/rejection paths).
+  These must keep paging; downgrading them would hide real outages. PR #17 already
+  removed the one illegitimate escalation (the OTel span-flush re-throw on
+  teardown).
+- The latent `zstdDecompress` risk noted above is confirmed **not** the trigger:
+  both `.tool-versions` and `infra/split.dockerfile` (asdf install) pin Node
+  24.13.0, well above the 22.15 floor.
+
+**Conclusion — this recurrence is an infrastructure/monitoring problem, not an
+application-code bug.** After #17 the gateway no longer emits a spurious ERROR on
+teardown, and no genuine unhandled 500 is observable or reproducible. What keeps
+the pager firing is the alert policy design already flagged in the 2026-07-14
+"Recommended monitoring follow-ups": the alert is a **raw `severity>=ERROR`
+log-based metric with no rate/duration threshold**, so a _single_ legitimate ERROR
+entry pages, and **every merge to `main` mints a new Cloud Run revision** — the
+autofix PRs themselves are the merges — which re-tests and re-tears-down and can
+re-trip it. That is why seven-plus cosmetic code PRs never made it stop: none of
+them touched the trigger, and each merge was a fresh chance to fire. No further
+gateway code change was made in this pass, on purpose (see the log-severity
+regression test, which now also asserts the genuine handlers stay at ERROR so a
+future autofix cannot quietly mute them).
+
+**What to actually do (owned outside this repo — Terraform / Cloud Monitoring):**
+
+1. Alert on the gateway's HTTP **5xx response rate** (Cloud Run request metrics or
+   the `/metrics` counters) with a sustained rate/duration threshold, instead of a
+   raw count of `severity>=ERROR` log lines. This pages on genuine user-facing
+   failure and ignores a lone benign ERROR. This is a **precision** change, not a
+   weakening — real outages still page, and should page more reliably once the
+   noise is gone.
+2. If a log-based ERROR metric is kept, add a rate/duration threshold and exclude
+   expected lifecycle/teardown entries.
+3. **Stop auto-merging cosmetic autofix PRs for this alert.** Each merge is a new
+   revision that re-tests and can re-trip the current policy, which manufactures
+   the recurrence this loop is trying to fix.
+
+**Verification checklist for whoever has Cloud Logging access** (to confirm or
+refute the above against the real entries):
+
+```bash
+# The exact ERROR entries for the paging revision, newest first.
+gcloud logging read \
+  'resource.type="cloud_run_revision"
+   resource.labels.service_name="llmgateway-gateway"
+   severity>=ERROR' \
+  --project=third-culture --freshness=2d --limit=50 \
+  --format='table(timestamp, severity, resource.labels.revision_name, jsonPayload.msg, textPayload)'
+```
+
+- If the entries are `"Error during graceful shutdown"` / teardown-only and align
+  with revision rollouts/scale-ins → confirms the monitoring root cause above; fix
+  the alert policy, do not change code.
+- If they are `"HTTP 500 exception"` / `"Unhandled error"` on a real request path,
+  capture the stack trace and the request shape and fix _that_ handler (the #18
+  input-validation fix — invalid input → proper 4xx instead of an unhandled 500 —
+  is the template). That would be a genuinely different code path from #10/#12/#17
+  and is worth a targeted fix + regression test.
+
 ## Smoke test
 
 Run [`smoke-test.sh`](./smoke-test.sh) after every deploy, against the
