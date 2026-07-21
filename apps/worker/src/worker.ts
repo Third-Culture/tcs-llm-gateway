@@ -1238,14 +1238,21 @@ let activeLoops = 0;
 let stopFailed = false;
 
 /**
- * Sleep that can be interrupted by shouldStop.
- * Breaks long delays into short chunks so loops exit promptly on shutdown.
+ * Sleep that can be interrupted by a stop predicate.
+ *
+ * Breaks a long delay into short chunks and re-checks `shouldStop` between
+ * chunks so callers exit promptly on shutdown instead of blocking for the full
+ * duration. Exported (and stop-predicate injectable) so the shutdown-promptness
+ * contract can be exercised in isolation by unit tests.
  */
-async function interruptibleSleep(ms: number): Promise<void> {
-	const chunkMs = 500;
+export async function interruptibleDelay(
+	ms: number,
+	shouldStopFn: () => boolean,
+	chunkMs = 500,
+): Promise<void> {
 	let remaining = ms;
 
-	while (remaining > 0 && !shouldStop) {
+	while (remaining > 0 && !shouldStopFn()) {
 		await new Promise((resolve) => {
 			setTimeout(resolve, Math.min(remaining, chunkMs));
 		});
@@ -1253,106 +1260,113 @@ async function interruptibleSleep(ms: number): Promise<void> {
 	}
 }
 
-// Independent worker loops
-async function runLogQueueLoop() {
-	activeLoops++;
-	logger.info("Starting log queue processing loop...");
-	try {
-		while (!shouldStop) {
-			try {
-				await processLogQueue();
+/**
+ * Sleep that can be interrupted by the module-level `shouldStop` flag.
+ */
+async function interruptibleSleep(ms: number): Promise<void> {
+	await interruptibleDelay(ms, () => shouldStop);
+}
 
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, 1000);
-					});
+export interface PollingLoopDeps {
+	shouldStop: () => boolean;
+	registerLoop: () => void;
+	unregisterLoop: () => void;
+	interruptibleSleep: (ms: number) => Promise<void>;
+}
+
+const defaultLoopDeps: PollingLoopDeps = {
+	shouldStop: () => shouldStop,
+	registerLoop: () => {
+		activeLoops++;
+	},
+	unregisterLoop: () => {
+		activeLoops--;
+	},
+	interruptibleSleep,
+};
+
+/**
+ * Runs a fixed-interval polling loop until shutdown is requested.
+ *
+ * The between-iteration waits (both the normal interval and the post-error
+ * backoff) go through `interruptibleSleep`, so a `SIGTERM` mid-wait is observed
+ * within one sleep chunk (~500ms) rather than after the full interval. This is
+ * what keeps every loop inside `stopWorker`'s graceful-stop budget: previously
+ * these waits used a raw `setTimeout`, so loops with long intervals (e.g. auto
+ * top-up at 120s, data retention at 300s, project stats at 60s) would keep
+ * `activeLoops > 0` well past the 15s timeout, so `stopWorker` logged its
+ * "Timeout reached ... Worker stop failed" message at ERROR severity on every
+ * Cloud Run revision rollout / scale-in and fired the `log_error` alert.
+ */
+export async function runPollingLoop(
+	opts: {
+		name: string;
+		intervalMs: number;
+		task: () => Promise<unknown>;
+		errorBackoffMs?: number;
+		startupMessage?: string;
+		stoppedMessage?: string;
+	},
+	deps: PollingLoopDeps = defaultLoopDeps,
+): Promise<void> {
+	const { shouldStop: isStopRequested, interruptibleSleep: sleep } = deps;
+	const errorBackoffMs = opts.errorBackoffMs ?? 5000;
+
+	deps.registerLoop();
+	logger.info(opts.startupMessage ?? `Starting ${opts.name} loop...`);
+
+	try {
+		while (!isStopRequested()) {
+			try {
+				await opts.task();
+
+				if (!isStopRequested()) {
+					await sleep(opts.intervalMs);
 				}
 			} catch (error) {
 				logger.warn(
-					"Error in log queue loop",
+					`Error in ${opts.name} loop`,
 					error instanceof Error ? error : new Error(String(error)),
 				);
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, 5000);
-					});
+				if (!isStopRequested()) {
+					await sleep(errorBackoffMs);
 				}
 			}
 		}
 	} finally {
-		activeLoops--;
-		logger.info("Log queue loop stopped");
+		deps.unregisterLoop();
+		logger.info(opts.stoppedMessage ?? `${opts.name} loop stopped`);
 	}
+}
+
+// Independent worker loops
+async function runLogQueueLoop() {
+	await runPollingLoop({
+		name: "log queue",
+		intervalMs: 1000,
+		task: processLogQueue,
+		startupMessage: "Starting log queue processing loop...",
+	});
 }
 
 async function runAutoTopUpLoop() {
-	activeLoops++;
 	const interval = (process.env.NODE_ENV === "production" ? 120 : 5) * 1000; // 2 minutes in prod, 5 seconds in dev
-	logger.info(
-		`Starting auto top-up loop (interval: ${interval / 1000} seconds)...`,
-	);
-
-	try {
-		while (!shouldStop) {
-			try {
-				await processAutoTopUp();
-
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, interval);
-					});
-				}
-			} catch (error) {
-				logger.warn(
-					"Error in auto top-up loop",
-					error instanceof Error ? error : new Error(String(error)),
-				);
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, 5000);
-					});
-				}
-			}
-		}
-	} finally {
-		activeLoops--;
-		logger.info("Auto top-up loop stopped");
-	}
+	await runPollingLoop({
+		name: "auto top-up",
+		intervalMs: interval,
+		task: processAutoTopUp,
+		startupMessage: `Starting auto top-up loop (interval: ${interval / 1000} seconds)...`,
+	});
 }
 
 async function runBatchProcessLoop() {
-	activeLoops++;
 	const interval = BATCH_PROCESSING_INTERVAL_SECONDS * 1000;
-	logger.info(
-		`Starting batch process loop (interval: ${BATCH_PROCESSING_INTERVAL_SECONDS} seconds)...`,
-	);
-
-	try {
-		while (!shouldStop) {
-			try {
-				await batchProcessLogs();
-
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, interval);
-					});
-				}
-			} catch (error) {
-				logger.warn(
-					"Error in batch process loop",
-					error instanceof Error ? error : new Error(String(error)),
-				);
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, 5000);
-					});
-				}
-			}
-		}
-	} finally {
-		activeLoops--;
-		logger.info("Batch process loop stopped");
-	}
+	await runPollingLoop({
+		name: "batch process",
+		intervalMs: interval,
+		task: batchProcessLogs,
+		startupMessage: `Starting batch process loop (interval: ${BATCH_PROCESSING_INTERVAL_SECONDS} seconds)...`,
+	});
 }
 
 async function runMinutelyHistoryLoop() {
@@ -1408,108 +1422,33 @@ async function runMinutelyHistoryLoop() {
 }
 
 async function runCurrentMinuteHistoryLoop() {
-	activeLoops++;
 	const interval = CURRENT_MINUTE_HISTORY_INTERVAL_SECONDS * 1000;
-	logger.info(
-		`Starting current minute history loop (interval: ${CURRENT_MINUTE_HISTORY_INTERVAL_SECONDS} seconds)...`,
-	);
-
-	try {
-		while (!shouldStop) {
-			try {
-				await calculateCurrentMinuteHistory();
-
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, interval);
-					});
-				}
-			} catch (error) {
-				logger.warn(
-					"Error in current minute history loop",
-					error instanceof Error ? error : new Error(String(error)),
-				);
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, 5000);
-					});
-				}
-			}
-		}
-	} finally {
-		activeLoops--;
-		logger.info("Current minute history loop stopped");
-	}
+	await runPollingLoop({
+		name: "current minute history",
+		intervalMs: interval,
+		task: calculateCurrentMinuteHistory,
+		startupMessage: `Starting current minute history loop (interval: ${CURRENT_MINUTE_HISTORY_INTERVAL_SECONDS} seconds)...`,
+	});
 }
 
 async function runVideoJobsLoop() {
-	activeLoops++;
 	const interval = VIDEO_JOB_POLL_INTERVAL_SECONDS * 1000;
-	logger.info(
-		`Starting video jobs loop (interval: ${VIDEO_JOB_POLL_INTERVAL_SECONDS} seconds)...`,
-	);
-
-	try {
-		while (!shouldStop) {
-			try {
-				await processPendingVideoJobs();
-
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, interval);
-					});
-				}
-			} catch (error) {
-				logger.warn(
-					"Error in video jobs loop",
-					error instanceof Error ? error : new Error(String(error)),
-				);
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, 5000);
-					});
-				}
-			}
-		}
-	} finally {
-		activeLoops--;
-		logger.info("Video jobs loop stopped");
-	}
+	await runPollingLoop({
+		name: "video jobs",
+		intervalMs: interval,
+		task: processPendingVideoJobs,
+		startupMessage: `Starting video jobs loop (interval: ${VIDEO_JOB_POLL_INTERVAL_SECONDS} seconds)...`,
+	});
 }
 
 async function runVideoWebhookLoop() {
-	activeLoops++;
 	const interval = VIDEO_WEBHOOK_POLL_INTERVAL_SECONDS * 1000;
-	logger.info(
-		`Starting video webhook loop (interval: ${VIDEO_WEBHOOK_POLL_INTERVAL_SECONDS} seconds)...`,
-	);
-
-	try {
-		while (!shouldStop) {
-			try {
-				await processPendingWebhookDeliveries();
-
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, interval);
-					});
-				}
-			} catch (error) {
-				logger.warn(
-					"Error in video webhook loop",
-					error instanceof Error ? error : new Error(String(error)),
-				);
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, 5000);
-					});
-				}
-			}
-		}
-	} finally {
-		activeLoops--;
-		logger.info("Video webhook loop stopped");
-	}
+	await runPollingLoop({
+		name: "video webhook",
+		intervalMs: interval,
+		task: processPendingWebhookDeliveries,
+		startupMessage: `Starting video webhook loop (interval: ${VIDEO_WEBHOOK_POLL_INTERVAL_SECONDS} seconds)...`,
+	});
 }
 
 async function runAggregatedStatsLoop() {
@@ -1567,73 +1506,23 @@ async function runAggregatedStatsLoop() {
 }
 
 async function runProjectStatsLoop() {
-	activeLoops++;
 	const interval = PROJECT_STATS_REFRESH_INTERVAL_SECONDS * 1000;
-	logger.info(
-		`Starting project stats loop (interval: ${PROJECT_STATS_REFRESH_INTERVAL_SECONDS} seconds)...`,
-	);
-
-	try {
-		while (!shouldStop) {
-			try {
-				await refreshProjectHourlyStats();
-
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, interval);
-					});
-				}
-			} catch (error) {
-				logger.warn(
-					"Error in project stats loop",
-					error instanceof Error ? error : new Error(String(error)),
-				);
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, 5000);
-					});
-				}
-			}
-		}
-	} finally {
-		activeLoops--;
-		logger.info("Project stats loop stopped");
-	}
+	await runPollingLoop({
+		name: "project stats",
+		intervalMs: interval,
+		task: refreshProjectHourlyStats,
+		startupMessage: `Starting project stats loop (interval: ${PROJECT_STATS_REFRESH_INTERVAL_SECONDS} seconds)...`,
+	});
 }
 
 async function runDataRetentionLoop() {
-	activeLoops++;
 	const interval = (process.env.NODE_ENV === "production" ? 300 : 60) * 1000; // 5 minutes in prod, 1 minute in dev
-	logger.info(
-		`Starting data retention loop (interval: ${interval / 1000} seconds)...`,
-	);
-
-	try {
-		while (!shouldStop) {
-			try {
-				await cleanupExpiredLogData();
-
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, interval);
-					});
-				}
-			} catch (error) {
-				logger.warn(
-					"Error in data retention loop",
-					error instanceof Error ? error : new Error(String(error)),
-				);
-				if (!shouldStop) {
-					await new Promise((resolve) => {
-						setTimeout(resolve, 5000);
-					});
-				}
-			}
-		}
-	} finally {
-		activeLoops--;
-		logger.info("Data retention loop stopped");
-	}
+	await runPollingLoop({
+		name: "data retention",
+		intervalMs: interval,
+		task: cleanupExpiredLogData,
+		startupMessage: `Starting data retention loop (interval: ${interval / 1000} seconds)...`,
+	});
 }
 
 export async function startWorker() {
