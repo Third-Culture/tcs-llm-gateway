@@ -214,6 +214,72 @@ runs Node 24.13.0 (`.tool-versions`) so it is fine today, but pinning Node
 < 22.15 anywhere would crash the whole gateway at module load. Keep
 `.tool-versions` at Node ≥ 24 (or make that import lazy/guarded).
 
+### CONFIRMED root cause (2026-07-21) — external provider 503, not gateway code
+
+The alert re-fired after #17. A further autofix run (this branch,
+`cursor/llmgateway-log-error-incident-c107`) investigated and reached the same
+conclusion PR #19 proposed, and it has now been **confirmed against real Cloud
+Logging entries** by the repo owner (closing comment on
+[#19](https://github.com/Third-Culture/tcs-llm-gateway/pull/19)):
+
+> The paging entries were Cloud Run **platform request logs** for HTTP 500 when
+> **Google AI Studio returned 503** and callers pinned
+> `google-ai-studio/tcs-cheap` (**no fallback**). Not an application ERROR path,
+> so further gateway code changes are not the fix.
+
+**Why the gateway emitted a 500 for an upstream 503.** When a caller pins a
+single provider/model (`google-ai-studio/tcs-cheap`) and disables fallback (or
+no other provider serves that exact model), `shouldRetryRequest`
+(`apps/gateway/src/chat/tools/retry-with-fallback.ts`) returns `false`, so the
+upstream failure is surfaced directly. In the non-streaming error path
+(`apps/gateway/src/chat/chat.ts`, ~line 8814) the client status is computed as:
+
+```ts
+const clientErrorStatus: 429 | 500 =
+  finishReason === "upstream_error" && res.status === 429 ? 429 : 500;
+```
+
+An upstream `503` is `!== 429`, so it maps to a client-facing **HTTP 500**.
+Cloud Run's platform request logging records any 5xx response as
+`severity>=ERROR`, which trips the raw `severity>=ERROR` log-based metric — the
+same over-sensitive policy flagged on 2026-07-14. This is an **external
+dependency failure** (Google AI Studio outage) reaching a no-fallback pinned
+route, **not** a bug in gateway request-handling code.
+
+**Where it was actually fixed (outside this repo).** `tcs-monitoring`
+**#36 / TCS-1154**: a monitoring filter exclusion for these provider-driven 5xx
+request logs, plus using the bare `tcs-cheap` alias (which retains fallback) for
+the monitoring bridge instead of the pinned `google-ai-studio/tcs-cheap`.
+
+**Why no gateway code change is shipped here.** Downgrading, swallowing, or
+remapping this path in the gateway would either hide a real upstream outage or
+fail to clear the alert anyway (a 502/503 remap is still a 5xx → still
+`severity>=ERROR` in Cloud Run's request logs). Per the incident brief, when the
+trigger is an external dependency + monitoring policy rather than application
+code, the correct action is to report it, not to patch another cosmetic bug.
+The genuine failure handlers in `app.ts` and `serve.ts` must keep emitting
+`ERROR`/`CRITICAL`; a regression guard in `apps/gateway/src/log-severity.spec.ts`
+now asserts they are **not** silently downgraded in a future autofix pass.
+
+**Verification checklist (for anyone with Cloud Logging access).** Confirm the
+paging entries are provider-driven upstream 5xx and not a new application path:
+
+```bash
+gcloud logging read \
+  'resource.type="cloud_run_revision"
+   AND resource.labels.service_name="llmgateway-gateway"
+   AND severity>=ERROR
+   AND httpRequest.status>=500' \
+  --project=third-culture --freshness=7d --limit=50 \
+  --format='table(timestamp, httpRequest.status, httpRequest.requestUrl, jsonPayload.message)'
+```
+
+If the entries are `httpRequest.status=500` on `POST /v1/chat/completions`
+with `google-ai-studio` upstream 503s → it is this external-dependency cause
+(fixed in `tcs-monitoring`). If instead you see application `jsonPayload.message`
+of `"Unhandled error"` / `"HTTP 500 exception"` on a _different_ endpoint, that
+would be a genuinely new code path warranting a targeted input-validation fix.
+
 ## Smoke test
 
 Run [`smoke-test.sh`](./smoke-test.sh) after every deploy, against the
