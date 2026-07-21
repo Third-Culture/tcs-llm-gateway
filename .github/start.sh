@@ -8,7 +8,7 @@ YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
 # Array of apps to test
-APPS=("api" "gateway" "playground" "ui" "code" "docs" "admin")
+APPS=("api" "gateway" "playground" "ui" "code" "docs")
 
 # Ports for each app
 declare -A APP_PORTS
@@ -18,7 +18,6 @@ APP_PORTS["ui"]=3002
 APP_PORTS["playground"]=3003
 APP_PORTS["code"]=3004
 APP_PORTS["docs"]=3005
-APP_PORTS["admin"]=3006
 
 # Health check routes for each app (optional)
 declare -A HEALTH_ROUTES
