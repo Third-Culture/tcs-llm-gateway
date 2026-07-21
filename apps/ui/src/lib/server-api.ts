@@ -87,7 +87,10 @@ export async function fetchServerData<T>(
 
 		return response.data ?? null;
 	} catch (error) {
-		console.error(`Server API error for ${method} ${path}:`, error);
+		// Already handled gracefully by returning null below; a transient
+		// backend/network failure here should not page on-call at ERROR
+		// severity (see infra/gcp/README.md's log_error notes).
+		console.warn(`Server API error for ${method} ${path}:`, error);
 		return null;
 	}
 }
