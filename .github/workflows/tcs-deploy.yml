@@ -108,6 +108,11 @@ jobs:
             --port=3002 \
             --quiet
 
+      # Worker keeps its own revision/image wiring (health probe on :8080). Only
+      # refresh the tier-check env so hourly routing probes stay enabled.
+      - name: Ensure worker tier-check env
+        run: ./infra/gcp/ensure-tier-check-env.sh
+
       - name: Summary
         run: |
           echo "### tcs-llm-gateway rollout" >> "$GITHUB_STEP_SUMMARY"
