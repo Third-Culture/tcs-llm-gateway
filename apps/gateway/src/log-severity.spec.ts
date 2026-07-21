@@ -151,4 +151,61 @@ describe("log severity policy", () => {
 			);
 		}
 	});
+
+	// Inverse guard. The two checks above stop *operational* noise from being
+	// logged at ERROR. This check stops the opposite failure mode: silencing a
+	// *genuine* outage by downgrading/removing the global failure handlers to
+	// quiet the `log_error` alert.
+	//
+	// The recurring 2026-07 `llmgateway-gateway` alert was ultimately confirmed
+	// (owner, against real Cloud Logging entries — PR #19) to be Cloud Run
+	// *platform request logs* for HTTP 500 when an upstream provider (Google AI
+	// Studio) returned 503 on a no-fallback pinned route — an external
+	// dependency, fixed in monitoring (tcs-monitoring #36 / TCS-1154), NOT a
+	// gateway code bug. Across 7+ prior autofix PRs the tempting "fix" was to
+	// downgrade or swallow these handlers so the alert stops paging; that hides
+	// real outages. This test fails if any genuine failure handler is downgraded
+	// away from ERROR/CRITICAL.
+	it("genuine failure handlers still escalate to ERROR/CRITICAL", () => {
+		const gatewayRoot = join(__dirname, "..");
+
+		const requiredEscalations: Array<{ file: string; markers: string[] }> = [
+			{
+				file: "src/app.ts",
+				// Global onError handler: real HTTP 500s and unhandled exceptions.
+				markers: [
+					'logger.error("HTTP 500 exception"',
+					'logger.error(\n\t\t"Unhandled error"',
+				],
+			},
+			{
+				file: "src/serve.ts",
+				// Fatal startup/shutdown + process-level crash handlers.
+				markers: [
+					'logger.error("Failed to start server"',
+					'logger.error(\n\t\t\t"Error during graceful shutdown"',
+					"logger.fatal(",
+				],
+			},
+		];
+
+		const missing: string[] = [];
+		for (const { file, markers } of requiredEscalations) {
+			const content = readFileSync(join(gatewayRoot, file), "utf-8");
+			for (const marker of markers) {
+				if (!content.includes(marker)) {
+					missing.push(`  ${file} → expected \`${marker}\``);
+				}
+			}
+		}
+
+		if (missing.length > 0) {
+			expect.fail(
+				`A genuine failure handler was downgraded away from ERROR/CRITICAL.\n` +
+					`Real 500s / unhandled exceptions / fatal startup + shutdown + crash\n` +
+					`paths MUST keep paging — do not silence them to quiet the log_error\n` +
+					`alert. Missing escalations:\n${missing.join("\n")}`,
+			);
+		}
+	});
 });
