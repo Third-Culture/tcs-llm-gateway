@@ -214,6 +214,75 @@ runs Node 24.13.0 (`.tool-versions`) so it is fine today, but pinning Node
 < 22.15 anywhere would crash the whole gateway at module load. Keep
 `.tool-versions` at Node ≥ 24 (or make that import lazy/guarded).
 
+### The recurrence (root cause, 2026-07-21) — upstream 503, not code
+
+The `llmgateway-gateway` `log_error` alert paged again after #10/#12 (and the
+later #13/#17). Rather than ship an eighth cosmetic log-level patch, the trigger
+was traced to a specific, confirmed source.
+
+**Confirmed root cause (external dependency, not a gateway bug).** Per the repo
+owner's Cloud Logging investigation recorded when closing
+[#19](https://github.com/Third-Culture/tcs-llm-gateway/pull/19):
+
+> The paging entries were Cloud Run **platform request logs** for HTTP 500 when
+> **Google AI Studio returned 503** and callers pinned `google-ai-studio/tcs-cheap`
+> (**no fallback**). Not an application ERROR path, so further gateway code
+> changes are not the fix.
+
+**Independent code verification of that path** (so the finding is grounded, not
+just trusted):
+
+- A caller pinning a single provider/model (or sending `x-no-fallback`) makes
+  `shouldRetryRequest` (`apps/gateway/src/chat/tools/retry-with-fallback.ts`)
+  return `false`, so the upstream failure is surfaced directly with no waterfall.
+- The non-streaming terminal error path
+  (`apps/gateway/src/chat/chat.ts`, ~L8814) computes the client status as
+  `finishReason === "upstream_error" && res.status === 429 ? 429 : 500`. An
+  upstream **503 ≠ 429 → client HTTP 500**.
+- Cloud Run's platform request logging marks any 5xx as `severity>=ERROR`, which
+  trips the raw `severity>=ERROR` log-based metric (the over-sensitive policy
+  already flagged on 2026-07-14 above).
+
+**Where it was actually fixed (outside this repo).** `tcs-monitoring`
+**#36 / TCS-1154**: a monitoring filter exclusion for these provider-driven 5xx
+request logs, plus using the bare `tcs-cheap` alias (which retains fallback) for
+the monitoring bridge instead of the pinned `google-ai-studio/tcs-cheap`.
+
+**Why no gateway code change is warranted.** This is an external dependency
+outage (Google AI Studio 503) reaching a deliberately no-fallback pinned route.
+Downgrading/swallowing this path would hide a real upstream outage; and remapping
+`500 → 502/503` would **not** clear the alert anyway (Cloud Run still classifies
+every 5xx request log as `severity>=ERROR`) — it would be another cosmetic change,
+not a fix. So no log severity was lowered, no exception swallowed, no monitor
+weakened, and no handler changed.
+
+**Regression guard added.** `apps/gateway/src/log-severity.spec.ts` gained an
+_inverse_ check ("genuine failure handlers still escalate to ERROR/CRITICAL"):
+the existing two checks keep operational noise out of ERROR, and this new one
+fails if any real failure handler (`app.ts` HTTP 500 / unhandled;
+`serve.ts` fatal startup + graceful-shutdown + `logger.fatal` crash paths) is
+downgraded to quiet the alert. This locks out the exact anti-pattern that
+produced 7+ cosmetic PRs while keeping real outages paging.
+
+**Verification checklist (for anyone with Cloud Logging access).** Confirm the
+paging entries are external-503 request logs, not a fresh app crash:
+
+```bash
+# Are the ERROR entries platform request logs (5xx), i.e. httpRequest present?
+gcloud logging read \
+  'resource.type="cloud_run_revision"
+   resource.labels.service_name="llmgateway-gateway"
+   severity>=ERROR' \
+  --project=third-culture --freshness=7d --limit=50 \
+  --format='table(timestamp, httpRequest.status, httpRequest.requestUrl, jsonPayload.message)'
+
+# If httpRequest.status is 500 and jsonPayload.message is empty → platform request
+# log for a 5xx (external/upstream), matching this root cause. If instead you see
+# jsonPayload.message == "HTTP 500 exception" or "Unhandled error" on a real
+# request path (not teardown), that is a genuinely different code bug and warrants
+# a targeted, #18-style input-validation fix — not a log downgrade.
+```
+
 ## Smoke test
 
 Run [`smoke-test.sh`](./smoke-test.sh) after every deploy, against the
