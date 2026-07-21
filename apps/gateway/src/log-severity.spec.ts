@@ -151,4 +151,52 @@ describe("log severity policy", () => {
 			);
 		}
 	});
+
+	// The flip side of the two tests above: genuine failure handlers MUST keep
+	// paging. The recurring `log_error` incident was chased with 7+ cosmetic PRs
+	// that downgraded operational logs; the real trigger turned out to be an
+	// external upstream 503 surfaced as an HTTP 500 request log (confirmed in
+	// Cloud Logging on PR #19, fixed in tcs-monitoring #36 / TCS-1154). To stop a
+	// future autofix pass from "fixing" the alert by muting the real handlers,
+	// assert that the legitimate ERROR/CRITICAL emitters stay at ERROR/CRITICAL.
+	// Downgrading any of these would hide a real outage, not fix one.
+	it("genuine failure handlers keep ERROR/CRITICAL severity (no silent muting)", () => {
+		const gatewayRoot = join(__dirname, "..");
+		const requiredMarkers: Array<{ file: string; markers: string[] }> = [
+			{
+				file: "src/app.ts",
+				markers: [
+					'logger.error("HTTP 500 exception"',
+					"logger.error(", // "Unhandled error" for non-HTTPException 500s
+				],
+			},
+			{
+				file: "src/serve.ts",
+				markers: [
+					"logger.error(", // "Error during graceful shutdown"
+					'logger.fatal("Uncaught exception',
+					'logger.fatal("Unhandled rejection',
+					'logger.error("Failed to start server"',
+				],
+			},
+		];
+
+		const missing: string[] = [];
+		for (const { file, markers } of requiredMarkers) {
+			const content = readFileSync(join(gatewayRoot, file), "utf-8");
+			for (const marker of markers) {
+				if (!content.includes(marker)) {
+					missing.push(`  ${file} is missing required handler: ${marker}`);
+				}
+			}
+		}
+
+		if (missing.length > 0) {
+			expect.fail(
+				`A genuine failure handler was downgraded/removed. Real outages must ` +
+					`keep emitting severity>=ERROR — do not silence them to quiet the ` +
+					`Cloud Run alert.\n${missing.join("\n")}`,
+			);
+		}
+	});
 });
