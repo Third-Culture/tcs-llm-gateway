@@ -51,6 +51,7 @@ import {
 	type TcsBudgetAlertContext,
 } from "./services/tcs-budget-alerts.js";
 import { emitTcsStructuredLogs } from "./services/tcs-structured-logs.js";
+import { runTcsTierRoutingChecksLoop } from "./services/tcs-tier-routing-checks.js";
 import {
 	processPendingVideoJobs,
 	processPendingWebhookDeliveries,
@@ -1775,6 +1776,9 @@ export async function startWorker() {
 	logger.info(
 		"- Follow-up emails: runs every hour to check for lifecycle emails",
 	);
+	logger.info(
+		"- TCS tier routing checks: runs hourly when TCS_TIER_CHECK_ENABLED=true",
+	);
 
 	void runMinutelyHistoryLoop();
 	void runCurrentMinuteHistoryLoop();
@@ -1787,6 +1791,18 @@ export async function startWorker() {
 	void runBatchProcessLoop();
 	void runDataRetentionLoop();
 	void runFollowUpEmailsLoop({
+		shouldStop: () => shouldStop,
+		acquireLock,
+		releaseLock,
+		interruptibleSleep,
+		registerLoop: () => {
+			activeLoops++;
+		},
+		unregisterLoop: () => {
+			activeLoops--;
+		},
+	});
+	void runTcsTierRoutingChecksLoop({
 		shouldStop: () => shouldStop,
 		acquireLock,
 		releaseLock,

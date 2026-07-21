@@ -1919,3 +1919,25 @@ export const apiKeyHourlyModelStats = pgTable(
 		),
 	],
 );
+
+export const tcsTierRoutingStatus = pgTable("tcs_tier_routing_status", {
+	tierId: text("tier_id").primaryKey(),
+	tierName: text("tier_name").notNull(),
+	status: text().notNull(),
+	selectedProvider: text("selected_provider"),
+	selectedModel: text("selected_model"),
+	primaryProvider: text("primary_provider").notNull(),
+	primaryModel: text("primary_model").notNull(),
+	fallbackProviders: jsonb("fallback_providers")
+		.$type<Array<{ providerId: string; modelName: string }>>()
+		.notNull()
+		.default([]),
+	lastCheckedAt: timestamp("last_checked_at").notNull(),
+	lastSuccessAt: timestamp("last_success_at"),
+	lastError: text("last_error"),
+	latencyMs: integer("latency_ms"),
+	updatedAt: timestamp("updated_at")
+		.notNull()
+		.defaultNow()
+		.$onUpdate(() => new Date()),
+});

@@ -286,3 +286,39 @@ export const tcsModels = [
 		],
 	},
 ] as const satisfies ModelDefinition[];
+
+export interface TcsTierProviderMapping {
+	providerId: string;
+	modelName: string;
+	inputPrice: number;
+	outputPrice: number;
+}
+
+export interface TcsRoutingTier {
+	id: string;
+	name: string;
+	description?: string;
+	providers: TcsTierProviderMapping[];
+	primaryProvider: string;
+	primaryModel: string;
+}
+
+export function listTcsRoutingTiers(): TcsRoutingTier[] {
+	return tcsModels.map((tier) => {
+		const providers = tier.providers.map((provider) => ({
+			providerId: provider.providerId,
+			modelName: provider.modelName,
+			inputPrice: provider.inputPrice,
+			outputPrice: provider.outputPrice,
+		}));
+		const primary = providers[0];
+		return {
+			id: tier.id,
+			name: tier.name,
+			description: tier.description,
+			providers,
+			primaryProvider: primary?.providerId ?? "",
+			primaryModel: primary?.modelName ?? "",
+		};
+	});
+}
