@@ -9,6 +9,8 @@ import { fetchTweet, type Tweet } from "react-tweet/api";
 
 import { cn } from "@/lib/utils";
 
+import { normalizeTweetEntities } from "./tweet-entities";
+
 interface TwitterIconProps {
 	className?: string;
 	[key: string]: unknown;
@@ -245,9 +247,13 @@ export const MagicTweet = ({
 }) => {
 	let enrichedTweet: EnrichedTweet;
 	try {
-		enrichedTweet = enrichTweet(tweet);
+		enrichedTweet = enrichTweet(normalizeTweetEntities(tweet));
 	} catch (err) {
-		console.error("Failed to enrich tweet:", err);
+		// normalizeTweetEntities already guards against the known cause of
+		// enrichTweet throwing (missing entity arrays from the syndication
+		// API), so anything still landing here is unexpected and gracefully
+		// falls back to the "not found" card rather than crashing the page.
+		console.warn("Failed to enrich tweet:", err);
 		return <TweetNotFound className={className} {...props} />;
 	}
 	return (

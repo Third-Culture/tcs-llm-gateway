@@ -283,6 +283,43 @@ gcloud logging read \
 # a targeted, #18-style input-validation fix — not a log downgrade.
 ```
 
+### The `llmgateway-ui` `log_error` alert (root cause, 2026-07-21) — bad third-party data, not a transient failure
+
+Unlike the gateway's alert (an intermittent upstream 503), this one is
+**deterministic**: it fires on essentially every request to `/`, `/login`,
+`/signup`, and `/enterprise` — the highest-traffic pages in the app.
+
+**Root cause.** `Testimonials` (`src/components/landing/testimonials.tsx`) and
+`AuthBrandPanel` (`src/components/auth/auth-brand-panel.tsx`) render real
+tweets via `TweetCard` → `MagicTweet` → `react-tweet`'s `enrichTweet()`.
+`enrichTweet` (`react-tweet`'s `utils.js`, `getEntities`/`addEntities`)
+unconditionally iterates `tweet.entities.hashtags`, `.urls`, `.user_mentions`,
+and `.symbols` with `for...of`, assuming they are always arrays (its
+TypeScript types mark them non-optional). Twitter's syndication API (what
+`fetchTweet` calls) omits any of those keys entirely when a tweet has none of
+that entity type. Fetching the actual tweet IDs hardcoded in both components
+confirmed **every single one** was missing at least one of those keys (most
+had only `user_mentions`), so `enrichTweet` threw
+`TypeError: ... is not iterable` on every render. `MagicTweet` already caught
+that throw and fell back to a "Tweet not found" card — so the page never
+crashed — but the catch logged via `console.error`, which Cloud Run maps to
+`severity=ERROR`, tripping the alert on effectively every hit to those pages.
+
+**Fix.** Added `normalizeTweetEntities()`
+(`src/lib/components/tweet-entities.ts`) to default the four entity arrays
+(and a quoted tweet's, if present) to `[]` before calling `enrichTweet`, so
+real tweet data renders instead of falling back. This is the actual
+functional bug: testimonials were silently failing to render for real
+visitors, not just spamming logs. The remaining catch in `MagicTweet` is
+defense-in-depth for genuinely unexpected `enrichTweet` failures (already
+falls back gracefully to `TweetNotFound`), downgraded to `console.warn` to
+match — it no longer fires in practice once the known cause is fixed.
+
+**Regression test.** `src/lib/components/tweet-entities.spec.ts` pins the
+exact upstream failure mode (iterating a missing entity array throws) and
+verifies `normalizeTweetEntities` fixes it while preserving entities that are
+already present, including on a `quoted_tweet`.
+
 ## Smoke test
 
 Run [`smoke-test.sh`](./smoke-test.sh) after every deploy, against the
