@@ -15,22 +15,35 @@ export async function getUser() {
 	const sessionCookie = cookieStore.get(`${key}`);
 	const secureSessionCookie = cookieStore.get(`__Secure-${key}`);
 
-	const data = await fetch(`${config.apiBackendUrl}/user/me`, {
-		method: "GET",
-		headers: {
-			Cookie: secureSessionCookie
-				? `__Secure-${key}=${secureSessionCookie.value}`
-				: sessionCookie
-					? `${key}=${sessionCookie.value}`
-					: "",
-		},
-	});
+	let data: Response;
+	try {
+		data = await fetch(`${config.apiBackendUrl}/user/me`, {
+			method: "GET",
+			headers: {
+				Cookie: secureSessionCookie
+					? `__Secure-${key}=${secureSessionCookie.value}`
+					: sessionCookie
+						? `${key}=${sessionCookie.value}`
+						: "",
+			},
+		});
+	} catch {
+		// Backend unreachable (network blip, cold start, etc). The dashboard
+		// layout treats a null user as "not logged in", which is the safest
+		// fallback for a transient failure.
+		return null;
+	}
 
 	if (!data.ok) {
 		return null;
 	}
 
-	const user: User = await data.json();
+	let user: User;
+	try {
+		user = await data.json();
+	} catch {
+		return null;
+	}
 
 	if (posthog) {
 		posthog.identify({

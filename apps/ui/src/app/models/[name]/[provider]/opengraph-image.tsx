@@ -572,7 +572,9 @@ export default async function ModelProviderOgImage({ params }: ImageProps) {
 			size,
 		);
 	} catch (error) {
-		console.error("Error generating OpenGraph image:", error);
+		// Falls back to a generic OG image below, so this is not a
+		// user-facing outage — don't page on-call at ERROR severity.
+		console.warn("Error generating OpenGraph image:", error);
 		return new ImageResponse(
 			(
 				<div

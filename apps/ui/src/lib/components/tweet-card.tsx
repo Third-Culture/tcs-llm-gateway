@@ -286,7 +286,20 @@ export const MagicTweet = ({
 	className?: string;
 }) => {
 	const normalizedTweet = normalizeTweetEntities(tweet);
-	const enrichedTweet = enrichTweet(normalizedTweet);
+
+	let enrichedTweet: EnrichedTweet;
+	try {
+		enrichedTweet = enrichTweet(normalizedTweet);
+	} catch (err) {
+		// enrichTweet() can still throw for malformed fields outside
+		// entities (e.g. card/mediaDetails shape changes from X's API).
+		// This renders inside AuthBrandPanel/Testimonials on pages like
+		// /login and /signup, so an uncaught throw here crashes the whole
+		// page render instead of just this one card.
+		console.warn("Failed to enrich tweet:", err);
+		return <TweetNotFound className={className} {...props} />;
+	}
+
 	return (
 		<div
 			className={cn(

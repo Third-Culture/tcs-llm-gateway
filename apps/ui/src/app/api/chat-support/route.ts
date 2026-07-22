@@ -25,13 +25,21 @@ export async function POST(req: Request) {
 		headers["cf-connecting-ip"] = cfConnectingIp;
 	}
 
-	const upstream = await fetch(target, {
-		method: "POST",
-		headers,
-		body: req.body,
-		// Required by Node/Undici when forwarding a streaming body.
-		duplex: "half",
-	} as RequestInit & { duplex: "half" });
+	let upstream: Response;
+	try {
+		upstream = await fetch(target, {
+			method: "POST",
+			headers,
+			body: req.body,
+			// Required by Node/Undici when forwarding a streaming body.
+			duplex: "half",
+		} as RequestInit & { duplex: "half" });
+	} catch {
+		return Response.json(
+			{ error: "Chat support service is temporarily unavailable" },
+			{ status: 502 },
+		);
+	}
 
 	const responseHeaders = new Headers();
 	const contentType = upstream.headers.get("content-type");
