@@ -318,4 +318,35 @@ describe("computeTotalTokensForMetric", () => {
 			computeTotalTokensForMetric({ totalTokens: null, completionTokens: 75 }),
 		).toBe(75);
 	});
+
+	// Regression guard for the 2026-07-21 hot-path deploy (#11). insertLog()
+	// calls this on EVERY logged completion, then emits an INFO metric. If this
+	// helper ever threw, that exception would escape insertLog into the request
+	// path and surface via the app.ts `logger.error("Unhandled error")` handler
+	// (severity=ERROR) — i.e. the metric code would itself become a fresh
+	// `log_error` trigger. These cases prove it stays total (never throws) and
+	// always returns a number, even for malformed / hostile token shapes.
+	it("never throws and always returns a number for malformed input", () => {
+		const hostileInputs: Array<Record<string, unknown>> = [
+			{ totalTokens: "not-a-number" },
+			{ totalTokens: NaN, promptTokens: NaN, completionTokens: NaN },
+			{ totalTokens: undefined, promptTokens: "1e3" },
+			{ totalTokens: "", promptTokens: "", completionTokens: "" },
+			{ totalTokens: "  42  " },
+			{ totalTokens: -100, promptTokens: 10, completionTokens: 5 },
+			{ totalTokens: {} as unknown as number },
+			{ totalTokens: [] as unknown as number },
+			{ totalTokens: [1, 2, 3] as unknown as number },
+			{ totalTokens: true as unknown as number },
+		];
+
+		for (const input of hostileInputs) {
+			let result: number | undefined;
+			expect(() => {
+				result = computeTotalTokensForMetric(input);
+			}).not.toThrow();
+			expect(typeof result).toBe("number");
+			expect(Number.isNaN(result)).toBe(false);
+		}
+	});
 });
