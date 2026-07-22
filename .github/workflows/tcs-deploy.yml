@@ -1,10 +1,23 @@
 name: tcs-deploy
 
-# Builds the unified tcs-llm-gateway image, pushes it to Artifact Registry in
-# the third-culture GCP project, and rolls out the three Cloud Run services.
+# Builds per-service images from infra/split.dockerfile and deploys them to
+# the llmgateway-gateway/-api/-ui Cloud Run services in the third-culture
+# GCP project.
 #
 # Triggered on push to `tcs/main` (our customization branch) or manually.
 # Uses Workload Identity Federation — no JSON service account keys.
+#
+# IMPORTANT: `main`'s deploy-gcp.yml deploys these exact same Cloud Run
+# services (plus llmgateway-worker) from infra/split.dockerfile too. Both
+# pipelines target the same live services, so whichever branch merges and
+# deploys last wins — this file MUST keep building split, per-service images
+# to stay compatible with that. Do NOT switch this back to building
+# infra/unified.dockerfile and deploying it here: the unified image boots
+# every app (including the worker's batch credit-deduction loop) inside one
+# container, so llmgateway-ui/-gateway/-api would each run duplicate,
+# uncoordinated worker logic and crash (this happened in production on
+# 2026-07-21/22 — TCS-1195, TCS-1196 — after this workflow deployed the
+# unified image and overwrote a split-image deploy from `main`).
 
 on:
   push:
@@ -13,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Optional override for the image tag (defaults to short SHA)"
+        description: "Optional override for the image tag prefix (defaults to tcs-<short SHA>)"
         required: false
         type: string
 
@@ -24,8 +37,7 @@ concurrency:
 env:
   GCP_PROJECT: third-culture
   GCP_REGION: us-central1
-  AR_REPO: tcs
-  IMAGE_NAME: llm-gateway
+  IMAGE: us-central1-docker.pkg.dev/third-culture/tcs/llm-gateway
   # Pre-created via infra/gcp/bootstrap.sh:
   #   - WIF pool:        tcs-github-pool
   #   - WIF provider:    tcs-github-provider
@@ -40,7 +52,15 @@ jobs:
     permissions:
       contents: read
       id-token: write
-
+    strategy:
+      matrix:
+        include:
+          - app: api
+            service: llmgateway-api
+          - app: gateway
+            service: llmgateway-gateway
+          - app: ui
+            service: llmgateway-ui
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -49,10 +69,10 @@ jobs:
         id: tag
         run: |
           if [[ -n "${{ inputs.image_tag }}" ]]; then
-            echo "value=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+            echo "value=${{ inputs.image_tag }}-${{ matrix.app }}" >> "$GITHUB_OUTPUT"
           else
             short_sha=$(git rev-parse --short HEAD)
-            echo "value=tcs-${short_sha}" >> "$GITHUB_OUTPUT"
+            echo "value=tcs-${short_sha}-${{ matrix.app }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Authenticate to Google Cloud
@@ -73,49 +93,55 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build and push unified image
+      - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: infra/unified.dockerfile
+          file: infra/split.dockerfile
+          target: ${{ matrix.app }}
           platforms: linux/amd64
           push: true
-          tags: |
-            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
-            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.value }}
+          cache-from: type=gha,scope=tcs-split-${{ matrix.app }}-linux-amd64
+          cache-to: type=gha,mode=max,scope=tcs-split-${{ matrix.app }}-linux-amd64
 
-      - name: Deploy gateway service
+      - name: Deploy ${{ matrix.service }}
         run: |
-          gcloud run deploy llmgateway-gateway \
+          gcloud run deploy ${{ matrix.service }} \
+            --image="${{ env.IMAGE }}@${{ steps.build.outputs.digest }}" \
+            --project=${{ env.GCP_PROJECT }} \
             --region=${{ env.GCP_REGION }} \
-            --image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }} \
             --quiet
 
-      - name: Deploy api service
+      - name: Summary
         run: |
-          gcloud run deploy llmgateway-api \
-            --region=${{ env.GCP_REGION }} \
-            --image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }} \
-            --quiet
+          echo "### ${{ matrix.service }} rollout" >> "$GITHUB_STEP_SUMMARY"
+          echo "- image: \`${{ env.IMAGE }}@${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- tag: \`${{ steps.tag.outputs.value }}\`" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Deploy ui service
-        run: |
-          gcloud run deploy llmgateway-ui \
-            --region=${{ env.GCP_REGION }} \
-            --image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }} \
-            --port=3002 \
-            --quiet
+  worker-tier-check-env:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
 
       # Worker keeps its own revision/image wiring (health probe on :8080). Only
       # refresh the tier-check env so hourly routing probes stay enabled.
       - name: Ensure worker tier-check env
         run: ./infra/gcp/ensure-tier-check-env.sh
-
-      - name: Summary
-        run: |
-          echo "### tcs-llm-gateway rollout" >> "$GITHUB_STEP_SUMMARY"
-          echo "- image: \`${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.AR_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- services: llmgateway-gateway, llmgateway-api, llmgateway-ui" >> "$GITHUB_STEP_SUMMARY"
-          echo "- region: ${{ env.GCP_REGION }}" >> "$GITHUB_STEP_SUMMARY"

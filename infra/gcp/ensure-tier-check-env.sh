@@ -9,7 +9,7 @@ set -euo pipefail
 
 PROJECT="${TCS_GCP_PROJECT:-third-culture}"
 REGION="${TCS_GCP_REGION:-us-central1}"
-GCLOUD="${GCLOUD_BIN:-/Users/di/google-cloud-sdk/bin/gcloud}"
+GCLOUD="${GCLOUD_BIN:-gcloud}"
 GATEWAY_URL="${TCS_TIER_CHECK_GATEWAY_URL:-https://llmgateway-gateway-qm3fwjoi5q-uc.a.run.app}"
 ALERT_EMAILS="${TCS_TIER_CHECK_ALERT_EMAILS:-di@thirdculture.world}"
 API_KEY_SECRET="${TCS_TIER_CHECK_API_KEY_SECRET:-llm-gateway-api-key}"
