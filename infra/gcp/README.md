@@ -283,6 +283,67 @@ gcloud logging read \
 # a targeted, #18-style input-validation fix — not a log downgrade.
 ```
 
+### The recurrence (re-check, 2026-07-22) — still external + monitoring; new #11 deploy verified safe
+
+The alert paged again _after_ the 2026-07-21 write-up above. The one new
+variable since then is **#11 (`feat: add TCS daily tokens processed metric`,
+merged 2026-07-21 22:09 — after #21 at 21:46)**, the only gateway-runtime change
+since #17/#21. This was re-investigated from scratch to check for a genuinely
+different code trigger rather than assuming the prior conclusion.
+
+**No new application-code trigger. Root cause is unchanged** (upstream Google AI
+Studio 503 → HTTP 500 on a no-fallback pinned route → Cloud Run platform request
+log at `severity>=ERROR` → the raw log-based metric pages). Evidence gathered
+this round:
+
+- **#11 is alert-safe.** It adds `computeTotalTokensForMetric` + a single
+  `logger.info("tcs_metric", …)` in `insertLog` (`apps/gateway/src/lib/logs.ts`).
+  `logger.info` maps to Cloud Logging severity `INFO` (see
+  `packages/logger/src/index.ts` `PinoLevelToSeverityLookup`), so it **cannot**
+  trip a `severity>=ERROR` metric, and `computeTotalTokensForMetric` is total
+  (`Number(x) || 0`, no throw). It runs on every logged completion but only emits
+  INFO — not an ERROR path.
+- **No new ERROR emitters.** `log-severity.spec.ts`'s file scan still passes: the
+  only `logger.error`/`logger.fatal` in the gateway runtime import graph are the
+  legitimate global handlers in `app.ts` (HTTP 500 / unhandled) and `serve.ts`
+  (fatal startup/shutdown/crash). #17's teardown fix is intact.
+- **Live black-box probe (revision serving #11 code).** `GET /` →
+  `health.status: ok` (redis + db connected); `GET /metrics` → 200;
+  `POST /v1/chat/completions` (no auth / malformed body) → 400. No reproducible
+  unhandled 500 on the reachable surface.
+- **Constraint (unchanged):** the agent VM still has **no GCP access** (no
+  `gcloud`, no ADC, no metadata server, no creds — all verified), so live Cloud
+  Logging could not be queried directly; use the `gcloud logging read` checklist
+  above to confirm against real entries.
+
+**Why it is still paging (actionable, owned outside this repo).** Every merge to
+`main` mints a new Cloud Run revision, and **#11 is exactly such a post-fix
+deploy**. If the same fingerprint is still paging, the raw `severity>=ERROR`
+log-based metric is still catching provider-driven 5xx request logs — i.e.
+**`tcs-monitoring` #36 / TCS-1154's exclusion is either not fully deployed or too
+narrowly scoped.** The fix remains in monitoring, not gateway code:
+
+1. Verify `tcs-monitoring` #36 / TCS-1154 is actually live and that its filter
+   excludes provider-driven 5xx **platform request logs** (`httpRequest.status`
+   5xx with empty `jsonPayload.message`), not just app ERROR logs.
+2. Prefer alerting on the gateway's HTTP 5xx **response rate** with a sustained
+   rate/duration threshold instead of a raw count of `severity>=ERROR` lines.
+3. Stop auto-merging cosmetic autofix PRs for this alert — each merge is a new
+   revision that re-tests/re-tears-down and can re-trip the current policy.
+
+**Regression guards added (test-only, no runtime change).**
+
+- `apps/gateway/src/log-severity.spec.ts` — new forward guard: the per-request
+  TCS token metric in `logs.ts` must stay at `logger.info` (fails if a future
+  edit escalates it to warn/error and pages on normal traffic).
+- `apps/gateway/src/lib/logs.spec.ts` — `computeTotalTokensForMetric` proven
+  total (never throws, always returns a number) for malformed/hostile token
+  shapes, so this new hot-path helper can never itself become an `Unhandled
+error` ERROR source.
+
+No log severity was lowered, no exception swallowed, no monitor weakened, and no
+handler or other runtime code changed.
+
 ## Smoke test
 
 Run [`smoke-test.sh`](./smoke-test.sh) after every deploy, against the
