@@ -208,4 +208,42 @@ describe("log severity policy", () => {
 			);
 		}
 	});
+
+	// Forward guard for the 2026-07-21 hot-path deploy (#11), which added a
+	// per-request telemetry emit (`tcs_metric` /
+	// `llmgateway_daily_tokens_processed`) to `insertLog` in `src/lib/logs.ts`.
+	// That runs on every logged completion, so if it were ever emitted at
+	// warn/error severity it would page the raw `severity>=ERROR` log_error
+	// alert on ordinary traffic. It is intentionally an INFO log — this test
+	// fails if a future edit escalates it (the file-scan check above already
+	// forbids `logger.error` here; this also forbids `logger.warn`/`fatal` for
+	// the metric specifically) so the newest telemetry stays alert-safe.
+	it("the TCS daily-tokens metric is emitted at INFO, never warn/error", () => {
+		const logsPath = join(__dirname, "lib", "logs.ts");
+		const content = readFileSync(logsPath, "utf-8");
+		const lines = content.split("\n");
+
+		const metricLogLines = lines
+			.map((text, i) => ({ text: text.trim(), line: i + 1 }))
+			.filter(({ text }) => /logger\.\w+\(/.test(text) && text.includes("tcs"));
+
+		expect(
+			metricLogLines.length,
+			"expected the TCS metric emit to still exist in src/lib/logs.ts",
+		).toBeGreaterThan(0);
+
+		const escalated = metricLogLines.filter(({ text }) =>
+			/logger\.(warn|error|fatal)\(/.test(text),
+		);
+		if (escalated.length > 0) {
+			const message = escalated
+				.map((v) => `  src/lib/logs.ts:${v.line} → ${v.text}`)
+				.join("\n");
+			expect.fail(
+				`The per-request TCS token metric must stay at logger.info.\n` +
+					`Emitting it at warn/error would trip the severity>=ERROR log_error\n` +
+					`alert on normal traffic:\n${message}`,
+			);
+		}
+	});
 });
